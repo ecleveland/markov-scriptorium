@@ -1,0 +1,25 @@
+:root {
+  --bg: #14110f;
+  --panel: #1c1715;
+  --border: #2e2724;
+  --ink: #d8cfc4;
+  --ink-dim: #8c7f74;
+  --gold: #c9a44c;
+
+  font: 18px/1.5 Georgia, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+#root {
+  display: flex;
+  min-height: 100svh;
+}
