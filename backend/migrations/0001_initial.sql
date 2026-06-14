@@ -1,0 +1,9 @@
+-- 0001_initial — baseline migration.
+--
+-- The catalog starts empty. The real tables arrive with the schema tickets:
+--   * card data  — VEG-211
+--   * inventory  — VEG-217
+--   * decks      — VEG-222
+--
+-- Each ships as its own NNNN_*.sql migration. This baseline carries no DDL; it
+-- exists to establish the migration runner and move the catalog to version 1.
