@@ -38,6 +38,10 @@ def connect() -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    # SQLite defaults foreign-key enforcement OFF per connection; turn it on so
+    # the catalog's foreign keys (e.g. card_faces -> cards) and their cascades
+    # are actually enforced. See ADR 0004/0005.
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
