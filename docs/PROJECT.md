@@ -122,15 +122,17 @@ Visual card recognition that matches scans to Scryfall. Highly feasible — mult
 
 ---
 
-## Key Decisions to Make Before Building
+## Key Decisions (Resolved)
 
-1. Reserved vs. referenced inventory (or hybrid)
-2. Per-printing granularity — confirmed yes
-3. Tech stack (TBD with Claude Code)
-4. Storage — local SQLite, cloud DB, or JSON?
-5. UI surface — web app, desktop, CLI, or TUI?
-6. Hosting — purely local, self-hosted, or cloud?
-7. Auth — single-user only, or accounts from day one?
+See `docs/decisions/0001-foundational-architecture.md` for full reasoning.
+
+1. **Tech stack:** Python backend + TypeScript frontend (hybrid)
+2. **Per-printing granularity:** confirmed yes
+3. **Storage:** SQLite (local file, no server process)
+4. **UI surface:** Local web app (browser-based, localhost)
+5. **Card-deck model:** Hybrid — per-deck flag, default reserved
+6. **Hosting:** Purely local (Tailscale for optional remote access later)
+7. **Auth:** Single-user, no auth
 
 ---
 
