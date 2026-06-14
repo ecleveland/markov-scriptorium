@@ -55,6 +55,10 @@ tables as a migration on top of this.
 - **Forward-only** — there are no down-migrations; to undo, write a new forward migration.
 - **Atomicity** — each migration runs in a transaction and rolls back on error, so a failure
   leaves the catalog at its previous version and retries on the next startup.
+- **Validation** — the runner raises `MigrationError` (rather than failing silently) on
+  misconfiguration: a missing migrations directory, two files sharing a version number, or a
+  migration that contains its own `BEGIN`/`COMMIT`/`ROLLBACK` (which would break the wrapping
+  transaction). Startup logs the failing migration before aborting.
 - **Packaging note:** migrations live at `backend/migrations/`, *outside* the wheel package
   (`src/scriptorium`). The dev/editable path resolves them by filesystem path today, but the
   Tauri/PyInstaller build (M7 — [VEG-364]/[VEG-366]) must explicitly bundle this directory.
