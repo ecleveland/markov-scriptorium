@@ -6,7 +6,10 @@
   --ink-dim: #8c7f74;
   --gold: #c9a44c;
 
-  font: 18px/1.5 Georgia, 'Times New Roman', serif;
+  font:
+    18px/1.5 Georgia,
+    'Times New Roman',
+    serif;
   color: var(--ink);
   background: var(--bg);
   color-scheme: dark;

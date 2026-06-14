@@ -10,9 +10,7 @@ import pytest
 from scriptorium import db
 
 
-def test_healthcheck_closes_its_connection(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_healthcheck_closes_its_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
 
     opened: list[sqlite3.Connection] = []

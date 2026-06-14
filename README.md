@@ -29,6 +29,8 @@ Requires [uv](https://docs.astral.sh/uv/). From `backend/`:
 uv sync                                        # create the venv and install deps
 uv run uvicorn scriptorium.main:app --reload   # dev server on http://127.0.0.1:8000
 uv run pytest                                  # run the tests
+uv run ruff format && uv run ruff check --fix  # format and lint
+uv run mypy                                     # type-check (strict)
 ```
 
 ### Frontend (React + Vite)
@@ -37,9 +39,22 @@ From `frontend/`:
 
 ```bash
 npm install
-npm run dev      # dev server with hot reload
-npm run build    # type-check and production build
+npm run dev          # dev server with hot reload
+npm run build        # type-check (strict) and production build
+npm run format       # format with Prettier
+npm run lint         # lint with ESLint
 ```
+
+### Code quality (pre-commit)
+
+Lint, format, and type checks run automatically on commit via [pre-commit](https://pre-commit.com/). Enable the git hook once per clone:
+
+```bash
+uv tool install pre-commit   # if not already installed
+pre-commit install
+```
+
+Run all checks manually with `pre-commit run --all-files`.
 
 ## Documentation
 

@@ -1,0 +1,46 @@
+# Commit-time lint/format/type checks for the hybrid monorepo.
+# Enable once per clone:  uv tool install pre-commit && pre-commit install
+#
+# Hooks are check-only — they fail the commit but do not rewrite files. Fix with:
+#   backend:   cd backend && uv run ruff format && uv run ruff check --fix
+#   frontend:  cd frontend && npm run format
+#
+# Local hooks deliberately use the project's own pinned tools (uv / npm) so the
+# hook versions can never drift from the versions in pyproject.toml / package.json.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (backend)
+        entry: uv run --project backend ruff check
+        language: system
+        types_or: [python, pyi]
+        files: ^backend/
+
+      - id: ruff-format
+        name: ruff format (backend)
+        entry: uv run --project backend ruff format --check
+        language: system
+        types_or: [python, pyi]
+        files: ^backend/
+
+      - id: mypy
+        name: mypy (backend)
+        entry: bash -c 'cd backend && uv run mypy'
+        language: system
+        pass_filenames: false
+        files: ^backend/.*\.py$
+
+      - id: prettier
+        name: prettier (frontend)
+        entry: bash -c 'cd frontend && npx prettier --check .'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npm run lint'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
