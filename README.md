@@ -6,14 +6,47 @@ Named for Edgar Markov, patriarch of the Innistrad vampires — a fitting patron
 
 ## Status
 
-Pre-development. Design phase.
+In early development — Milestone 1 (project scaffolding).
+
+## Structure
+
+A hybrid Python + TypeScript monorepo (see [ADR 0001](docs/decisions/0001-foundational-architecture.md) and [ADR 0003](docs/decisions/0003-framework-and-tooling.md)):
+
+| Path | What lives here |
+|------|-----------------|
+| `backend/` | Python API (FastAPI), the scanner pipeline, and Scryfall sync |
+| `frontend/` | TypeScript web app (React + Vite) |
+| `data/` | Local SQLite database and Scryfall bulk data (git-ignored) |
+| `docs/` | Design doc (`PROJECT.md`) and architecture decision records |
+
+## Development
+
+### Backend (Python + uv)
+
+Requires [uv](https://docs.astral.sh/uv/). From `backend/`:
+
+```bash
+uv sync                                        # create the venv and install deps
+uv run uvicorn scriptorium.main:app --reload   # dev server on http://127.0.0.1:8000
+uv run pytest                                  # run the tests
+```
+
+### Frontend (React + Vite)
+
+From `frontend/`:
+
+```bash
+npm install
+npm run dev      # dev server with hot reload
+npm run build    # type-check and production build
+```
 
 ## Documentation
 
 - [`docs/PROJECT.md`](docs/PROJECT.md) — design doc, data model, feature scope, naming history
-- [`docs/decisions/`](docs/decisions/) — architecture decision records, recorded as choices are made
+- [`docs/decisions/`](docs/decisions/) — architecture decision records
 - [`CLAUDE.md`](CLAUDE.md) — instructions for Claude Code contributors
 
 ## License
 
-TBD
+See [`LICENSE`](LICENSE).
