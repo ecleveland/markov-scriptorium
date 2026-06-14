@@ -45,6 +45,20 @@ npm run format       # format with Prettier
 npm run lint         # lint with ESLint
 ```
 
+### Database migrations
+
+The catalog schema is managed with plain versioned SQL files in `backend/migrations/`
+(`NNNN_description.sql`). On app startup, every migration newer than the database's recorded
+version is applied automatically (see [ADR 0004](docs/decisions/0004-schema-migrations.md)).
+
+To make a schema change, add the next-numbered file — plain DDL, no `BEGIN`/`COMMIT`:
+
+```
+backend/migrations/0002_add_card_table.sql
+```
+
+It applies on the next startup. Migrations are forward-only — never edit a shipped migration; add a new one.
+
 ### Code quality (pre-commit)
 
 Lint, format, and type checks run automatically on commit via [pre-commit](https://pre-commit.com/). Enable the git hook once per clone:
