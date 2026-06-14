@@ -59,7 +59,8 @@ FK schemas land"; `card_faces → cards` is the first such schema, so it lands h
   fixed count, and forces `//`-parsing of the combined name. A child table is
   cleaner and open-ended.
 - **Normalizing colors into a `card_colors` join table** — rejected as overkill
-  for one local user; color filters run fine as JSON/`LIKE` over ~100k rows.
+  for one local user; color filters run fine as JSON/`LIKE` over a
+  few hundred thousand rows.
 - **Single JSON `prices` blob** — rejected in favor of discrete columns for
   easier aggregation; the key set is small and stable.
 - **FTS5 full-text search over oracle text** — deferred. The NOCASE name index

@@ -23,7 +23,7 @@ CREATE TABLE cards (
     released_at      TEXT,                      -- ISO date string
     layout           TEXT NOT NULL,             -- normal, transform, split, ...
     mana_cost        TEXT,
-    cmc              REAL,                      -- mana value; fractional on un-cards
+    cmc              REAL,                      -- mana value; REAL for ½ values (some un-cards)
     type_line        TEXT,
     oracle_text      TEXT,
     colors           TEXT,                      -- JSON array, e.g. ["B","R","W"]
