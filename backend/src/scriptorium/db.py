@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 # backend/src/scriptorium/db.py -> repository root is four parents up.
@@ -27,7 +28,12 @@ def db_path() -> Path:
 
 
 def connect() -> sqlite3.Connection:
-    """Open a connection to the catalog, creating the data directory if needed."""
+    """Open a connection to the catalog, creating the data directory if needed.
+
+    The caller owns the connection and must close it (e.g. wrap it in
+    ``contextlib.closing``) — a bare ``with`` block only manages the
+    transaction, not the connection's lifetime.
+    """
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -38,7 +44,7 @@ def connect() -> sqlite3.Connection:
 def healthcheck() -> bool:
     """Return ``True`` if the catalog database is reachable."""
     try:
-        with connect() as conn:
+        with closing(connect()) as conn:
             conn.execute("SELECT 1")
         return True
     except sqlite3.Error:
