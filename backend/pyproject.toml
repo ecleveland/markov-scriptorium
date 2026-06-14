@@ -12,6 +12,8 @@ dependencies = [
 dev = [
     "pytest>=8",
     "httpx>=0.27",
+    "ruff>=0.15.17",
+    "mypy>=2.1.0",
 ]
 
 [build-system]
@@ -23,3 +25,16 @@ packages = ["src/scriptorium"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pyupgrade, flake8-bugbear, comprehensions, simplify.
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
