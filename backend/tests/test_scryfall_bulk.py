@@ -267,6 +267,41 @@ def test_download_cleans_up_when_rename_fails(
     assert list(tmp_path.glob("*.partial")) == []
 
 
+def test_download_unknown_size_stores_file_and_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """When Scryfall reports no size, store the file but warn that we can't verify it."""
+    payload = _bulk_list()
+    payload["data"][0]["size"] = 0  # type: ignore[index]
+    with (
+        _client(_make_handler(list_payload=payload)) as client,
+        caplog.at_level("WARNING", logger="scriptorium"),
+    ):
+        path = download_bulk("default_cards", dest_dir=tmp_path, client=client)
+    assert path.read_bytes() == _GZ_BYTES
+    assert "cannot verify download completeness" in caplog.text
+
+
+def test_cleanup_failure_does_not_mask_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If removing the partial fails, the original download error still propagates."""
+
+    def bad_replace(self: Path, target: Path) -> None:
+        raise OSError("rename failed")
+
+    def bad_unlink(self: Path, *, missing_ok: bool = False) -> None:
+        raise OSError("unlink failed")
+
+    monkeypatch.setattr(Path, "replace", bad_replace)
+    monkeypatch.setattr(Path, "unlink", bad_unlink)
+    with (
+        _client(_make_handler()) as client,
+        pytest.raises(ScryfallBulkError, match="failed to download"),
+    ):
+        download_bulk("default_cards", dest_dir=tmp_path, client=client)
+
+
 def test_download_non_gzip_entry_uses_json_suffix(tmp_path: Path) -> None:
     """When the export isn't gzip-encoded, the stored file is plain .json."""
     payload = _bulk_list(content_encoding=None)

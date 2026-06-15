@@ -19,6 +19,7 @@ refresh is VEG-214).
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,6 +28,8 @@ from pathlib import Path
 import httpx
 
 from scriptorium import db
+
+logger = logging.getLogger("scriptorium")
 
 # Scryfall requires a descriptive User-Agent and an Accept header on API
 # requests, and asks for ~50–100 ms between requests. See
@@ -75,6 +78,19 @@ def _new_client() -> httpx.Client:
 def _throttle() -> None:
     """Pause between requests to respect Scryfall's rate-limit guidance."""
     time.sleep(_REQUEST_DELAY_SECONDS)
+
+
+def _safe_unlink(path: Path) -> None:
+    """Remove ``path`` best-effort, never masking an in-flight exception.
+
+    Used in cleanup handlers: if the unlink itself fails (e.g. a permission
+    error on the partial file), log it rather than let that error replace the
+    original download failure being reported.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("could not remove partial download %s", path)
 
 
 def _default_data_dir() -> Path:
@@ -189,7 +205,12 @@ def download_bulk(
                         written += fh.write(chunk)
             # Guard against a clean-but-truncated transfer (connection dropped
             # without an HTTP error) being promoted to the canonical file.
-            if entry.size and written != entry.size:
+            if not entry.size:
+                logger.warning(
+                    "Scryfall reported no size for %s; cannot verify download completeness",
+                    bulk_type,
+                )
+            elif written != entry.size:
                 raise ScryfallBulkError(
                     f"truncated download for {bulk_type}: "
                     f"expected {entry.size} bytes, got {written}"
@@ -198,12 +219,12 @@ def download_bulk(
         except (httpx.HTTPError, OSError) as exc:
             # Transport error, disk-full during write, or a failed rename — none
             # should leave a stray partial behind.
-            partial.unlink(missing_ok=True)
+            _safe_unlink(partial)
             raise ScryfallBulkError(
                 f"failed to download {bulk_type} from {entry.download_uri}: {exc}"
             ) from exc
         except ScryfallBulkError:
-            partial.unlink(missing_ok=True)
+            _safe_unlink(partial)
             raise
         return target
     finally:
