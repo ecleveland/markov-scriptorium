@@ -266,6 +266,19 @@ def test_import_corrupt_gzip_raises_bulk_import_error(
     assert ids == {"edgar-1"}
 
 
+def test_import_corrupt_deflate_body_raises_bulk_import_error(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A valid gzip header with a corrupt body (zlib.error) is wrapped, not raw."""
+    gz = bytearray(gzip.compress(json.dumps([_NORMAL_CARD]).encode()))
+    for i in range(10, 20):  # mangle the deflate stream, leaving the 10-byte header intact
+        gz[i] ^= 0xFF
+    path = tmp_path / "deflate-corrupt.json.gz"
+    path.write_bytes(bytes(gz))
+    with pytest.raises(BulkImportError):
+        import_bulk_file(catalog, path)
+
+
 def test_import_truncated_json_raises_bulk_import_error(
     catalog: sqlite3.Connection, tmp_path: Path
 ) -> None:

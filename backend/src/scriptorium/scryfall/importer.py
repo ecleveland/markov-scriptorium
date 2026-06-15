@@ -14,6 +14,7 @@ import gzip
 import json
 import logging
 import sqlite3
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -213,19 +214,24 @@ def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:
                 if cards % _PROGRESS_EVERY == 0:
                     logger.info("importing Scryfall bulk data: %d cards…", cards)
             _flush(conn, card_batch, face_batch)
+            # COMMIT inside the inner try so a constraint that only surfaces at
+            # commit time is still wrapped as BulkImportError.
+            conn.execute("COMMIT")
         except BulkImportError:
             raise
         except sqlite3.IntegrityError as exc:
             raise BulkImportError(f"constraint violation while loading bulk data: {exc}") from exc
-        except (ijson.JSONError, OSError, EOFError) as exc:
+        except (ijson.JSONError, OSError, EOFError, zlib.error) as exc:
+            # zlib.error (corrupt deflate body) does not subclass OSError, so it
+            # is listed explicitly alongside the gzip/parse failures.
             raise BulkImportError(
                 f"could not parse bulk file {path}: {exc} — "
                 "the download may be corrupt; re-fetch it"
             ) from exc
-        conn.execute("COMMIT")
     except BaseException:
         # BaseException (not just Exception) so a KeyboardInterrupt mid-import
         # still rolls back this destructive operation before propagating.
+        logger.error("Scryfall bulk import failed; rolling back", exc_info=True)
         conn.execute("ROLLBACK")
         raise
 
