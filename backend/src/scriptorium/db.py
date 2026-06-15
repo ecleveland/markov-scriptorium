@@ -4,9 +4,9 @@ The catalog lives in a single local SQLite file (see ADR 0001). Its location
 can be overridden with the ``SCRIPTORIUM_DB_PATH`` environment variable;
 otherwise it defaults to ``data/scriptorium.db`` at the repository root.
 
-No schema is defined yet — that arrives with the Scryfall and inventory
-milestones (M2/M3), alongside a migration strategy (VEG-278). For now this
-module only establishes how the backend reaches the catalog file.
+The schema is built by the migration runner (see ``migrations.py`` and ADR
+0004); this module only establishes how the backend reaches the catalog file
+and enforces foreign keys per connection.
 """
 
 from __future__ import annotations

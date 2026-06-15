@@ -236,3 +236,115 @@ def test_import_reads_plain_json(catalog: sqlite3.Connection, tmp_path: Path) ->
 def test_import_missing_file_raises(catalog: sqlite3.Connection, tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         import_bulk_file(catalog, tmp_path / "nope.json.gz")
+
+
+# --- malformed / corrupt input ---------------------------------------------
+
+
+def test_import_non_dict_element_raises_clean_error(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A non-object array element raises BulkImportError, not a raw TypeError."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+    bad = _write_bulk(tmp_path / "bad.json.gz", [_MINIMAL_CARD, "not-a-card"])  # type: ignore[list-item]
+    with pytest.raises(BulkImportError):
+        import_bulk_file(catalog, bad)
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1"}  # rolled back to the prior catalog
+
+
+def test_import_corrupt_gzip_raises_bulk_import_error(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A corrupt .gz surfaces as BulkImportError (the documented contract), not a raw OSError."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+    corrupt = tmp_path / "corrupt.json.gz"
+    corrupt.write_bytes(b"this is not gzip data")
+    with pytest.raises(BulkImportError):
+        import_bulk_file(catalog, corrupt)
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1"}
+
+
+def test_import_truncated_json_raises_bulk_import_error(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A valid gzip wrapping truncated JSON surfaces as BulkImportError."""
+    path = tmp_path / "truncated.json.gz"
+    path.write_bytes(gzip.compress(b'[{"id":"x","name":"X"'))  # cut off mid-object
+    with pytest.raises(BulkImportError):
+        import_bulk_file(catalog, path)
+
+
+def test_import_duplicate_id_raises_bulk_import_error(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A PRIMARY KEY collision from executemany is wrapped as BulkImportError."""
+    path = _write_bulk(tmp_path / "dupe.json.gz", [_NORMAL_CARD, dict(_NORMAL_CARD)])
+    with pytest.raises(BulkImportError):
+        import_bulk_file(catalog, path)
+    assert _count(catalog, "cards") == 0  # rolled back; nothing committed
+
+
+def test_import_atomic_under_autocommit_connection(tmp_path: Path) -> None:
+    """The full-replace stays atomic even on an autocommit=True connection.
+
+    Guards the importer's own-the-transaction design: if it relied on the
+    connection's isolation mode instead, a mid-import failure here would leave
+    the catalog permanently emptied.
+    """
+    db_file = tmp_path / "catalog.db"
+    # Build the schema with a normal connection first.
+    with closing(sqlite3.connect(db_file)) as setup:
+        apply_migrations(setup)
+
+    conn = sqlite3.connect(db_file, autocommit=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    with closing(conn):
+        import_bulk_file(conn, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+        malformed = dict(_DFC_CARD)
+        del malformed["name"]
+        bad = _write_bulk(tmp_path / "bad.json.gz", [_MINIMAL_CARD, malformed])
+        with pytest.raises(BulkImportError):
+            import_bulk_file(conn, bad)
+        ids = {r["scryfall_id"] for r in conn.execute("SELECT scryfall_id FROM cards")}
+        assert ids == {"edgar-1"}  # survived despite autocommit mode
+
+
+# --- batching --------------------------------------------------------------
+
+
+def test_import_spans_multiple_batches_keeping_faces_with_parent(
+    catalog: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With a tiny batch size, cards/faces still load correctly across flushes.
+
+    Guards the FK invariant that a card and its faces flush together — a DFC
+    straddling a batch boundary must not insert faces before their parent.
+    """
+    monkeypatch.setattr("scriptorium.scryfall.importer._BATCH_SIZE", 2)
+
+    def _plain(card_id: str) -> dict[str, Any]:
+        return {**_MINIMAL_CARD, "id": card_id}
+
+    # 5 cards across 3 flushes (2, 2, 1); the DFC is the 3rd, straddling a boundary.
+    cards = [_plain("c1"), _plain("c2"), _DFC_CARD, _plain("c4"), _plain("c5")]
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "many.json.gz", cards))
+    assert result == ImportResult(cards=5, faces=2)
+    assert _count(catalog, "cards") == 5
+    faces = catalog.execute(
+        "SELECT face_index, name FROM card_faces WHERE scryfall_id = 'dfc-1' ORDER BY face_index"
+    ).fetchall()
+    assert [f["name"] for f in faces] == ["Delver of Secrets", "Insectile Aberration"]
+
+
+def test_import_stores_fractional_cmc_as_real(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """cmc round-trips as a float, not decimal.Decimal — pins the use_float=True choice."""
+    card = {**_MINIMAL_CARD, "id": "half", "cmc": 0.5}
+    import_bulk_file(catalog, _write_bulk(tmp_path / "half.json.gz", [card]))
+    row = catalog.execute(
+        "SELECT typeof(cmc) AS t, cmc FROM cards WHERE scryfall_id = 'half'"
+    ).fetchone()
+    assert row["t"] == "real"
+    assert row["cmc"] == 0.5

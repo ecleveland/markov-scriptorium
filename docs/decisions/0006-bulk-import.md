@@ -33,8 +33,12 @@ card tables in one transaction:
   per ADR 0005); `prices.*` spread into the discrete price columns;
   `card_faces[]` become `card_faces` rows indexed by position. Absent optional
   fields become SQL `NULL`.
-- **Errors** — a card object missing a required (NOT NULL) field raises
-  `BulkImportError` with the offending card id; the transaction rolls back.
+- **Errors** — the importer owns its transaction with explicit
+  `BEGIN`/`COMMIT`/`ROLLBACK` (so atomicity holds regardless of the
+  connection's isolation/autocommit mode), and converts the realistic failure
+  modes into `BulkImportError`: a malformed/non-dict card object, a corrupt or
+  truncated file (ijson/gzip errors), and a constraint violation at insert
+  (e.g. a duplicate `scryfall_id`). Every path rolls back to the prior catalog.
 
 ---
 

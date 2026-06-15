@@ -180,31 +180,53 @@ def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:
     cards = faces = 0
     card_batch: list[tuple[Any, ...]] = []
     face_batch: list[tuple[Any, ...]] = []
+    # Own the transaction with explicit SQL (BEGIN/COMMIT/ROLLBACK) rather than
+    # relying on db.connect()'s isolation mode, so this destructive full-replace
+    # is atomic regardless of how the connection is configured: a failure rolls
+    # back to the prior catalog instead of leaving it half-emptied.
+    conn.execute("BEGIN")
     try:
         # Child table first to satisfy the foreign key, then the parent.
         conn.execute("DELETE FROM card_faces")
         conn.execute("DELETE FROM cards")
-        for card in _iter_cards(path):
-            try:
-                card_batch.append(_card_row(card))
-                new_faces = _face_rows(card)
-            except KeyError as exc:
-                raise BulkImportError(
-                    f"malformed card object {card.get('id', '<unknown>')!r}: missing {exc}"
-                ) from exc
-            face_batch.extend(new_faces)
-            cards += 1
-            faces += len(new_faces)
-            if len(card_batch) >= _BATCH_SIZE:
-                _flush(conn, card_batch, face_batch)
-                card_batch.clear()
-                face_batch.clear()
-            if cards % _PROGRESS_EVERY == 0:
-                logger.info("importing Scryfall bulk data: %d cards…", cards)
-        _flush(conn, card_batch, face_batch)
-        conn.commit()
+        try:
+            for card in _iter_cards(path):
+                if not isinstance(card, dict):
+                    raise BulkImportError(
+                        f"malformed bulk file: expected card objects, got {type(card).__name__}"
+                    )
+                try:
+                    card_batch.append(_card_row(card))
+                    new_faces = _face_rows(card)
+                except (KeyError, TypeError) as exc:
+                    raise BulkImportError(
+                        f"malformed card object {card.get('id', '<unknown>')!r}: "
+                        f"missing/invalid {exc}"
+                    ) from exc
+                face_batch.extend(new_faces)
+                cards += 1
+                faces += len(new_faces)
+                if len(card_batch) >= _BATCH_SIZE:
+                    _flush(conn, card_batch, face_batch)
+                    card_batch.clear()
+                    face_batch.clear()
+                if cards % _PROGRESS_EVERY == 0:
+                    logger.info("importing Scryfall bulk data: %d cards…", cards)
+            _flush(conn, card_batch, face_batch)
+        except BulkImportError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise BulkImportError(f"constraint violation while loading bulk data: {exc}") from exc
+        except (ijson.JSONError, OSError, EOFError) as exc:
+            raise BulkImportError(
+                f"could not parse bulk file {path}: {exc} — "
+                "the download may be corrupt; re-fetch it"
+            ) from exc
+        conn.execute("COMMIT")
     except BaseException:
-        conn.rollback()
+        # BaseException (not just Exception) so a KeyboardInterrupt mid-import
+        # still rolls back this destructive operation before propagating.
+        conn.execute("ROLLBACK")
         raise
 
     logger.info("Scryfall bulk import complete: %d cards, %d faces", cards, faces)
