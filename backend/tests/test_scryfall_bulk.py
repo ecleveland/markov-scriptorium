@@ -80,10 +80,15 @@ def _make_handler(
 
 
 def _client(handler: Handler) -> httpx.Client:
-    """A client wired to the mock transport but carrying the production headers."""
+    """A client wired to the mock transport, mirroring the production client.
+
+    Like ``_new_client``, it sets only User-Agent as a default; ``Accept`` is
+    added per-request by ``fetch_bulk_entry`` so we can assert it never reaches
+    the download host.
+    """
     return httpx.Client(
         transport=httpx.MockTransport(handler),
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        headers={"User-Agent": USER_AGENT},
         follow_redirects=True,
     )
 
@@ -121,6 +126,43 @@ def test_fetch_bulk_entry_unknown_type_raises() -> None:
 def test_fetch_bulk_entry_http_error_raises() -> None:
     with (
         _client(_make_handler(list_status=500)) as client,
+        pytest.raises(ScryfallBulkError),
+    ):
+        fetch_bulk_entry("default_cards", client=client)
+
+
+def test_fetch_bulk_entry_malformed_entry_raises_scryfall_error() -> None:
+    """A matched entry missing a required key surfaces as ScryfallBulkError, not KeyError."""
+    payload = _bulk_list()
+    del payload["data"][0]["download_uri"]  # type: ignore[index]
+    with (
+        _client(_make_handler(list_payload=payload)) as client,
+        pytest.raises(ScryfallBulkError, match="malformed"),
+    ):
+        fetch_bulk_entry("default_cards", client=client)
+
+
+def test_fetch_bulk_entry_non_dict_payload_raises() -> None:
+    """A JSON array (not the expected object) surfaces as ScryfallBulkError."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2, 3])
+
+    with (
+        _client(handler) as client,
+        pytest.raises(ScryfallBulkError),
+    ):
+        fetch_bulk_entry("default_cards", client=client)
+
+
+def test_fetch_bulk_entry_non_json_body_raises() -> None:
+    """A 200 with a non-JSON body (e.g. an HTML error page) surfaces as ScryfallBulkError."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>nope</html>")
+
+    with (
+        _client(handler) as client,
         pytest.raises(ScryfallBulkError),
     ):
         fetch_bulk_entry("default_cards", client=client)
@@ -183,10 +225,94 @@ def test_download_throttles_before_requests(tmp_path: Path, _no_throttle: list[N
     assert len(_no_throttle) >= 2
 
 
-# --- client configuration --------------------------------------------------
+def test_download_rejects_truncated_transfer(tmp_path: Path) -> None:
+    """A clean stream shorter than the reported size is rejected, not promoted."""
+    # Report a larger size than the bytes the data host actually serves.
+    payload = _bulk_list()
+    payload["data"][0]["size"] = len(_GZ_BYTES) + 999  # type: ignore[index]
+    with (
+        _client(_make_handler(list_payload=payload)) as client,
+        pytest.raises(ScryfallBulkError, match="truncated"),
+    ):
+        download_bulk("default_cards", dest_dir=tmp_path, client=client)
+    assert list(tmp_path.iterdir()) == []  # no final file, no partial
 
 
-def test_new_client_sets_required_scryfall_headers() -> None:
+def test_download_replaces_corrupt_cached_file(tmp_path: Path) -> None:
+    """An existing file whose size doesn't match is re-downloaded, not trusted."""
+    target = tmp_path / "default_cards-20260614T210938Z.json.gz"
+    target.write_bytes(b"corrupt-partial")  # wrong size
+    seen: list[httpx.Request] = []
+    with _client(_make_handler(seen=seen)) as client:
+        path = download_bulk("default_cards", dest_dir=tmp_path, client=client)
+    assert path.read_bytes() == _GZ_BYTES
+    # The data host WAS hit because the cached file was incomplete.
+    assert any(r.url.host == "data.scryfall.io" for r in seen)
+
+
+def test_download_cleans_up_when_rename_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An OSError during the final rename surfaces as ScryfallBulkError, partial removed."""
+
+    def boom(self: Path, target: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", boom)
+    with (
+        _client(_make_handler()) as client,
+        pytest.raises(ScryfallBulkError),
+    ):
+        download_bulk("default_cards", dest_dir=tmp_path, client=client)
+    assert list(tmp_path.glob("*.partial")) == []
+
+
+def test_download_non_gzip_entry_uses_json_suffix(tmp_path: Path) -> None:
+    """When the export isn't gzip-encoded, the stored file is plain .json."""
+    payload = _bulk_list(content_encoding=None)
+    with _client(_make_handler(list_payload=payload)) as client:
+        path = download_bulk("default_cards", dest_dir=tmp_path, client=client)
+    assert path.name == "default_cards-20260614T210938Z.json"
+
+
+def test_download_uses_default_dir_beside_catalog_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no dest_dir, files land in a scryfall/ dir beside the catalog DB."""
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
+    with _client(_make_handler()) as client:
+        path = download_bulk("default_cards", client=client)
+    assert path.parent == tmp_path / "scryfall"
+    assert path.read_bytes() == _GZ_BYTES
+
+
+# --- header scoping & client configuration ---------------------------------
+
+
+def test_accept_header_only_sent_to_api_host(tmp_path: Path) -> None:
+    """Accept: application/json goes to the API host but not the download host."""
+    seen: list[httpx.Request] = []
+    with _client(_make_handler(seen=seen)) as client:
+        download_bulk("default_cards", dest_dir=tmp_path, client=client)
+    by_host = {r.url.host: r for r in seen}
+    assert by_host["api.scryfall.com"].headers["accept"] == "application/json"
+    assert by_host["data.scryfall.io"].headers.get("accept") != "application/json"
+
+
+def test_new_client_sets_user_agent_and_no_default_accept() -> None:
     with bulk._new_client() as client:
         assert client.headers["User-Agent"] == USER_AGENT
-        assert "Accept" in client.headers
+        # Accept is scoped to the API request, not a client-wide default.
+        assert client.headers.get("Accept") != "application/json"
+
+
+# --- timestamp normalization -----------------------------------------------
+
+
+def test_compact_timestamp_normalizes_offsets_and_formats() -> None:
+    # +00:00 offset (Scryfall's current format).
+    assert bulk._compact_timestamp("2026-06-14T21:09:38.189+00:00") == "20260614T210938Z"
+    # Non-UTC offset must shift to UTC.
+    assert bulk._compact_timestamp("2026-06-14T17:09:38-04:00") == "20260614T210938Z"
+    # A trailing 'Z' must parse (stdlib handles it on 3.12).
+    assert bulk._compact_timestamp("2026-06-14T21:09:38Z") == "20260614T210938Z"
