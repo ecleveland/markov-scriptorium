@@ -14,10 +14,18 @@ from scriptorium.scryfall.bulk import (
     download_bulk,
     fetch_bulk_entry,
 )
+from scriptorium.scryfall.importer import (
+    BulkImportError,
+    ImportResult,
+    import_bulk_file,
+)
 
 __all__ = [
     "BulkDataEntry",
+    "BulkImportError",
+    "ImportResult",
     "ScryfallBulkError",
     "download_bulk",
     "fetch_bulk_entry",
+    "import_bulk_file",
 ]
