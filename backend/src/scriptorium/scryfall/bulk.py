@@ -177,17 +177,23 @@ def download_bulk(
     *,
     dest_dir: Path | None = None,
     client: httpx.Client | None = None,
+    entry: BulkDataEntry | None = None,
 ) -> Path:
     """Download ``bulk_type`` to ``dest_dir`` and return the stored file path.
 
     Streams the raw (gzip) bytes to a temporary ``.partial`` file, then renames
     it into place so an interrupted download never looks complete. If the file
     for this exact version already exists, returns it without re-downloading.
+
+    Pass ``entry`` to reuse a listing already fetched by the caller (the refresh
+    orchestrator does this after its staleness check) and skip a redundant
+    ``/bulk-data`` request; when omitted the listing is fetched here.
     """
     owns_client = client is None
     http = client or _new_client()
     try:
-        entry = fetch_bulk_entry(bulk_type, client=http)
+        if entry is None:
+            entry = fetch_bulk_entry(bulk_type, client=http)
         directory = dest_dir or _default_data_dir()
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / _filename(entry)

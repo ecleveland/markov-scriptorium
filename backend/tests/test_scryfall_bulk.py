@@ -310,6 +310,25 @@ def test_download_non_gzip_entry_uses_json_suffix(tmp_path: Path) -> None:
     assert path.name == "default_cards-20260614T210938Z.json"
 
 
+def test_download_with_supplied_entry_skips_list_fetch(tmp_path: Path) -> None:
+    """Passing a pre-fetched entry avoids a redundant /bulk-data request."""
+    entry = BulkDataEntry(
+        bulk_type="default_cards",
+        name="Default Cards",
+        download_uri=_DOWNLOAD_URI,
+        updated_at=_UPDATED_AT,
+        size=len(_GZ_BYTES),
+        content_encoding="gzip",
+    )
+    seen: list[httpx.Request] = []
+    with _client(_make_handler(seen=seen)) as client:
+        path = download_bulk("default_cards", dest_dir=tmp_path, client=client, entry=entry)
+    assert path.read_bytes() == _GZ_BYTES
+    # The API (list) host is never contacted; only the download host is.
+    hosts = {r.url.host for r in seen}
+    assert hosts == {"data.scryfall.io"}
+
+
 def test_download_uses_default_dir_beside_catalog_db(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
