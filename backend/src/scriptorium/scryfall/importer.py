@@ -23,6 +23,8 @@ from typing import IO, Any, cast
 
 import ijson
 
+from scriptorium.catalog import rebuild_name_index
+
 logger = logging.getLogger("scriptorium")
 
 # Rows per executemany. Big enough to amortize call overhead, small enough to
@@ -214,6 +216,10 @@ def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:
                 if cards % _PROGRESS_EVERY == 0:
                     logger.info("importing Scryfall bulk data: %d cards…", cards)
             _flush(conn, card_batch, face_batch)
+            # Repopulate the name search index from the freshly loaded catalog;
+            # the external-content FTS table (migration 0004) holds no copy of
+            # its own, so a full-replace must rebuild it (VEG-215, ADR 0008).
+            rebuild_name_index(conn)
             # COMMIT inside the inner try so a constraint that only surfaces at
             # commit time is still wrapped as BulkImportError.
             conn.execute("COMMIT")

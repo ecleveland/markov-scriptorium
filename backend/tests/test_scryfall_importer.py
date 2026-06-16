@@ -132,6 +132,36 @@ def test_import_loads_all_cards_and_faces(catalog: sqlite3.Connection, tmp_path:
     assert _count(catalog, "card_faces") == 2
 
 
+def test_import_rebuilds_name_search_index(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """After import, the FTS index is populated so card-name search works (VEG-215)."""
+    from scriptorium import catalog as catalog_reads
+
+    path = _write_bulk(tmp_path / "bulk.json.gz", [_NORMAL_CARD, _DFC_CARD, _MINIMAL_CARD])
+    import_bulk_file(catalog, path)
+    results, total = catalog_reads.search_cards(catalog, "edgar")
+    assert total == 1
+    assert results[0]["scryfall_id"] == "edgar-1"
+
+
+def test_reimport_refreshes_search_index(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """A second full-replace import leaves no stale entries in the FTS index.
+
+    First import puts Edgar at rowid 1; the replace drops both and re-inserts only
+    Plains, which reuses rowid 1. Without a rebuild the FTS index would still hold
+    Edgar's trigrams at rowid 1, so an 'edgar' query would FTS-match rowid 1 and
+    join to the *Plains* row — a stale hit. The rebuild must prevent that.
+    """
+    from scriptorium import catalog as catalog_reads
+
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    # Edgar is fully gone (no stale-rowid hit); Plains remains the sole card.
+    assert catalog_reads.search_cards(catalog, "edgar") == ([], 0)
+    results, total = catalog_reads.search_cards(catalog, "plains")
+    assert total == 1
+    assert results[0]["scryfall_id"] == "minimal-1"
+
+
 def test_import_maps_scalar_and_json_columns(catalog: sqlite3.Connection, tmp_path: Path) -> None:
     path = _write_bulk(tmp_path / "bulk.json.gz", [_NORMAL_CARD])
     import_bulk_file(catalog, path)

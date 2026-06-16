@@ -152,6 +152,16 @@ def test_expected_indexes_exist(catalog: sqlite3.Connection) -> None:
             assert expected in names
 
 
+def test_cards_fts_table_exists(catalog: sqlite3.Connection) -> None:
+    """Migration 0004 creates the trigram FTS index over card names (VEG-215)."""
+    with closing(catalog) as conn:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cards_fts'"
+        ).fetchone()
+        assert row is not None
+        assert "fts5" in row[0].lower()
+
+
 def test_name_search_is_case_insensitive(catalog: sqlite3.Connection) -> None:
     """The NOCASE index on name backs case-insensitive local autocomplete."""
     with closing(catalog) as conn:
