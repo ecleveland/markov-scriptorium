@@ -200,3 +200,50 @@ def test_seed_colors_are_valid_json(catalog_conn: sqlite3.Connection) -> None:
     """Guard the fixture itself: stored color blobs are JSON the layer can parse."""
     raw = catalog_conn.execute("SELECT colors FROM cards WHERE scryfall_id='bolt-1'").fetchone()[0]
     assert json.loads(raw) == ["R"]
+
+
+# --- trigram boundary, fallback escaping, pagination edges -----------------
+
+
+def test_search_three_char_query_uses_fts_substring(catalog_conn: sqlite3.Connection) -> None:
+    """Exactly 3 chars takes the FTS path and still matches mid-name (not prefix)."""
+    results, total = catalog.search_cards(catalog_conn, "olt")  # inside "Bolt"
+    assert {r["name"] for r in results} == {"Boltwave", "Lightning Bolt"}
+    assert total == 3
+
+
+def test_autocomplete_three_char_matches_midword(catalog_conn: sqlite3.Connection) -> None:
+    """FTS autocomplete (>=3 chars) matches a substring a prefix LIKE would miss."""
+    names = catalog.autocomplete_names(catalog_conn, "eli")  # inside "Helix"
+    assert "Lightning Helix" in names
+
+
+def test_search_offset_past_end_returns_empty_with_total(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    results, total = catalog.search_cards(catalog_conn, "bolt", limit=10, offset=99)
+    assert results == []
+    assert total == 3  # total is independent of the paginated slice
+
+
+def test_short_query_like_escapes_wildcards(catalog_conn: sqlite3.Connection) -> None:
+    """The <3-char LIKE fallback treats % and _ literally, not as wildcards."""
+    _insert_card(catalog_conn, "u-1", "a_b")
+    _insert_card(catalog_conn, "p-1", "a%b")
+    _insert_card(catalog_conn, "ctrl-1", "axbyb")
+    catalog_conn.commit()  # LIKE path reads `cards` directly; no rebuild needed
+    underscore, _ = catalog.search_cards(catalog_conn, "_b")
+    assert {r["name"] for r in underscore} == {"a_b"}
+    percent, _ = catalog.search_cards(catalog_conn, "%b")
+    assert {r["name"] for r in percent} == {"a%b"}
+
+
+def test_autocomplete_caps_at_limit_with_many_matches(catalog_conn: sqlite3.Connection) -> None:
+    """With more distinct matches than the limit, return exactly `limit` distinct names."""
+    for i in range(12):
+        _insert_card(catalog_conn, f"goblin-{i}", f"Goblin Number {i:02d}")  # all contain "obl"
+    catalog.rebuild_name_index(catalog_conn)
+    catalog_conn.commit()
+    names = catalog.autocomplete_names(catalog_conn, "obl", limit=10)
+    assert len(names) == 10
+    assert len(set(names)) == 10

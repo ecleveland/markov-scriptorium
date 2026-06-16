@@ -9,6 +9,9 @@ Name search and autocomplete use the ``cards_fts`` trigram index (migration
 0004) for substring/fuzzy matching. Trigram tokens need >=3 characters, so
 shorter queries fall back to a LIKE prefix/substring that rides the NOCASE name
 index.
+
+All functions here expect a connection opened via :func:`scriptorium.db.connect`
+(i.e. ``row_factory = sqlite3.Row``); rows are converted with ``dict(row)``.
 """
 
 from __future__ import annotations
@@ -19,6 +22,13 @@ from typing import Any
 
 # Minimum query length the trigram index can tokenize; below this we LIKE-match.
 _MIN_TRIGRAM = 3
+
+# Cap on trigram matches scanned for autocomplete before de-duping to distinct
+# names. Bounds the per-keystroke join+sort on a large catalog (a common 3-char
+# substring can match tens of thousands of printings). Kept well above the max
+# requested ``limit`` so the best-ranked matches still yield enough distinct
+# names; only very-low-relevance names beyond the cap can be missed.
+_AUTOCOMPLETE_SCAN_CAP = 500
 
 # JSON-text columns to deserialize back into structured JSON on the way out.
 _JSON_CARD_COLUMNS = ("colors", "color_identity", "finishes", "legalities", "image_uris")
@@ -122,12 +132,15 @@ def autocomplete_names(conn: sqlite3.Connection, query: str, *, limit: int = 10)
         return []
 
     if len(term) >= _MIN_TRIGRAM:
+        # Bound the match set scanned (best-ranked first) before de-duping to
+        # distinct names, so a common substring doesn't sort tens of thousands
+        # of rows on every keystroke.
         rows = conn.execute(
             "SELECT c.name FROM cards c "
-            "JOIN (SELECT rowid, rank FROM cards_fts WHERE cards_fts MATCH ?) m "
-            "  ON m.rowid = c.rowid "
+            "JOIN (SELECT rowid, rank FROM cards_fts WHERE cards_fts MATCH ? "
+            "      ORDER BY rank LIMIT ?) m ON m.rowid = c.rowid "
             "GROUP BY c.name ORDER BY MIN(m.rank) LIMIT ?",
-            (_fts_match(term), limit),
+            (_fts_match(term), _AUTOCOMPLETE_SCAN_CAP, limit),
         ).fetchall()
     else:
         like = f"{_escape_like(term)}%"
