@@ -151,6 +151,14 @@ def test_stale_exactly_at_threshold() -> None:
     assert is_stale(status, now=_now()) is True
 
 
+def test_is_stale_handles_naive_timestamp() -> None:
+    """A stored timestamp without an offset is treated as UTC, not a crash."""
+    naive = datetime(2026, 6, 15, 12, 0).isoformat()  # no tzinfo
+    status = RefreshStatus(naive, _V1, naive, "f", 1, 0)
+    assert is_stale(status, now=datetime(2026, 6, 15, 13, 0, tzinfo=UTC)) is False
+    assert is_stale(status, now=datetime(2026, 6, 17, 12, 0, tzinfo=UTC)) is True
+
+
 # --- read_status -----------------------------------------------------------
 
 
@@ -222,6 +230,55 @@ def test_force_reimports_unchanged_version(catalog: sqlite3.Connection) -> None:
     # force bypasses the version skip and re-imports (the cached file is reused).
     assert result.imported is True
     assert result.status.imported_at == later.isoformat()
+
+
+def test_unchanged_version_skips_despite_timestamp_format(catalog: sqlite3.Connection) -> None:
+    """Same instant in a different textual form still counts as unchanged."""
+    with closing(catalog) as conn:
+        with _client(_make_handler(updated_at="2026-06-14T21:09:38+00:00")) as client:
+            refresh_catalog(conn, client=client, now=_now())
+
+        seen: list[httpx.Request] = []
+        with _client(_make_handler(updated_at="2026-06-14T21:09:38Z", seen=seen)) as client:
+            result = refresh_catalog(conn, client=client, now=_now() + timedelta(hours=1))
+
+        assert result.imported is False
+        assert not any(r.url.host == "data.scryfall.io" for r in seen)
+
+
+def test_import_failure_preserves_prior_metadata_and_drops_file(
+    catalog: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed re-import keeps the prior version and removes the corrupt download.
+
+    Otherwise the downloaded-but-corrupt file would be cached under its version
+    name and re-fed to the importer on every subsequent refresh.
+    """
+    import scriptorium.scryfall.refresh as refresh_mod
+    from scriptorium.scryfall.importer import BulkImportError
+
+    with closing(catalog) as conn:
+        with _client(_make_handler(updated_at=_V1)) as client:
+            refresh_catalog(conn, client=client, now=_now())
+        before = read_status(conn)
+
+        def boom(_conn: sqlite3.Connection, _path: Path) -> None:
+            raise BulkImportError("corrupt download")
+
+        monkeypatch.setattr(refresh_mod, "import_bulk_file", boom)
+        two_cards = [_CARD, {**_CARD, "id": "edgar-2", "collector_number": "129"}]
+        later = _now() + timedelta(days=2)
+        with (
+            _client(_make_handler(updated_at=_V2, cards=two_cards)) as client,
+            pytest.raises(BulkImportError),
+        ):
+            refresh_catalog(conn, client=client, now=later)
+
+        # Prior metadata is untouched — still V1, original counts and check time.
+        assert read_status(conn) == before
+        # The corrupt V2 download was removed so the next refresh re-downloads.
+        v2_file = tmp_path / "scryfall" / "default_cards-20260615T210938Z.json.gz"
+        assert not v2_file.exists()
 
 
 def test_failed_refresh_leaves_no_metadata(catalog: sqlite3.Connection) -> None:

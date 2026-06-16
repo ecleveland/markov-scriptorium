@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
 from scriptorium.scryfall.bulk import download_bulk, fetch_bulk_entry
-from scriptorium.scryfall.importer import import_bulk_file
+from scriptorium.scryfall.importer import BulkImportError, import_bulk_file
 
 logger = logging.getLogger("scriptorium")
 
@@ -87,7 +88,25 @@ def is_stale(
     if status is None or status.last_checked_at is None:
         return True
     last_checked = datetime.fromisoformat(status.last_checked_at)
+    if last_checked.tzinfo is None:
+        # All in-tree writers store an aware UTC stamp; treat a stray naive value
+        # (manual edit, external tool) as UTC rather than crashing the subtraction.
+        last_checked = last_checked.replace(tzinfo=UTC)
     return now - last_checked >= max_age
+
+
+def _same_version(stored: str | None, fetched: str) -> bool:
+    """Whether two Scryfall ``updated_at`` strings denote the same instant.
+
+    Compares parsed timestamps, not raw text, so a representation drift (``Z`` vs
+    ``+00:00``) for the identical export doesn't force a needless re-import.
+    """
+    if stored is None:
+        return False
+    try:
+        return datetime.fromisoformat(stored) == datetime.fromisoformat(fetched)
+    except ValueError:
+        return stored == fetched
 
 
 def _record_check(conn: sqlite3.Connection, *, now: datetime) -> None:
@@ -153,16 +172,26 @@ def refresh_catalog(
     """
     moment = now or _utcnow()
     entry = fetch_bulk_entry(client=client)
-    current_version = (status := read_status(conn)) and status.source_updated_at
+    status = read_status(conn)
+    current_version = status.source_updated_at if status else None
 
-    if not force and current_version is not None and current_version == entry.updated_at:
+    if not force and _same_version(current_version, entry.updated_at):
         logger.info("Scryfall catalog already at version %s; skipping import", entry.updated_at)
         _record_check(conn, now=moment)
         return RefreshResult(imported=False, status=_require_status(conn))
 
     logger.info("refreshing Scryfall catalog to version %s", entry.updated_at)
     path = download_bulk(entry.bulk_type, client=client, entry=entry)
-    result = import_bulk_file(conn, path)
+    try:
+        result = import_bulk_file(conn, path)
+    except BulkImportError:
+        # The file downloaded fully but is corrupt. download_bulk trusts the
+        # version-stamped name on size alone, so leaving it in place would feed
+        # the same bad file to every future refresh; drop it so the next attempt
+        # re-downloads. (import_bulk_file already rolled back; catalog intact.)
+        with suppress(OSError):
+            path.unlink(missing_ok=True)
+        raise
     _record_import(
         conn,
         now=moment,

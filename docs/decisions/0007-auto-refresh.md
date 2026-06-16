@@ -27,12 +27,18 @@ existing schema style and is trivial to read for the status endpoint.
 
 - `refresh_catalog(conn, *, client, force, now)` always contacts Scryfall: it
   fetches the cheap `/bulk-data` listing and compares the published version to
-  `source_updated_at`. If unchanged (and not `force`), it records the check and
-  returns *without* the ~1.5 GB download/import — the export only changes about
-  once a day, so re-importing an identical file is pure waste. Otherwise it
-  downloads (reusing the already-fetched listing entry, so no second list call)
-  and full-replaces the catalog via `import_bulk_file`, then records the new
-  version. Metadata is written only after the step it describes succeeds.
+  `source_updated_at`. The comparison is on the *parsed* timestamp, not the raw
+  string, so a representation drift (`Z` vs `+00:00`) for the identical export
+  doesn't force a needless re-import. If unchanged (and not `force`), it records
+  the check and returns *without* the ~1.5 GB download/import — the export only
+  changes about once a day, so re-importing an identical file is pure waste.
+  Otherwise it downloads (reusing the already-fetched listing entry, so no
+  second list call) and full-replaces the catalog via `import_bulk_file`, then
+  records the new version. Metadata is written only after the step it describes
+  succeeds. If the import raises `BulkImportError` (a fully-downloaded but
+  corrupt file), the downloaded file is deleted before re-raising — otherwise
+  `download_bulk`, which trusts the version-stamped name on size alone, would
+  re-feed the same bad file to every future refresh.
 - `maybe_refresh(conn, ...)` is the startup gate: it runs `refresh_catalog` only
   when the catalog is **stale** — never refreshed, or `last_checked_at` is ≥24h
   old (`REFRESH_MAX_AGE`). This keeps a restart from re-hitting Scryfall on every
