@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import BackgroundTasks, FastAPI
 
 from scriptorium.api.cards import router as cards_router
+from scriptorium.api.inventory import router as inventory_router
 from scriptorium.db import connect, healthcheck
 from scriptorium.migrations import apply_migrations
 from scriptorium.scryfall.refresh import is_stale, maybe_refresh, read_status, refresh_catalog
@@ -93,6 +94,7 @@ app = FastAPI(
 )
 
 app.include_router(cards_router)
+app.include_router(inventory_router)
 
 
 @app.get("/")
