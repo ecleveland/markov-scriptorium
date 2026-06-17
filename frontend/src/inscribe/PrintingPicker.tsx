@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { searchPrintings, type CardPrinting } from '../api'
+import { searchPrintings, type PrintingsResult } from '../api'
 
 interface Props {
   name: string
-  onPick: (printing: CardPrinting) => void
+  onPick: (printing: PrintingsResult['printings'][number]) => void
   onCancel: () => void
 }
 
@@ -12,17 +12,19 @@ interface Props {
  * printings) so the user inscribes a specific folio, not just a name.
  */
 export function PrintingPicker({ name, onPick, onCancel }: Props) {
-  const [printings, setPrintings] = useState<CardPrinting[] | null>(null)
+  const [result, setResult] = useState<PrintingsResult | null>(null)
   const [failed, setFailed] = useState(false)
 
   // The parent gives this component a `key={name}`, so each card name gets a
-  // fresh mount (printings === null → loading) rather than a synchronous reset.
+  // fresh mount (result === null → loading) rather than a synchronous reset.
   useEffect(() => {
     const controller = new AbortController()
     searchPrintings(name, controller.signal)
-      .then(setPrintings)
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true)
+      .then(setResult)
+      .catch((err) => {
+        if (controller.signal.aborted) return
+        console.error('Loading printings failed', err)
+        setFailed(true)
       })
     return () => controller.abort()
   }, [name])
@@ -37,14 +39,24 @@ export function PrintingPicker({ name, onPick, onCancel }: Props) {
       </header>
 
       {failed && <p role="alert">The printings could not be loaded.</p>}
-      {!failed && printings === null && <p>Consulting the catalog…</p>}
-      {printings !== null && printings.length === 0 && (
+      {!failed && result === null && <p>Consulting the catalog…</p>}
+      {result !== null && result.printings.length === 0 && (
         <p>No printings of this card reside in the catalog.</p>
       )}
-      {printings !== null && printings.length > 0 && (
-        <ul className="printing-picker__list">
-          {printings.map((printing) => (
-            <li key={printing.scryfall_id}>
+      {result !== null && result.truncated && (
+        <p className="printing-picker__truncated" role="status">
+          Showing the first {result.printings.length}; refine the name if a
+          printing is missing.
+        </p>
+      )}
+      {result !== null && result.printings.length > 0 && (
+        <ul
+          className="printing-picker__list"
+          role="listbox"
+          aria-label="Printings"
+        >
+          {result.printings.map((printing) => (
+            <li key={printing.scryfall_id} role="option" aria-selected={false}>
               <button type="button" onClick={() => onPick(printing)}>
                 {printing.image_uris?.small && (
                   <img

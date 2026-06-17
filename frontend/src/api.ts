@@ -57,18 +57,38 @@ export interface InventoryLot {
 /** Raised on a non-2xx response so callers can surface a message. */
 export class ApiError extends Error {
   readonly status: number
+  /** The backend's `detail` (FastAPI error body), when present. */
+  readonly detail?: string
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, detail?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.detail = detail
   }
+}
+
+/** Pull FastAPI's `{ detail }` off an error response, tolerant of any body. */
+async function errorDetail(res: Response): Promise<string | undefined> {
+  try {
+    const body = (await res.json()) as { detail?: unknown }
+    if (typeof body.detail === 'string') return body.detail
+    if (body.detail != null) return JSON.stringify(body.detail)
+  } catch {
+    // Non-JSON body; the status code alone will have to do.
+  }
+  return undefined
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
-    throw new ApiError(`Request to ${path} failed (${res.status})`, res.status)
+    const detail = await errorDetail(res)
+    throw new ApiError(
+      detail ?? `Request to ${path} failed (${res.status})`,
+      res.status,
+      detail,
+    )
   }
   return (await res.json()) as T
 }
@@ -86,6 +106,19 @@ export async function autocompleteNames(
   return body.names
 }
 
+/** Max search rows we fetch before filtering to exact-name printings. */
+export const PRINTINGS_SCAN_LIMIT = 100
+
+export interface PrintingsResult {
+  printings: CardPrinting[]
+  /**
+   * True when the catalog held more search matches than we scanned, so some
+   * exact-name printings may be missing (fuzzy matches aren't exact-ranked).
+   * The UI surfaces this rather than silently showing a partial list.
+   */
+  truncated: boolean
+}
+
 /**
  * Printings of a card by exact name. The catalog's search is substring/fuzzy,
  * so we over-fetch and filter to the exact (case-insensitive) name — that is
@@ -94,14 +127,15 @@ export async function autocompleteNames(
 export async function searchPrintings(
   name: string,
   signal?: AbortSignal,
-): Promise<CardPrinting[]> {
-  if (!name.trim()) return []
+): Promise<PrintingsResult> {
+  if (!name.trim()) return { printings: [], truncated: false }
   const body = await request<SearchResponse>(
-    `/cards/search?q=${encodeURIComponent(name)}&limit=100`,
+    `/cards/search?q=${encodeURIComponent(name)}&limit=${PRINTINGS_SCAN_LIMIT}`,
     { signal },
   )
   const target = name.trim().toLowerCase()
-  return body.results.filter((p) => p.name.toLowerCase() === target)
+  const printings = body.results.filter((p) => p.name.toLowerCase() === target)
+  return { printings, truncated: body.total > body.results.length }
 }
 
 /** Inscribe a card into the collection. */

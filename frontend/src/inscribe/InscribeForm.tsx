@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
+  ApiError,
   CONDITIONS,
   FINISHES,
   inscribe,
@@ -8,6 +9,7 @@ import {
   type Finish,
   type InventoryLot,
 } from '../api'
+import { coerceQuantity } from './quantity'
 
 interface Props {
   printing: CardPrinting
@@ -43,7 +45,7 @@ export function InscribeForm({
     event.preventDefault()
     setSubmitting(true)
     setError(null)
-    const quantity = Math.max(1, Math.floor(Number(quantityText) || 1))
+    const quantity = coerceQuantity(quantityText)
     try {
       const lot = await inscribe({
         scryfall_id: printing.scryfall_id,
@@ -53,8 +55,16 @@ export function InscribeForm({
         location: location.trim() || null,
       })
       onInscribed(lot)
-    } catch {
-      setError('This card could not be inscribed. Please try again.')
+    } catch (err) {
+      console.error('Inscribe failed', err)
+      // Surface the backend's reason (e.g. a 422 validation detail) when we have
+      // one — "try again" is misleading for input the server will reject again.
+      const detail = err instanceof ApiError ? err.detail : undefined
+      setError(
+        detail
+          ? `This card could not be inscribed: ${detail}`
+          : 'This card could not be inscribed. Please try again.',
+      )
     } finally {
       setSubmitting(false)
     }

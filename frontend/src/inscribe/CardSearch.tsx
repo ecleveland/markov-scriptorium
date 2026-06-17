@@ -16,6 +16,10 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
   const [query, setQuery] = useState('')
   const [names, setNames] = useState<string[]>([])
   const [failed, setFailed] = useState(false)
+  // The query the current names/failed belong to; results are only shown when
+  // this matches the live debounced query, so a previous query's suggestions
+  // never linger while a newer lookup is pending.
+  const [resultsQuery, setResultsQuery] = useState('')
   const debounced = useDebouncedValue(query.trim(), 200)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -29,23 +33,28 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
     autocompleteNames(debounced, controller.signal)
       .then((matches) => {
         setNames(matches)
+        setResultsQuery(debounced)
         setFailed(false)
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true)
+      .catch((err) => {
+        if (controller.signal.aborted) return
+        console.error('Autocomplete failed', err)
+        setNames([])
+        setResultsQuery(debounced)
+        setFailed(true)
       })
     return () => controller.abort()
   }, [debounced])
-
-  // Results/errors belong to the current query; when the box is empty we simply
-  // don't show the (possibly stale) last results, avoiding a reset in the effect.
-  const showResults = query.trim().length > 0
 
   function choose(name: string) {
     onSelect(name)
     setQuery('')
     setNames([])
+    setResultsQuery('')
   }
+
+  // Only surface results/errors that belong to the query the user currently sees.
+  const showResults = debounced.length > 0 && resultsQuery === debounced
 
   return (
     <div className="card-search">
@@ -69,7 +78,7 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
           aria-label="Matching cards"
         >
           {names.map((name) => (
-            <li key={name}>
+            <li key={name} role="option" aria-selected={false}>
               <button type="button" onClick={() => choose(name)}>
                 {name}
               </button>

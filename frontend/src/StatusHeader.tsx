@@ -16,12 +16,19 @@ export function StatusHeader() {
   useEffect(() => {
     // Proxied to the FastAPI backend's /health in dev (see vite.config.ts).
     fetch('/api/health')
-      .then((res) => res.json() as Promise<Health>)
+      .then((res) => {
+        // A 5xx (backend up, but unhealthy) must not be read as a healthy body.
+        if (!res.ok) throw new Error(`health check returned ${res.status}`)
+        return res.json() as Promise<Health>
+      })
       .then((data) => {
         setHealth(data)
         setState('ok')
       })
-      .catch(() => setState('error'))
+      .catch((err) => {
+        console.error('Health check failed', err)
+        setState('error')
+      })
   }, [])
 
   const label =

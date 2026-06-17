@@ -75,8 +75,20 @@ describe('searchPrintings', () => {
       limit: 100,
       offset: 0,
     })
-    const printings = await searchPrintings('lightning bolt')
+    const { printings, truncated } = await searchPrintings('lightning bolt')
     expect(printings.map((p) => p.scryfall_id)).toEqual(['a', 'b'])
+    expect(truncated).toBe(false)
+  })
+
+  it('reports truncation when more matches existed than were scanned', async () => {
+    mockFetch({
+      results: [printing({ scryfall_id: 'a', name: 'Forest' })],
+      total: 250,
+      limit: 100,
+      offset: 0,
+    })
+    const { truncated } = await searchPrintings('Forest')
+    expect(truncated).toBe(true)
   })
 
   it('requests a high limit so all printings are considered', async () => {
@@ -131,5 +143,17 @@ describe('error handling', () => {
         condition: 'NM',
       }),
     ).rejects.toMatchObject({ status: 500 })
+  })
+
+  it("surfaces the backend's detail on the ApiError", async () => {
+    mockFetch({ detail: 'quantity must be > 0' }, false, 422)
+    await expect(
+      inscribe({
+        scryfall_id: 'a',
+        quantity: 1,
+        finish: 'nonfoil',
+        condition: 'NM',
+      }),
+    ).rejects.toMatchObject({ status: 422, detail: 'quantity must be > 0' })
   })
 })

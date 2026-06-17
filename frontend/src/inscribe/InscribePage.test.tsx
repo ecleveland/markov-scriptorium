@@ -59,18 +59,21 @@ describe('InscribePage', () => {
   it('walks search → printing → inscribe and records the session entry', async () => {
     const user = userEvent.setup()
     autocompleteMock.mockResolvedValue(['Lightning Bolt'])
-    searchMock.mockResolvedValue([
-      printing({
-        scryfall_id: 'lea-bolt',
-        set_code: 'lea',
-        set_name: 'Limited Edition Alpha',
-      }),
-      printing({
-        scryfall_id: 'm10-bolt',
-        set_code: 'm10',
-        set_name: 'Magic 2010',
-      }),
-    ])
+    searchMock.mockResolvedValue({
+      printings: [
+        printing({
+          scryfall_id: 'lea-bolt',
+          set_code: 'lea',
+          set_name: 'Limited Edition Alpha',
+        }),
+        printing({
+          scryfall_id: 'm10-bolt',
+          set_code: 'm10',
+          set_name: 'Magic 2010',
+        }),
+      ],
+      truncated: false,
+    })
     inscribeMock.mockResolvedValue(lot({ id: 7, quantity: 2, finish: 'foil' }))
 
     render(<InscribePage />)
@@ -118,9 +121,10 @@ describe('InscribePage', () => {
   it('keeps the form and shows an error when the inscription fails', async () => {
     const user = userEvent.setup()
     autocompleteMock.mockResolvedValue(['Sol Ring'])
-    searchMock.mockResolvedValue([
-      printing({ name: 'Sol Ring', scryfall_id: 'sol-1' }),
-    ])
+    searchMock.mockResolvedValue({
+      printings: [printing({ name: 'Sol Ring', scryfall_id: 'sol-1' })],
+      truncated: false,
+    })
     inscribeMock.mockRejectedValue(new Error('boom'))
 
     render(<InscribePage />)
@@ -136,5 +140,83 @@ describe('InscribePage', () => {
     )
     // Still on the form, not bounced to search.
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument()
+  })
+
+  it('returns to the picker (keeping the card) on "Change printing"', async () => {
+    const user = userEvent.setup()
+    autocompleteMock.mockResolvedValue(['Lightning Bolt'])
+    searchMock.mockResolvedValue({
+      printings: [
+        printing({
+          scryfall_id: 'lea-bolt',
+          set_name: 'Limited Edition Alpha',
+        }),
+        printing({ scryfall_id: 'm10-bolt', set_name: 'Magic 2010' }),
+      ],
+      truncated: false,
+    })
+
+    render(<InscribePage />)
+    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.click(
+      await screen.findByRole('button', { name: 'Lightning Bolt' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: /Limited Edition Alpha/ }),
+    )
+
+    // On the form now; go back to the picker without losing the chosen card.
+    await user.click(screen.getByRole('button', { name: 'Change printing' }))
+    expect(
+      screen.getByRole('heading', {
+        name: /Choose a printing of “Lightning Bolt”/,
+      }),
+    ).toBeInTheDocument()
+    // Returned to the picker, not all the way to the search box.
+    expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument()
+    // The retained name is what was (re)searched — never some other card.
+    expect(searchMock.mock.calls.every(([n]) => n === 'Lightning Bolt')).toBe(
+      true,
+    )
+  })
+
+  it('resets the form between inscriptions (multi-add)', async () => {
+    const user = userEvent.setup()
+    autocompleteMock.mockResolvedValue(['Lightning Bolt'])
+    searchMock.mockResolvedValue({
+      printings: [
+        printing({
+          scryfall_id: 'lea-bolt',
+          set_name: 'Limited Edition Alpha',
+        }),
+      ],
+      truncated: false,
+    })
+    inscribeMock.mockResolvedValue(lot({ id: 1, quantity: 5 }))
+
+    render(<InscribePage />)
+
+    // First card: inscribe quantity 5.
+    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.click(
+      await screen.findByRole('button', { name: 'Lightning Bolt' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: /Limited Edition Alpha/ }),
+    )
+    const qty = screen.getByLabelText('Quantity')
+    await user.clear(qty)
+    await user.type(qty, '5')
+    await user.click(screen.getByRole('button', { name: 'Inscribe' }))
+
+    // Second card: the form must come up fresh (quantity back to 1), not '5'.
+    await user.type(await screen.findByLabelText('Card name'), 'bolt')
+    await user.click(
+      await screen.findByRole('button', { name: 'Lightning Bolt' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: /Limited Edition Alpha/ }),
+    )
+    expect(screen.getByLabelText('Quantity')).toHaveValue(1)
   })
 })
