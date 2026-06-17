@@ -113,6 +113,23 @@ def test_create_lot_commits(catalog_conn: sqlite3.Connection) -> None:
     assert row is not None
 
 
+def test_create_lot_unknown_printing_violates_fk(catalog_conn: sqlite3.Connection) -> None:
+    """The data-layer FK contract the API's 404 guard relies on: an orphan lot
+    is rejected, never silently accepted."""
+    with pytest.raises(sqlite3.IntegrityError):
+        inventory.create_lot(catalog_conn, scryfall_id="ghost")
+
+
+def test_create_lot_empty_tags_round_trip(catalog_conn: sqlite3.Connection) -> None:
+    """An empty tags list is preserved as ``[]`` (stored '[]'), distinct from None."""
+    lot = inventory.create_lot(catalog_conn, scryfall_id="bolt-1", tags=[])
+    assert lot["tags"] == []
+    raw = catalog_conn.execute("SELECT tags FROM inventory WHERE id = ?", (lot["id"],)).fetchone()[
+        0
+    ]
+    assert raw == "[]"
+
+
 # --- printing_exists -------------------------------------------------------
 
 
@@ -191,6 +208,20 @@ def test_update_lot_empty_is_noop(catalog_conn: sqlite3.Connection) -> None:
 
 def test_update_lot_missing_returns_none(catalog_conn: sqlite3.Connection) -> None:
     assert inventory.update_lot(catalog_conn, 999999, {"quantity": 2}) is None
+
+
+def test_update_lot_ignores_keys_outside_the_allowlist(catalog_conn: sqlite3.Connection) -> None:
+    """Only _UPDATABLE_COLUMNS are written; a stray key can't reach the SQL."""
+    lot = inventory.create_lot(catalog_conn, scryfall_id="bolt-1", finish="nonfoil")
+    updated = inventory.update_lot(
+        catalog_conn,
+        lot["id"],
+        {"quantity": 2, "finish": "foil", "scryfall_id": "helix-1"},
+    )
+    assert updated is not None
+    assert updated["quantity"] == 2  # allowed field applied
+    assert updated["finish"] == "nonfoil"  # ignored, not changed
+    assert updated["scryfall_id"] == "bolt-1"  # ignored, not changed
 
 
 # --- delete_lot ------------------------------------------------------------

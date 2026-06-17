@@ -49,6 +49,9 @@ def seeded_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         apply_migrations(conn)
         _insert_card(conn, "bolt-1", "Lightning Bolt", set_code="lea")
         _insert_card(conn, "helix-1", "Lightning Helix")
+        # A printing whose Scryfall ID is a bare number, to prove /inventory/card/1
+        # routes to the rollup and is not parsed as integer lot id 1.
+        _insert_card(conn, "1", "Numbered Printing")
         conn.commit()
 
 
@@ -87,6 +90,17 @@ def test_inscribe_applies_defaults() -> None:
 
 
 def test_inscribe_unknown_card_returns_404() -> None:
+    resp = client.post("/inventory", json={"scryfall_id": "ghost"})
+    assert resp.status_code == 404
+    assert "catalog" in resp.json()["detail"].lower()
+
+
+def test_inscribe_maps_fk_violation_to_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If the printing vanishes between the existence check and the insert
+    (TOCTOU with a bulk refresh), the FK violation surfaces as a 404, not a 500."""
+    from scriptorium import inventory
+
+    monkeypatch.setattr(inventory, "printing_exists", lambda conn, sid: True)
     resp = client.post("/inventory", json={"scryfall_id": "ghost"})
     assert resp.status_code == 404
     assert "catalog" in resp.json()["detail"].lower()
@@ -184,6 +198,25 @@ def test_patch_rejects_bad_quantity() -> None:
     assert client.patch(f"/inventory/{created['id']}", json={"quantity": 0}).status_code == 422
 
 
+def test_patch_explicit_null_on_not_null_field_is_clean_422() -> None:
+    """Sending null for quantity/condition is a clean validation error, not a
+    leaked raw SQLite constraint string."""
+    created = _inscribe()
+    for field in ("quantity", "condition"):
+        resp = client.patch(f"/inventory/{created['id']}", json={field: None})
+        assert resp.status_code == 422
+        assert "constraint" not in resp.text.lower()  # no raw SQL leaked
+
+
+def test_patch_ignores_unknown_field() -> None:
+    """finish is folio-identity, not in the mutable set: PATCHing it is a no-op,
+    not a 422, and leaves the lot unchanged."""
+    created = _inscribe(finish="nonfoil")
+    resp = client.patch(f"/inventory/{created['id']}", json={"finish": "foil"})
+    assert resp.status_code == 200
+    assert resp.json()["finish"] == "nonfoil"
+
+
 # --- DELETE /inventory/{id} ------------------------------------------------
 
 
@@ -224,7 +257,17 @@ def test_owned_copies_unknown_card_returns_404() -> None:
 
 
 def test_owned_copies_route_not_shadowed_by_id() -> None:
-    """/inventory/card/{scryfall_id} hits the rollup, not the /{lot_id} lookup."""
-    resp = client.get("/inventory/card/bolt-1")
-    assert resp.status_code == 200
-    assert "rollup" in resp.json()
+    """A numeric scryfall_id hits the rollup, not the integer /{lot_id} lookup.
+
+    Seeds lot id 1, then GET /inventory/card/1 must return card "1"'s rollup
+    shape (not lot 1's single-lot detail) — proving route precedence, not just
+    that a non-numeric segment fails int parsing.
+    """
+    created = _inscribe()  # first lot in a fresh DB → id 1
+    assert created["id"] == 1
+    body = client.get("/inventory/card/1")
+    assert body.status_code == 200
+    assert "rollup" in body.json()
+    assert body.json()["scryfall_id"] == "1"  # the card, not lot id 1
+    # The sibling /{lot_id} route still resolves the integer lot.
+    assert client.get("/inventory/1").json()["id"] == 1

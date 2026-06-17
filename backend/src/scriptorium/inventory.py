@@ -111,17 +111,18 @@ def create_lot(
         "notes": notes,
         "tags": json.dumps(tags) if tags is not None else None,
     }
-    columns = [col for col in _INSERT_COLUMNS if col in values]
-    placeholders = ", ".join("?" for _ in columns)
+    placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
     cur = conn.execute(
-        f"INSERT INTO inventory ({', '.join(columns)}) VALUES ({placeholders})",
-        tuple(values[col] for col in columns),
+        f"INSERT INTO inventory ({', '.join(_INSERT_COLUMNS)}) VALUES ({placeholders})",
+        tuple(values[col] for col in _INSERT_COLUMNS),
     )
     conn.commit()
     lot_id = cur.lastrowid
-    assert lot_id is not None
+    if lot_id is None:  # pragma: no cover — sqlite always reports a rowid for this insert
+        raise RuntimeError("INSERT into inventory returned no row id")
     created = get_lot(conn, lot_id)
-    assert created is not None  # just inserted
+    if created is None:  # pragma: no cover — the row was just inserted and committed
+        raise RuntimeError(f"inventory lot {lot_id} could not be read back after insert")
     return created
 
 
@@ -151,16 +152,18 @@ def update_lot(
     ignored. An empty (or fully-ignored) ``updates`` is a no-op that returns the
     lot unchanged.
     """
-    if get_lot(conn, lot_id) is None:
-        return None
     fields = {col: updates[col] for col in _UPDATABLE_COLUMNS if col in updates}
-    if fields:
-        assignments = ", ".join(f"{col} = ?" for col in fields)
-        conn.execute(
-            f"UPDATE inventory SET {assignments} WHERE id = ?",
-            (*fields.values(), lot_id),
-        )
-        conn.commit()
+    if not fields:
+        # No-op: nothing to change. Return the lot if it exists, else None.
+        return get_lot(conn, lot_id)
+    assignments = ", ".join(f"{col} = ?" for col in fields)
+    cur = conn.execute(
+        f"UPDATE inventory SET {assignments} WHERE id = ?",
+        (*fields.values(), lot_id),
+    )
+    conn.commit()
+    if cur.rowcount == 0:  # no lot with this id
+        return None
     return get_lot(conn, lot_id)
 
 
@@ -195,7 +198,9 @@ def owned_for_printing(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, 
     rollup = [dict(row) for row in rollup_rows]
     total_quantity = sum(row["quantity"] for row in rollup)
 
-    card = _card_display(conn, scryfall_id)
+    # Every lot already carries the identical nested card object (inner join on
+    # cards); reuse it and only query separately when the printing is unowned.
+    card = lots[0]["card"] if lots else _card_display(conn, scryfall_id)
     return {
         "scryfall_id": scryfall_id,
         "card": card,

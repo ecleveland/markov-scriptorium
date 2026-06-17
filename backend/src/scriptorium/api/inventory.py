@@ -14,7 +14,7 @@ from contextlib import closing
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from scriptorium import inventory
 from scriptorium.db import connect
@@ -52,6 +52,19 @@ class InventoryUpdate(BaseModel):
     location: str | None = None
     notes: str | None = None
 
+    @field_validator("quantity", "condition")
+    @classmethod
+    def _not_explicit_null(cls, value: object) -> object:
+        """Reject an explicit ``null`` for a NOT NULL column.
+
+        Omitting the field leaves it unchanged (the validator doesn't run on the
+        default); sending ``null`` would otherwise reach a NOT NULL column and
+        surface as a raw database error instead of a clean 422.
+        """
+        if value is None:
+            raise ValueError("must not be null; omit the field to leave it unchanged")
+        return value
+
 
 def _not_in_catalog(scryfall_id: str) -> HTTPException:
     return HTTPException(
@@ -70,7 +83,12 @@ def inscribe(payload: InventoryCreate) -> dict[str, Any]:
     with closing(connect()) as conn:
         if not inventory.printing_exists(conn, payload.scryfall_id):
             raise _not_in_catalog(payload.scryfall_id)
-        return inventory.create_lot(conn, **payload.model_dump())
+        try:
+            return inventory.create_lot(conn, **payload.model_dump())
+        except sqlite3.IntegrityError as exc:
+            # The printing was deleted between the existence check and the insert
+            # (e.g. a concurrent bulk refresh); the FK is the authority.
+            raise _not_in_catalog(payload.scryfall_id) from exc
 
 
 @router.get("")
@@ -110,10 +128,7 @@ def update_inventory(lot_id: int, payload: InventoryUpdate) -> dict[str, Any]:
     """Amend a lot's quantity, condition, location, or notes."""
     updates = payload.model_dump(exclude_unset=True)
     with closing(connect()) as conn:
-        try:
-            lot = inventory.update_lot(conn, lot_id, updates)
-        except sqlite3.IntegrityError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        lot = inventory.update_lot(conn, lot_id, updates)
     if lot is None:
         raise _lot_not_found(lot_id)
     return lot
