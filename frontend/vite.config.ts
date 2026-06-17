@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
+// Test (Vitest) configuration lives in vitest.config.ts so this file stays a
+// clean Vite 8 config — Vitest bundles a different Vite version, and mixing the
+// two `test`-field types here breaks `tsc -b`.
 export default defineConfig({
   plugins: [react()],
   server: {

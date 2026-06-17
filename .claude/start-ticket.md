@@ -11,8 +11,8 @@ monorepo: `backend/` (Python, managed with **uv**) and `frontend/`
 
 ## Fast test runners (inner TDD loop)
 - Backend: `cd backend && uv run pytest -q` (use `-k <pattern>` for a single test).
-- Frontend: `cd frontend && npm test` — **no runner configured yet**; add one with the
-  first frontend logic ticket (Vitest is the natural fit for Vite).
+- Frontend: `cd frontend && npm test` (Vitest + React Testing Library, jsdom; see ADR 0010).
+  Use `npm test -- <pattern>` for a subset, `npm run test:watch` while iterating.
 
 ## Test-coverage conventions
 - Required (per CLAUDE.md): data-model logic, the scanner pipeline, Scryfall sync code.
@@ -24,8 +24,9 @@ monorepo: `backend/` (Python, managed with **uv**) and `frontend/`
 1. Backend tests: `cd backend && uv run pytest`
 2. Backend lint/format: `cd backend && uv run ruff check && uv run ruff format --check`
 3. Backend types: `cd backend && uv run mypy`
-4. Frontend build (catches type errors dev mode hides): `cd frontend && npm run build`
-5. Frontend lint + format: `cd frontend && npm run lint && npm run format:check`
+4. Frontend tests: `cd frontend && npm test`
+5. Frontend build (catches type errors dev mode hides): `cd frontend && npm run build`
+6. Frontend lint + format: `cd frontend && npm run lint && npm run format:check`
 
 Most of the above also run automatically on commit via pre-commit (`.pre-commit-config.yaml`);
 run all hooks manually with `pre-commit run --all-files`.
