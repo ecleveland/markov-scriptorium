@@ -66,6 +66,17 @@ class InventoryUpdate(BaseModel):
         return value
 
 
+# Upper bound on a single bulk import; well above a large personal collection,
+# low enough to bound one request's work.
+_MAX_BULK_ROWS = 10000
+
+
+class BulkInscribeRequest(BaseModel):
+    """Body for inscribing many resolved lots at once (POST /inventory/bulk)."""
+
+    rows: list[InventoryCreate] = Field(min_length=1, max_length=_MAX_BULK_ROWS)
+
+
 def _not_in_catalog(scryfall_id: str) -> HTTPException:
     return HTTPException(
         status_code=404,
@@ -89,6 +100,34 @@ def inscribe(payload: InventoryCreate) -> dict[str, Any]:
             # The printing was deleted between the existence check and the insert
             # (e.g. a concurrent bulk refresh); the FK is the authority.
             raise _not_in_catalog(payload.scryfall_id) from exc
+
+
+@router.post("/bulk", status_code=201)
+def inscribe_bulk(payload: BulkInscribeRequest) -> dict[str, Any]:
+    """Inscribe many resolved lots in one atomic batch (bulk onboarding, VEG-280).
+
+    Every row's printing is checked up front; if any is unknown the whole batch
+    is rejected (422) with the offending rows, so an import never lands a partial
+    collection. On success all rows commit in a single transaction.
+    """
+    rows = [row.model_dump() for row in payload.rows]
+    with closing(connect()) as conn:
+        present = inventory.existing_printing_ids(conn, [row["scryfall_id"] for row in rows])
+        unknown = [
+            {"index": index, "scryfall_id": row["scryfall_id"]}
+            for index, row in enumerate(rows)
+            if row["scryfall_id"] not in present
+        ]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Some rows reference cards not in the catalog.",
+                    "unknown": unknown,
+                },
+            )
+        created = inventory.create_lots(conn, rows)
+    return {"created": created, "count": len(created)}
 
 
 @router.get("")

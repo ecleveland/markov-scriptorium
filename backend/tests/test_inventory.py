@@ -130,6 +130,50 @@ def test_create_lot_empty_tags_round_trip(catalog_conn: sqlite3.Connection) -> N
     assert raw == "[]"
 
 
+# --- create_lots (bulk) ----------------------------------------------------
+
+
+def test_create_lots_inserts_all_and_returns_enriched(catalog_conn: sqlite3.Connection) -> None:
+    lots = inventory.create_lots(
+        catalog_conn,
+        [
+            {"scryfall_id": "bolt-1", "quantity": 2, "finish": "foil"},
+            {"scryfall_id": "helix-1", "quantity": 1},
+        ],
+    )
+    assert [lot["scryfall_id"] for lot in lots] == ["bolt-1", "helix-1"]
+    assert lots[0]["quantity"] == 2 and lots[0]["finish"] == "foil"
+    assert lots[0]["card"]["name"] == "Lightning Bolt"
+    # Defaults fill the NOT-NULL columns a row omits.
+    assert (lots[1]["finish"], lots[1]["condition"], lots[1]["language"]) == (
+        "nonfoil",
+        "NM",
+        "en",
+    )
+
+
+def test_create_lots_is_atomic_on_a_bad_row(catalog_conn: sqlite3.Connection) -> None:
+    """One unknown printing rolls the whole batch back — no partial collection."""
+    with pytest.raises(sqlite3.IntegrityError):
+        inventory.create_lots(
+            catalog_conn,
+            [
+                {"scryfall_id": "bolt-1", "quantity": 1},
+                {"scryfall_id": "ghost", "quantity": 1},  # FK violation
+            ],
+        )
+    # The good row before the bad one must not have landed.
+    count = catalog_conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+    assert count == 0
+
+
+def test_create_lots_commits(catalog_conn: sqlite3.Connection) -> None:
+    inventory.create_lots(catalog_conn, [{"scryfall_id": "bolt-1", "quantity": 1}])
+    with closing(db.connect()) as other:
+        count = other.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+    assert count == 1
+
+
 # --- printing_exists -------------------------------------------------------
 
 

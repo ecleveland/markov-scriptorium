@@ -271,3 +271,52 @@ def test_owned_copies_route_not_shadowed_by_id() -> None:
     assert body.json()["scryfall_id"] == "1"  # the card, not lot id 1
     # The sibling /{lot_id} route still resolves the integer lot.
     assert client.get("/inventory/1").json()["id"] == 1
+
+
+# --- POST /inventory/bulk --------------------------------------------------
+
+
+def test_bulk_inscribe_creates_all_rows() -> None:
+    resp = client.post(
+        "/inventory/bulk",
+        json={
+            "rows": [
+                {"scryfall_id": "bolt-1", "quantity": 2, "finish": "foil"},
+                {"scryfall_id": "helix-1", "quantity": 1},
+            ]
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["count"] == 2
+    assert [lot["scryfall_id"] for lot in body["created"]] == ["bolt-1", "helix-1"]
+    assert client.get("/inventory").json()["total"] == 2
+
+
+def test_bulk_inscribe_unknown_card_is_atomic_422() -> None:
+    resp = client.post(
+        "/inventory/bulk",
+        json={
+            "rows": [
+                {"scryfall_id": "bolt-1", "quantity": 1},
+                {"scryfall_id": "ghost", "quantity": 1},
+            ]
+        },
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["unknown"] == [{"index": 1, "scryfall_id": "ghost"}]
+    # Nothing was written — the good row rolled back with the batch.
+    assert client.get("/inventory").json()["total"] == 0
+
+
+def test_bulk_inscribe_rejects_empty_batch() -> None:
+    assert client.post("/inventory/bulk", json={"rows": []}).status_code == 422
+
+
+def test_bulk_inscribe_validates_rows() -> None:
+    resp = client.post(
+        "/inventory/bulk",
+        json={"rows": [{"scryfall_id": "bolt-1", "finish": "holo"}]},
+    )
+    assert resp.status_code == 422
