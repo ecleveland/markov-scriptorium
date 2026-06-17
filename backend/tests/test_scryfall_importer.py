@@ -97,6 +97,91 @@ _MINIMAL_CARD: dict[str, Any] = {
     "layout": "normal",
 }
 
+# Split: one physical card, two faces that BOTH carry a mana cost (unlike a DFC
+# back), and a single shared top-level image (faces carry none).
+_SPLIT_CARD: dict[str, Any] = {
+    "id": "split-1",
+    "oracle_id": "oracle-fireice",
+    "name": "Fire // Ice",
+    "set": "apc",
+    "set_name": "Apocalypse",
+    "collector_number": "128",
+    "rarity": "uncommon",
+    "lang": "en",
+    "layout": "split",
+    "cmc": 2.0,
+    "type_line": "Instant // Instant",
+    "color_identity": ["R", "U"],
+    "finishes": ["nonfoil"],
+    "image_uris": {"normal": "https://img/fireice.jpg"},
+    # No top-level mana_cost — each face has its own.
+    "card_faces": [
+        {
+            "name": "Fire",
+            "mana_cost": "{1}{R}",
+            "type_line": "Instant",
+            "oracle_text": "Fire deals 2 damage divided as you choose...",
+            "colors": ["R"],
+        },
+        {
+            "name": "Ice",
+            "mana_cost": "{1}{U}",
+            "type_line": "Instant",
+            "oracle_text": "Tap target permanent. Draw a card.",
+            "colors": ["U"],
+        },
+    ],
+}
+
+# Token: minimal real-world shape — no oracle_id, no mana_cost/cmc, no prices,
+# no faces. Exercises the importer's optional-field handling for an odd layout.
+_TOKEN_CARD: dict[str, Any] = {
+    "id": "token-1",
+    "name": "Soldier",
+    "set": "tmid",
+    "set_name": "Innistrad: Midnight Hunt Tokens",
+    "collector_number": "7",
+    "rarity": "common",
+    "lang": "en",
+    "layout": "token",
+    "type_line": "Token Creature — Soldier",
+    "color_identity": ["W"],
+}
+
+# Adventure: a creature with an instant "adventure" half — two faces, single
+# shared top-level image.
+_ADVENTURE_CARD: dict[str, Any] = {
+    "id": "adv-1",
+    "oracle_id": "oracle-brazen",
+    "name": "Brazen Borrower // Petty Theft",
+    "set": "eld",
+    "set_name": "Throne of Eldraine",
+    "collector_number": "39",
+    "rarity": "mythic",
+    "lang": "en",
+    "layout": "adventure",
+    "cmc": 3.0,
+    "type_line": "Creature — Faerie Rogue // Instant — Adventure",
+    "color_identity": ["U"],
+    "image_uris": {"normal": "https://img/brazen.jpg"},
+    "card_faces": [
+        {
+            "name": "Brazen Borrower",
+            "mana_cost": "{1}{U}{U}",
+            "type_line": "Creature — Faerie Rogue",
+            "oracle_text": "Flash. Flying...",
+            "colors": ["U"],
+        },
+        {
+            "name": "Petty Theft",
+            "mana_cost": "{1}{U}",
+            "type_line": "Instant — Adventure",
+            "oracle_text": "Return target nonland permanent an opponent controls...",
+            "colors": ["U"],
+        },
+    ],
+}
+
 
 def _write_bulk(path: Path, cards: list[dict[str, Any]], *, gzipped: bool = True) -> Path:
     raw = json.dumps(cards).encode()
@@ -198,6 +283,70 @@ def test_import_writes_faces_in_order_with_null_top_level(
     assert faces[0]["name"] == "Delver of Secrets"
     assert faces[1]["name"] == "Insectile Aberration"
     assert json.loads(faces[0]["image_uris"])["normal"] == "https://img/delver-front.jpg"
+
+
+# --- card layout edge cases (VEG-216) --------------------------------------
+
+
+def test_import_split_card_captures_both_faces(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """Split cards: two faces that both carry a mana cost; one shared top image."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "bulk.json.gz", [_SPLIT_CARD]))
+    card = catalog.execute(
+        "SELECT mana_cost, image_uris FROM cards WHERE scryfall_id = 'split-1'"
+    ).fetchone()
+    # No top-level mana cost (per-face), but the single shared image is present.
+    assert card["mana_cost"] is None
+    assert json.loads(card["image_uris"])["normal"] == "https://img/fireice.jpg"
+    faces = catalog.execute(
+        "SELECT face_index, name, mana_cost, image_uris FROM card_faces "
+        "WHERE scryfall_id = 'split-1' ORDER BY face_index"
+    ).fetchall()
+    assert [(f["face_index"], f["name"]) for f in faces] == [(0, "Fire"), (1, "Ice")]
+    assert [f["mana_cost"] for f in faces] == ["{1}{R}", "{1}{U}"]
+    assert all(f["image_uris"] is None for f in faces)  # faces carry no image
+
+
+def test_import_token_minimal_fields(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """Tokens import as a single faceless card with optional fields left NULL."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "bulk.json.gz", [_TOKEN_CARD]))
+    assert _count(catalog, "cards") == 1
+    assert _count(catalog, "card_faces") == 0
+    row = catalog.execute(
+        "SELECT oracle_id, mana_cost, cmc, price_usd, type_line, layout "
+        "FROM cards WHERE scryfall_id = 'token-1'"
+    ).fetchone()
+    assert row["oracle_id"] is None
+    assert row["mana_cost"] is None
+    assert row["cmc"] is None
+    assert row["price_usd"] is None
+    assert row["type_line"] == "Token Creature — Soldier"
+    assert row["layout"] == "token"
+
+
+def test_import_adventure_card_captures_both_faces(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """Adventure cards: creature + adventure spell stored as two ordered faces."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "bulk.json.gz", [_ADVENTURE_CARD]))
+    faces = catalog.execute(
+        "SELECT face_index, name, type_line FROM card_faces "
+        "WHERE scryfall_id = 'adv-1' ORDER BY face_index"
+    ).fetchall()
+    assert [(f["face_index"], f["name"]) for f in faces] == [
+        (0, "Brazen Borrower"),
+        (1, "Petty Theft"),
+    ]
+    assert faces[1]["type_line"] == "Instant — Adventure"
+
+
+def test_import_mixed_layouts_coexist(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """Normal, transform, split, token, and adventure layouts import together."""
+    cards = [_NORMAL_CARD, _DFC_CARD, _SPLIT_CARD, _TOKEN_CARD, _ADVENTURE_CARD]
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "bulk.json.gz", cards))
+    # 5 cards; faces from DFC(2) + split(2) + adventure(2) = 6; normal/token = 0.
+    assert result == ImportResult(cards=5, faces=6)
+    assert _count(catalog, "cards") == 5
+    assert _count(catalog, "card_faces") == 6
 
 
 def test_import_leaves_optional_columns_null(catalog: sqlite3.Connection, tmp_path: Path) -> None:
