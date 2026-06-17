@@ -320,3 +320,23 @@ def test_bulk_inscribe_validates_rows() -> None:
         json={"rows": [{"scryfall_id": "bolt-1", "finish": "holo"}]},
     )
     assert resp.status_code == 422
+
+
+def test_bulk_inscribe_rejects_explicit_null_in_not_null_field() -> None:
+    resp = client.post(
+        "/inventory/bulk",
+        json={"rows": [{"scryfall_id": "bolt-1", "finish": None}]},
+    )
+    assert resp.status_code == 422
+
+
+def test_bulk_inscribe_maps_fk_violation_to_422(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If a printing vanishes between the up-front check and the inserts (TOCTOU),
+    the FK violation is a clean 422, not a raw 500, and nothing is written."""
+    from scriptorium import inventory
+
+    monkeypatch.setattr(inventory, "existing_printing_ids", lambda conn, ids: set(ids))
+    resp = client.post("/inventory/bulk", json={"rows": [{"scryfall_id": "ghost", "quantity": 1}]})
+    assert resp.status_code == 422
+    assert "catalog" in resp.json()["detail"]["message"].lower()
+    assert client.get("/inventory").json()["total"] == 0

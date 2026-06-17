@@ -102,6 +102,25 @@ def test_collector_number_further_narrows(catalog_conn: sqlite3.Connection) -> N
     assert result["match"]["scryfall_id"] == "bolt-lea"
 
 
+def test_collector_number_pin_is_case_insensitive(catalog_conn: sqlite3.Connection) -> None:
+    """Collector numbers can carry letters; a case mismatch must not miss."""
+    _insert_card(catalog_conn, "promo-a", "Shock", "pgw", "12a")
+    catalog_conn.commit()
+    result = resolve_entry(catalog_conn, RawEntry(name="Shock", collector_number="12A"))
+    assert result["status"] == "matched"
+    assert result["match"]["scryfall_id"] == "promo-a"
+
+
+def test_ambiguous_candidates_tiebreak_by_set_code(catalog_conn: sqlite3.Connection) -> None:
+    """When released_at ties, candidates order by set_code then collector number."""
+    _insert_card(catalog_conn, "twin-zzz", "Twincast", "zzz", "1", released_at="2020-01-01")
+    _insert_card(catalog_conn, "twin-aaa", "Twincast", "aaa", "1", released_at="2020-01-01")
+    catalog_conn.commit()
+    result = resolve_entry(catalog_conn, RawEntry(name="Twincast"))
+    assert result["status"] == "ambiguous"
+    assert [c["scryfall_id"] for c in result["candidates"]] == ["twin-aaa", "twin-zzz"]
+
+
 def test_unknown_name_is_unmatched(catalog_conn: sqlite3.Connection) -> None:
     result = resolve_entry(catalog_conn, RawEntry(name="Black Lotus"))
     assert result["status"] == "unmatched"

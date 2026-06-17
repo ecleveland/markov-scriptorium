@@ -14,13 +14,11 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from scriptorium import inventory
 from scriptorium.db import connect
 from scriptorium.onboarding import resolution
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
-
-# Mirror the bulk-inscribe cap so preview and commit accept the same batch size.
-_MAX_ENTRIES = 10000
 
 
 class RawEntryIn(BaseModel):
@@ -37,7 +35,8 @@ class RawEntryIn(BaseModel):
 
 
 class ResolveRequest(BaseModel):
-    entries: list[RawEntryIn] = Field(min_length=1, max_length=_MAX_ENTRIES)
+    # Mirror the bulk-inscribe cap so preview and commit accept the same batch.
+    entries: list[RawEntryIn] = Field(min_length=1, max_length=inventory.MAX_BULK_ROWS)
 
 
 @router.post("/resolve")

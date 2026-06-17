@@ -66,15 +66,10 @@ class InventoryUpdate(BaseModel):
         return value
 
 
-# Upper bound on a single bulk import; well above a large personal collection,
-# low enough to bound one request's work.
-_MAX_BULK_ROWS = 10000
-
-
 class BulkInscribeRequest(BaseModel):
     """Body for inscribing many resolved lots at once (POST /inventory/bulk)."""
 
-    rows: list[InventoryCreate] = Field(min_length=1, max_length=_MAX_BULK_ROWS)
+    rows: list[InventoryCreate] = Field(min_length=1, max_length=inventory.MAX_BULK_ROWS)
 
 
 def _not_in_catalog(scryfall_id: str) -> HTTPException:
@@ -126,7 +121,21 @@ def inscribe_bulk(payload: BulkInscribeRequest) -> dict[str, Any]:
                     "unknown": unknown,
                 },
             )
-        created = inventory.create_lots(conn, rows)
+        try:
+            created = inventory.create_lots(conn, rows)
+        except sqlite3.IntegrityError as exc:
+            # A printing was deleted between the up-front check and the inserts
+            # (TOCTOU, e.g. a concurrent bulk refresh). create_lots already rolled
+            # the batch back, so translate the FK violation to the same structured
+            # 422 the up-front path gives rather than leaking a raw 500.
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "A referenced card is no longer in the catalog; "
+                    "nothing was imported. Re-run the preview and try again.",
+                    "unknown": [],
+                },
+            ) from exc
     return {"created": created, "count": len(created)}
 
 

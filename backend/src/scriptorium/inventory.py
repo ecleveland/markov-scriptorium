@@ -42,6 +42,11 @@ _UPDATABLE_COLUMNS = ("quantity", "condition", "location", "notes")
 # (an explicit NULL would violate the constraint instead of taking the default).
 _LOT_DEFAULTS = {"quantity": 1, "finish": "nonfoil", "condition": "NM", "language": "en"}
 
+# Upper bound on one bulk import — well above a large personal collection, low
+# enough to bound a single request's work. Shared by the bulk-inscribe and
+# resolve endpoints so preview and commit accept the same batch size.
+MAX_BULK_ROWS = 10000
+
 # Card display fields joined onto each lot, under a nested ``card`` object.
 _CARD_DISPLAY_COLUMNS = (
     "name",

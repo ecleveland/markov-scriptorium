@@ -47,8 +47,10 @@ def resolve_entry(conn: sqlite3.Connection, entry: RawEntry) -> dict[str, Any]:
         wanted = entry.set_code.strip().lower()
         printings = [p for p in printings if p["set_code"].lower() == wanted]
     if entry.collector_number:
-        wanted_cn = entry.collector_number.strip()
-        printings = [p for p in printings if p["collector_number"] == wanted_cn]
+        # Case-insensitive like set_code: collector numbers can carry letters
+        # (e.g. "123a"), and an import shouldn't miss on a case mismatch.
+        wanted_cn = entry.collector_number.strip().lower()
+        printings = [p for p in printings if p["collector_number"].lower() == wanted_cn]
 
     if not printings:
         status: ResolutionStatus = "unmatched"
