@@ -18,8 +18,9 @@
 -- card delete.
 --
 -- `location` is free text for now; VEG-279 owns promoting Volumes to a managed
--- entity and will migrate this column to an FK. `tags` is a JSON array and
--- `price_paid` a TEXT decimal, matching the conventions in `cards`.
+-- entity and will migrate this column to an FK. `tags` is a JSON array, following
+-- the JSON-as-TEXT convention `cards` uses for colors/finishes; `price_paid` is a
+-- TEXT decimal, matching the `cards.price_*` columns.
 
 CREATE TABLE inventory (
     id          INTEGER PRIMARY KEY,                        -- surrogate lot key

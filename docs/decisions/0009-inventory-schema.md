@@ -6,8 +6,10 @@ Resolves [VEG-217]. Defines the SQLite table that holds the owned card
 inventory — what the user physically owns, keyed to Scryfall printings. Builds
 on [0001](0001-foundational-architecture.md) (SQLite, per-printing granularity),
 [0004](0004-schema-migrations.md) (hand-rolled SQL migrations), and
-[0005](0005-scryfall-card-schema.md) (the `cards` catalog this references).
-Ships as `backend/migrations/0005_inventory.sql`.
+[0005](0005-scryfall-card-schema.md) (the `cards` catalog this references,
+shipped as `0002_scryfall_cards.sql`). Ships as
+`backend/migrations/0005_inventory.sql` (ADR and migration numbering are
+separate sequences — this is ADR 0009, migration 0005).
 
 [VEG-217]: https://linear.app/vega-apps/issue/VEG-217
 [VEG-279]: https://linear.app/vega-apps/issue/VEG-279
@@ -42,7 +44,7 @@ folio twice preserves a distinct cost basis for value tracking. Total owned of a
 folio is `SUM(quantity)` grouped by the printing/finish/condition/language tuple.
 
 **FK restricts, not cascades.** `ON DELETE RESTRICT` (with `ON UPDATE CASCADE`)
-— the deliberate opposite of `card_faces`' cascade. The card catalog is
+— the deliberate opposite of `card_faces`' `ON DELETE CASCADE`. The card catalog is
 full-replaced on every bulk Scryfall refresh; owned inventory must never be
 deleted out from under the user by that churn or a stray card delete. A printing
 that has owned copies cannot be deleted until those copies are removed first.

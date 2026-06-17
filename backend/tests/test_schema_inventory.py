@@ -116,15 +116,16 @@ def test_inventory_primary_key_is_surrogate_id(catalog: sqlite3.Connection) -> N
         assert _pk_columns(conn, "inventory") == ["id"]
 
 
-def test_inventory_references_cards_without_cascade(catalog: sqlite3.Connection) -> None:
-    """The FK targets cards(scryfall_id) and must NOT cascade-delete."""
+def test_inventory_fk_restricts_on_delete_cascades_on_update(catalog: sqlite3.Connection) -> None:
+    """The FK targets cards(scryfall_id) with the exact actions ADR 0009 specifies."""
     with closing(catalog) as conn:
         fks = list(conn.execute("PRAGMA foreign_key_list(inventory)"))
         assert fks, "inventory should declare a foreign key"
         fk = next(f for f in fks if f[2] == "cards")
         assert fk[3] == "scryfall_id"  # local column
         assert fk[4] == "scryfall_id"  # referenced column
-        assert fk[6] != "CASCADE"  # deleting a card must not delete owned copies
+        assert fk[5] == "CASCADE"  # on_update: a printing-id change propagates
+        assert fk[6] == "RESTRICT"  # on_delete: a card with copies cannot be deleted
 
 
 def test_expected_index_exists(catalog: sqlite3.Connection) -> None:
@@ -164,6 +165,18 @@ def test_deleting_owned_card_is_blocked(catalog: sqlite3.Connection) -> None:
             conn.execute("DELETE FROM cards WHERE scryfall_id = 'card-2'")
 
 
+def test_updating_card_id_cascades_to_inventory(catalog: sqlite3.Connection) -> None:
+    """ON UPDATE CASCADE: re-keying a printing carries its owned lots along."""
+    with closing(catalog) as conn:
+        _insert_card(conn, "old-id", "Phyrexian Tower")
+        _insert_inventory(conn, "old-id", quantity=3)
+        conn.execute("UPDATE cards SET scryfall_id = 'new-id' WHERE scryfall_id = 'old-id'")
+        rows = conn.execute(
+            "SELECT scryfall_id, quantity FROM inventory WHERE scryfall_id = 'new-id'"
+        ).fetchall()
+        assert [tuple(r) for r in rows] == [("new-id", 3)]
+
+
 def test_quantity_must_be_positive(catalog: sqlite3.Connection) -> None:
     with closing(catalog) as conn:
         _insert_card(conn, "card-3", "Counterspell")
@@ -176,6 +189,9 @@ def test_finish_is_constrained_to_known_values(catalog: sqlite3.Connection) -> N
         _insert_card(conn, "card-4", "Lightning Bolt")
         with pytest.raises(sqlite3.IntegrityError):
             _insert_inventory(conn, "card-4", finish="holographic")
+        # Scryfall's finishes are all accepted.
+        for finish in ("nonfoil", "foil", "etched"):
+            _insert_inventory(conn, "card-4", finish=finish)
 
 
 def test_condition_is_constrained_to_known_grades(catalog: sqlite3.Connection) -> None:
