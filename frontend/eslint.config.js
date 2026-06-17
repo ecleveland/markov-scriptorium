@@ -21,4 +21,22 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Non-component modules (api client, hooks): the react-refresh rule only
+    // applies to files that export components.
+    files: ['**/*.ts'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    // Test files run under Vitest (globals enabled in vite.config.ts).
+    files: ['**/*.test.{ts,tsx}', 'src/test/**'],
+    languageOptions: {
+      globals: globals.vitest,
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
