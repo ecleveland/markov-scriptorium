@@ -153,6 +153,63 @@ def test_front_face_name_resolves(catalog_conn: sqlite3.Connection) -> None:
     assert result["match"]["scryfall_id"] == "delver-isd"
 
 
+def test_scryfall_id_short_circuits_to_exact_printing(catalog_conn: sqlite3.Connection) -> None:
+    """A Scryfall ID names one printing; it wins even over a name in many sets."""
+    result = resolve_entry(catalog_conn, RawEntry(name="Lightning Bolt", scryfall_id="bolt-m10"))
+    assert result["status"] == "matched"
+    assert result["match"]["scryfall_id"] == "bolt-m10"
+    assert result["candidates"] == []
+    # The match is shaped like the name-path printings — no card_faces key.
+    assert "card_faces" not in result["match"]
+
+
+def test_unknown_scryfall_id_falls_back_to_name(catalog_conn: sqlite3.Connection) -> None:
+    """A stale/foreign ID absent from the catalog must not sink a resolvable name."""
+    result = resolve_entry(catalog_conn, RawEntry(name="Sol Ring", scryfall_id="not-in-catalog"))
+    assert result["status"] == "matched"
+    assert result["match"]["scryfall_id"] == "sol-cmd"
+
+
+def test_unknown_scryfall_id_and_unknown_name_is_unmatched(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    result = resolve_entry(catalog_conn, RawEntry(name="Black Lotus", scryfall_id="nope"))
+    assert result["status"] == "unmatched"
+
+
+def test_set_name_filter_narrows_ambiguous(catalog_conn: sqlite3.Connection) -> None:
+    """Deckbox names the edition, not its code; set_name narrows the candidates."""
+    _insert_card(
+        catalog_conn, "bolt-war", "Lightning Bolt", "war", "1", set_name="War of the Spark"
+    )
+    catalog_conn.commit()
+    result = resolve_entry(
+        catalog_conn, RawEntry(name="Lightning Bolt", set_name="War of the Spark")
+    )
+    assert result["status"] == "matched"
+    assert result["match"]["scryfall_id"] == "bolt-war"
+
+
+def test_set_name_with_no_matching_edition_is_unmatched(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A misspelled/unknown edition name must surface as unmatched, not mis-resolve."""
+    result = resolve_entry(
+        catalog_conn, RawEntry(name="Lightning Bolt", set_name="No Such Edition")
+    )
+    assert result["status"] == "unmatched"
+
+
+def test_set_code_takes_precedence_over_set_name(catalog_conn: sqlite3.Connection) -> None:
+    """When both are present (unusual), the exact code wins over the display name."""
+    result = resolve_entry(
+        catalog_conn,
+        RawEntry(name="Lightning Bolt", set_code="lea", set_name="Nonexistent Set"),
+    )
+    assert result["status"] == "matched"
+    assert result["match"]["scryfall_id"] == "bolt-lea"
+
+
 def test_resolve_entries_preserves_order_and_summarizes(
     catalog_conn: sqlite3.Connection,
 ) -> None:

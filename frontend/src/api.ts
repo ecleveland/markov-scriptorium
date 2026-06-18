@@ -194,6 +194,9 @@ export interface ResolveEntry {
   set_code?: string | null
   collector_number?: string | null
   quantity?: number
+  // CSV imports (VEG-415): an exact printing pin, or an edition display name.
+  scryfall_id?: string | null
+  set_name?: string | null
 }
 
 export type ResolutionStatus = 'matched' | 'ambiguous' | 'unmatched'
@@ -207,6 +210,8 @@ export interface ResolveResult {
     finish: string | null
     condition: string | null
     language: string | null
+    scryfall_id?: string | null
+    set_name?: string | null
   }
   status: ResolutionStatus
   match: CardPrinting | null
@@ -235,6 +240,7 @@ export interface BulkInscribeRow {
   quantity: number
   finish: Finish
   condition: Condition
+  language?: string
   location?: string | null
 }
 
@@ -251,5 +257,54 @@ export async function inscribeBulk(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rows }),
+  })
+}
+
+// --- Bulk onboarding: CSV import (VEG-415) ---------------------------------
+
+/** Collection-export CSV sources we can parse. */
+export const CSV_SOURCES = ['manabox', 'deckbox', 'archidekt'] as const
+export type CsvSource = (typeof CSV_SOURCES)[number]
+
+/** One normalized CSV row, shaped to become a resolve entry. */
+export interface CsvRow {
+  row_number: number
+  name: string
+  quantity: number
+  set_code: string | null
+  set_name: string | null
+  collector_number: string | null
+  scryfall_id: string | null
+  finish: string | null
+  condition: string | null
+  language: string | null
+}
+
+/** A CSV data row the parser could not read — surfaced, never dropped. */
+export interface CsvProblem {
+  row_number: number
+  text: string
+  reason: string
+}
+
+export interface CsvParseResult {
+  format: CsvSource
+  entries: CsvRow[]
+  problems: CsvProblem[]
+}
+
+/**
+ * Parse a collection CSV into normalized rows + per-row problems. `format`
+ * overrides header auto-detection (for a hand-edited or unrecognized export).
+ * An unrecognized header with no override throws an ApiError (422).
+ */
+export async function parseCsv(
+  text: string,
+  format?: CsvSource,
+): Promise<CsvParseResult> {
+  return request<CsvParseResult>('/onboarding/parse-csv', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, format }),
   })
 }

@@ -46,6 +46,7 @@ export function StatusHeader() {
       <nav className="scriptorium-nav" aria-label="Primary">
         <Link to="/inscribe">Inscribe</Link>
         <Link to="/import/decklist">Decklist</Link>
+        <Link to="/import/csv">CSV</Link>
       </nav>
       <p className="status" data-state={state}>
         Backend: {label}

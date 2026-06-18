@@ -12,12 +12,12 @@ from contextlib import closing
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from scriptorium import inventory
 from scriptorium.db import connect
-from scriptorium.onboarding import decklist, resolution
+from scriptorium.onboarding import csv_import, decklist, resolution
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
@@ -38,6 +38,9 @@ class RawEntryIn(BaseModel):
     finish: str | None = None
     condition: str | None = None
     language: str | None = None
+    # CSV imports (VEG-415): an exact printing pin, or an edition display name.
+    scryfall_id: str | None = None
+    set_name: str | None = None
 
 
 class ParseRequest(BaseModel):
@@ -56,6 +59,43 @@ def parse(payload: ParseRequest) -> dict[str, Any]:
     """
     result = decklist.parse_decklist(payload.text)
     return {
+        "entries": [asdict(entry) for entry in result.entries],
+        "problems": [asdict(problem) for problem in result.problems],
+    }
+
+
+class ParseCsvRequest(BaseModel):
+    """Body for parsing a collection CSV (POST /onboarding/parse-csv).
+
+    ``format`` overrides header auto-detection when the user picks a source
+    explicitly (a hand-edited export, an unrecognized header)."""
+
+    text: str = Field(min_length=1, max_length=PARSE_MAX_CHARS)
+    format: csv_import.CsvFormat | None = None
+
+
+@router.post("/parse-csv")
+def parse_csv(payload: ParseCsvRequest) -> dict[str, Any]:
+    """Parse a Manabox / Deckbox / Archidekt CSV into entries + per-row problems.
+
+    Catalog-free, like ``/parse``: the source set/ID pins resolve to printings in
+    the ``/resolve`` step. An unrecognized header (with no ``format`` override) is
+    a 422 carrying the observed headers and the supported sources so the UI can
+    prompt for an explicit choice.
+    """
+    try:
+        result = csv_import.parse_csv(payload.text, payload.format)
+    except csv_import.UnknownCsvFormat as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Could not recognize the CSV format. Choose a source explicitly.",
+                "headers": exc.headers,
+                "supported": list(csv_import.SUPPORTED_FORMATS),
+            },
+        ) from exc
+    return {
+        "format": result.format,
         "entries": [asdict(entry) for entry in result.entries],
         "problems": [asdict(problem) for problem in result.problems],
     }

@@ -28,7 +28,12 @@ ResolutionStatus = Literal["matched", "ambiguous", "unmatched"]
 
 @dataclass(frozen=True)
 class RawEntry:
-    """One import line: a card name plus optional printing/acquisition details."""
+    """One import line: a card name plus optional printing/acquisition details.
+
+    ``scryfall_id`` and ``set_name`` exist for CSV imports (VEG-415): a Manabox /
+    Archidekt row carries the exact Scryfall ID, while a Deckbox row names the
+    edition rather than its code. A decklist line sets neither.
+    """
 
     name: str
     set_code: str | None = None
@@ -37,15 +42,36 @@ class RawEntry:
     finish: str | None = None
     condition: str | None = None
     language: str | None = None
+    scryfall_id: str | None = None
+    set_name: str | None = None
 
 
 def resolve_entry(conn: sqlite3.Connection, entry: RawEntry) -> dict[str, Any]:
     """Resolve one raw entry against the catalog; see module docs for statuses."""
+    # A Scryfall ID names one exact printing. Honor it when it's in the local
+    # catalog; a stale or foreign ID falls through to the name match so a row
+    # whose name still resolves isn't lost.
+    if entry.scryfall_id:
+        card = catalog.get_card(conn, entry.scryfall_id.strip())
+        if card is not None:
+            # Drop card_faces so the match matches the name-path printing shape.
+            printing = {key: value for key, value in card.items() if key != "card_faces"}
+            return {
+                "input": asdict(entry),
+                "status": "matched",
+                "match": printing,
+                "candidates": [],
+            }
+
     printings = catalog.printings_by_name(conn, entry.name)
 
     if entry.set_code:
         wanted = entry.set_code.strip().lower()
         printings = [p for p in printings if p["set_code"].lower() == wanted]
+    elif entry.set_name:
+        # Deckbox pins the edition by its display name, not a code.
+        wanted_name = entry.set_name.strip().lower()
+        printings = [p for p in printings if p["set_name"].lower() == wanted_name]
     if entry.collector_number:
         # Case-insensitive like set_code: collector numbers can carry letters
         # (e.g. "123a"), and an import shouldn't miss on a case mismatch.
