@@ -1,50 +1,51 @@
 .scriptorium {
   margin: auto;
-  padding: 2rem;
+  padding: var(--space-6);
   max-width: 36rem;
   text-align: center;
 }
 
 .scriptorium h1 {
-  margin: 0 0 0.25rem;
-  font-size: 2.75rem;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-3xl);
   letter-spacing: 0.03em;
   color: var(--gold);
 }
 
 .tagline {
-  margin-bottom: 2.5rem;
+  margin-bottom: var(--space-8);
   font-style: italic;
-  color: var(--ink-dim);
+  color: var(--muted);
 }
 
 .scriptorium-nav {
   display: flex;
-  gap: 1.25rem;
+  gap: var(--space-5);
   justify-content: center;
-  margin: 0 0 1rem;
-  font-size: 0.9rem;
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .status {
   display: inline-block;
-  padding: 0.6rem 1rem;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   letter-spacing: 0.02em;
 }
 
 .status[data-state='ok'] {
-  color: #7faf74;
+  color: var(--success);
 }
 .status[data-state='pending'] {
-  color: var(--ink-dim);
+  color: var(--muted);
 }
 .status[data-state='error'] {
-  color: #c46a6a;
+  color: var(--danger);
 }
