@@ -21,6 +21,19 @@ A hybrid Python + TypeScript monorepo (see [ADR 0001](docs/decisions/0001-founda
 
 ## Development
 
+### Run the whole stack
+
+```bash
+./dev.sh           # backend (:8000) + frontend (:5173) with hot reload; Ctrl-C stops both
+./dev.sh --full    # same, but download the real Scryfall bulk data (~500 MB) on startup
+./stop.sh          # free the dev ports after a crash / orphaned run
+```
+
+By default `dev.sh` runs in **fast mode**: it skips the Scryfall download and seeds a
+handful of cards (`backend/scripts/seed_dev.py`, idempotent) so the Inscribe flow works
+immediately. Use `--full` when you want the complete catalog. The two servers can also be
+run separately (below).
+
 ### Backend (Python + uv)
 
 Requires [uv](https://docs.astral.sh/uv/). From `backend/`:
