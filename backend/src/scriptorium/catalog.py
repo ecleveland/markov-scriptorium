@@ -81,6 +81,25 @@ def get_card(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] | Non
     return card
 
 
+def printings_by_name(conn: sqlite3.Connection, name: str) -> list[dict[str, Any]]:
+    """Return every printing whose name equals ``name`` (case-insensitive).
+
+    Used by bulk onboarding to resolve a plain card name to its concrete
+    printings. The match is exact (not the fuzzy trigram search), since a bulk
+    import line names a specific card; same name across sets yields several
+    printings, ordered oldest-first for a stable, predictable candidate list.
+    """
+    term = name.strip()
+    if not term:
+        return []
+    rows = conn.execute(
+        "SELECT * FROM cards WHERE name = ? COLLATE NOCASE "
+        "ORDER BY released_at, set_code, collector_number",
+        (term,),
+    ).fetchall()
+    return [_row_to_card(row) for row in rows]
+
+
 def search_cards(
     conn: sqlite3.Connection, query: str, *, limit: int = 20, offset: int = 0
 ) -> tuple[list[dict[str, Any]], int]:

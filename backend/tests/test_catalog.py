@@ -247,3 +247,14 @@ def test_autocomplete_caps_at_limit_with_many_matches(catalog_conn: sqlite3.Conn
     names = catalog.autocomplete_names(catalog_conn, "obl", limit=10)
     assert len(names) == 10
     assert len(set(names)) == 10
+
+
+def test_printings_by_name_exact_case_insensitive_ordered(catalog_conn: sqlite3.Connection) -> None:
+    """Exact (case-insensitive) name match returns every printing, oldest-first."""
+    printings = catalog.printings_by_name(catalog_conn, "lightning BOLT")
+    assert [p["scryfall_id"] for p in printings] == ["bolt-1", "bolt-2"]
+    # JSON columns come back deserialized, like the other catalog reads.
+    assert printings[0]["colors"] == ["R"]
+    # A name with no printing, and a blank query, both yield [].
+    assert catalog.printings_by_name(catalog_conn, "Black Lotus") == []
+    assert catalog.printings_by_name(catalog_conn, "  ") == []

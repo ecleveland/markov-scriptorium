@@ -130,6 +130,105 @@ def test_create_lot_empty_tags_round_trip(catalog_conn: sqlite3.Connection) -> N
     assert raw == "[]"
 
 
+# --- create_lots (bulk) ----------------------------------------------------
+
+
+def test_create_lots_inserts_all_and_returns_enriched(catalog_conn: sqlite3.Connection) -> None:
+    lots = inventory.create_lots(
+        catalog_conn,
+        [
+            {"scryfall_id": "bolt-1", "quantity": 2, "finish": "foil"},
+            {"scryfall_id": "helix-1", "quantity": 1},
+        ],
+    )
+    assert [lot["scryfall_id"] for lot in lots] == ["bolt-1", "helix-1"]
+    assert lots[0]["quantity"] == 2 and lots[0]["finish"] == "foil"
+    assert lots[0]["card"]["name"] == "Lightning Bolt"
+    # Defaults fill the NOT-NULL columns a row omits.
+    assert (lots[1]["finish"], lots[1]["condition"], lots[1]["language"]) == (
+        "nonfoil",
+        "NM",
+        "en",
+    )
+
+
+def test_create_lots_is_atomic_on_a_bad_row(catalog_conn: sqlite3.Connection) -> None:
+    """One unknown printing rolls the whole batch back — no partial collection."""
+    with pytest.raises(sqlite3.IntegrityError):
+        inventory.create_lots(
+            catalog_conn,
+            [
+                {"scryfall_id": "bolt-1", "quantity": 1},
+                {"scryfall_id": "ghost", "quantity": 1},  # FK violation
+            ],
+        )
+    # The good row before the bad one must not have landed.
+    count = catalog_conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+    assert count == 0
+
+
+def test_create_lots_commits(catalog_conn: sqlite3.Connection) -> None:
+    inventory.create_lots(catalog_conn, [{"scryfall_id": "bolt-1", "quantity": 1}])
+    with closing(db.connect()) as other:
+        count = other.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+    assert count == 1
+
+
+def test_create_lots_applies_defaults_for_explicit_none(catalog_conn: sqlite3.Connection) -> None:
+    """A NOT-NULL column passed as explicit None falls back to the schema default."""
+    row = {
+        "scryfall_id": "bolt-1",
+        "quantity": None,
+        "finish": None,
+        "condition": None,
+        "language": None,
+    }
+    lots = inventory.create_lots(catalog_conn, [row])
+    assert (lots[0]["quantity"], lots[0]["finish"], lots[0]["condition"], lots[0]["language"]) == (
+        1,
+        "nonfoil",
+        "NM",
+        "en",
+    )
+
+
+def test_create_lots_keeps_duplicate_rows_as_separate_lots(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """Two identical rows (e.g. a repeated decklist line) become two distinct lots."""
+    lots = inventory.create_lots(
+        catalog_conn,
+        [{"scryfall_id": "bolt-1", "quantity": 1}, {"scryfall_id": "bolt-1", "quantity": 1}],
+    )
+    assert len({lot["id"] for lot in lots}) == 2
+    total = catalog_conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+    assert total == 2
+
+
+def test_create_lots_round_trips_tags(catalog_conn: sqlite3.Connection) -> None:
+    lots = inventory.create_lots(catalog_conn, [{"scryfall_id": "bolt-1", "tags": ["staple"]}])
+    assert lots[0]["tags"] == ["staple"]
+
+
+# --- existing_printing_ids -------------------------------------------------
+
+
+def test_existing_printing_ids_filters_to_present(catalog_conn: sqlite3.Connection) -> None:
+    present = inventory.existing_printing_ids(catalog_conn, ["bolt-1", "helix-1", "ghost"])
+    assert present == {"bolt-1", "helix-1"}
+    assert inventory.existing_printing_ids(catalog_conn, []) == set()
+
+
+def test_existing_printing_ids_crosses_chunk_boundary(catalog_conn: sqlite3.Connection) -> None:
+    """More distinct ids than _ID_QUERY_CHUNK are all resolved across chunks."""
+    ids = [f"card-{i:04d}" for i in range(1200)]  # > 2 chunks of 500
+    for scryfall_id in ids:
+        _insert_card(catalog_conn, scryfall_id, "Filler")
+    catalog_conn.commit()
+    present = inventory.existing_printing_ids(catalog_conn, [*ids, "ghost-a", "ghost-b"])
+    assert present == set(ids)
+
+
 # --- printing_exists -------------------------------------------------------
 
 

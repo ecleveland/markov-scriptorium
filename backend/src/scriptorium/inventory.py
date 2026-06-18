@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterable
 from typing import Any
 
 # Inventory columns settable on insert (id is the surrogate key; everything else
@@ -36,6 +37,15 @@ _INSERT_COLUMNS = (
 # Columns PATCH may change (VEG-218). A fixed allowlist: callers never name
 # columns directly, so a bad key can't reach the SQL.
 _UPDATABLE_COLUMNS = ("quantity", "condition", "location", "notes")
+
+# Schema defaults for the NOT-NULL columns, applied when a bulk row omits them
+# (an explicit NULL would violate the constraint instead of taking the default).
+_LOT_DEFAULTS = {"quantity": 1, "finish": "nonfoil", "condition": "NM", "language": "en"}
+
+# Upper bound on one bulk import — well above a large personal collection, low
+# enough to bound a single request's work. Shared by the bulk-inscribe and
+# resolve endpoints so preview and commit accept the same batch size.
+MAX_BULK_ROWS = 10000
 
 # Card display fields joined onto each lot, under a nested ``card`` object.
 _CARD_DISPLAY_COLUMNS = (
@@ -79,6 +89,28 @@ def printing_exists(conn: sqlite3.Connection, scryfall_id: str) -> bool:
     return row is not None
 
 
+# SQLite caps host parameters per statement; chunk well under it for the IN query.
+_ID_QUERY_CHUNK = 500
+
+
+def existing_printing_ids(conn: sqlite3.Connection, scryfall_ids: Iterable[str]) -> set[str]:
+    """Return the subset of ``scryfall_ids`` that exist in the catalog.
+
+    A single batched lookup for bulk inscribe's up-front validation, chunked to
+    stay under SQLite's per-statement parameter limit on large imports.
+    """
+    unique = list(set(scryfall_ids))
+    present: set[str] = set()
+    for start in range(0, len(unique), _ID_QUERY_CHUNK):
+        chunk = unique[start : start + _ID_QUERY_CHUNK]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = conn.execute(
+            f"SELECT scryfall_id FROM cards WHERE scryfall_id IN ({placeholders})", chunk
+        ).fetchall()
+        present.update(row[0] for row in rows)
+    return present
+
+
 def create_lot(
     conn: sqlite3.Connection,
     *,
@@ -99,31 +131,75 @@ def create_lot(
     catalog first (see :func:`printing_exists`); otherwise the foreign key
     rejects the insert with :class:`sqlite3.IntegrityError`.
     """
-    values: dict[str, Any] = {
-        "scryfall_id": scryfall_id,
-        "quantity": quantity,
-        "finish": finish,
-        "condition": condition,
-        "language": language,
-        "location": location,
-        "acquired_at": acquired_at,
-        "price_paid": price_paid,
-        "notes": notes,
-        "tags": json.dumps(tags) if tags is not None else None,
-    }
+    lot_id = _insert_lot(
+        conn,
+        {
+            "scryfall_id": scryfall_id,
+            "quantity": quantity,
+            "finish": finish,
+            "condition": condition,
+            "language": language,
+            "location": location,
+            "acquired_at": acquired_at,
+            "price_paid": price_paid,
+            "notes": notes,
+            "tags": tags,
+        },
+    )
+    conn.commit()
+    return _require_lot(conn, lot_id)
+
+
+def create_lots(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Insert many lots in one transaction; return the enriched lots, in order.
+
+    All-or-nothing: if any row fails (e.g. an unknown ``scryfall_id`` the foreign
+    key rejects), the whole batch is rolled back and the error re-raised, so a
+    bulk import never lands a partial collection. Each ``row`` uses the same
+    field names as :func:`create_lot`'s keyword arguments.
+    """
+    ids: list[int] = []
+    try:
+        for row in rows:
+            ids.append(_insert_lot(conn, row))
+    except sqlite3.Error:
+        conn.rollback()
+        raise
+    conn.commit()
+    return [_require_lot(conn, lot_id) for lot_id in ids]
+
+
+def _insert_lot(conn: sqlite3.Connection, fields: dict[str, Any]) -> int:
+    """Insert one lot row (no commit) and return its new id.
+
+    ``fields`` carries the create_lot field names; ``tags`` (a list or ``None``)
+    is serialized to JSON text here. The NOT-NULL columns fall back to the
+    schema defaults when a key is missing or ``None`` (an explicit NULL would
+    violate the constraint rather than take the default).
+    """
+    values = {col: fields.get(col) for col in _INSERT_COLUMNS}
+    for col, default in _LOT_DEFAULTS.items():
+        if values[col] is None:
+            values[col] = default
+    tags = fields.get("tags")
+    values["tags"] = json.dumps(tags) if tags is not None else None
     placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
     cur = conn.execute(
         f"INSERT INTO inventory ({', '.join(_INSERT_COLUMNS)}) VALUES ({placeholders})",
         tuple(values[col] for col in _INSERT_COLUMNS),
     )
-    conn.commit()
     lot_id = cur.lastrowid
     if lot_id is None:  # pragma: no cover — sqlite always reports a rowid for this insert
         raise RuntimeError("INSERT into inventory returned no row id")
-    created = get_lot(conn, lot_id)
-    if created is None:  # pragma: no cover — the row was just inserted and committed
+    return lot_id
+
+
+def _require_lot(conn: sqlite3.Connection, lot_id: int) -> dict[str, Any]:
+    """Read back a lot that was just inserted; raise if it has vanished."""
+    lot = get_lot(conn, lot_id)
+    if lot is None:  # pragma: no cover — the row was just inserted and committed
         raise RuntimeError(f"inventory lot {lot_id} could not be read back after insert")
-    return created
+    return lot
 
 
 def get_lot(conn: sqlite3.Connection, lot_id: int) -> dict[str, Any] | None:
