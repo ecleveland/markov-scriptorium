@@ -137,6 +137,22 @@ def test_name_match_is_case_insensitive(catalog_conn: sqlite3.Connection) -> Non
     assert result["status"] == "matched"
 
 
+def test_front_face_name_resolves(catalog_conn: sqlite3.Connection) -> None:
+    """A decklist names a multi-faced card by its front face; it must still match."""
+    _insert_card(
+        catalog_conn,
+        "delver-isd",
+        "Delver of Secrets // Insectile Aberration",
+        "isd",
+        "51",
+        layout="transform",
+    )
+    catalog_conn.commit()
+    result = resolve_entry(catalog_conn, RawEntry(name="Delver of Secrets"))
+    assert result["status"] == "matched"
+    assert result["match"]["scryfall_id"] == "delver-isd"
+
+
 def test_resolve_entries_preserves_order_and_summarizes(
     catalog_conn: sqlite3.Connection,
 ) -> None:

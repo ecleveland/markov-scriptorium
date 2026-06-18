@@ -1,0 +1,125 @@
+.decklist {
+  max-width: 44rem;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.decklist__header,
+.decklist__finish {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.decklist__input,
+.decklist__input-label {
+  display: block;
+}
+
+.decklist__input textarea {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  font-family: inherit;
+}
+
+.decklist__input-label,
+.decklist__finish label {
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.decklist__counts {
+  opacity: 0.85;
+}
+
+.decklist__finish {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.25rem;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.decklist__finish select {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.35rem;
+}
+
+.decklist__rows {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.decklist__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.decklist__row--matched {
+  border-left-color: #5a9e6f;
+}
+
+.decklist__row--ambiguous {
+  border-left-color: #c2a14d;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.decklist__row--unmatched {
+  border-left-color: #a85b5b;
+}
+
+.decklist__line {
+  font-weight: 600;
+}
+
+.decklist__unmatched {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.candidate-picker {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.25rem;
+}
+
+.candidate-picker button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.candidate-picker button:hover,
+.candidate-picker [aria-selected='true'] button {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.decklist__problems {
+  margin-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: 1rem;
+}
+
+.decklist__skip-note {
+  opacity: 0.8;
+  font-size: 0.9rem;
+}

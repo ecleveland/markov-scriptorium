@@ -43,6 +43,10 @@ export function StatusHeader() {
       <h1>
         <Link to="/inscribe">The Markov Scriptorium</Link>
       </h1>
+      <nav className="scriptorium-nav" aria-label="Primary">
+        <Link to="/inscribe">Inscribe</Link>
+        <Link to="/import/decklist">Decklist</Link>
+      </nav>
       <p className="status" data-state={state}>
         Backend: {label}
       </p>

@@ -82,20 +82,31 @@ def get_card(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] | Non
 
 
 def printings_by_name(conn: sqlite3.Connection, name: str) -> list[dict[str, Any]]:
-    """Return every printing whose name equals ``name`` (case-insensitive).
+    """Return every printing matching ``name`` (case-insensitive), front-face aware.
 
     Used by bulk onboarding to resolve a plain card name to its concrete
     printings. The match is exact (not the fuzzy trigram search), since a bulk
     import line names a specific card; same name across sets yields several
     printings, ordered oldest-first for a stable, predictable candidate list.
+
+    Multi-faced cards are stored under their full ``"Front // Back"`` name, but a
+    decklist line names only the front face (``Delver of Secrets``). So a query
+    also matches a card whose front face — the text before the ``" // "`` —
+    equals it, not just the whole name. The back face is intentionally not a
+    match: decklists reference the front.
     """
     term = name.strip()
     if not term:
         return []
     rows = conn.execute(
-        "SELECT * FROM cards WHERE name = ? COLLATE NOCASE "
+        "SELECT * FROM cards "
+        "WHERE name = :term COLLATE NOCASE "
+        # instr() is 0 (falsey) for single-faced names, so the front-face branch
+        # only fires for stored "Front // Back" names.
+        "   OR (instr(name, ' // ') > 0 "
+        "       AND substr(name, 1, instr(name, ' // ') - 1) = :term COLLATE NOCASE) "
         "ORDER BY released_at, set_code, collector_number",
-        (term,),
+        {"term": term},
     ).fetchall()
     return [_row_to_card(row) for row in rows]
 

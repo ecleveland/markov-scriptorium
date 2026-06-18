@@ -73,6 +73,12 @@ async function errorDetail(res: Response): Promise<string | undefined> {
   try {
     const body = (await res.json()) as { detail?: unknown }
     if (typeof body.detail === 'string') return body.detail
+    // Structured details (e.g. the bulk-inscribe 422 `{message, unknown}`) carry
+    // a human sentence in `message` — surface that, not the raw JSON blob.
+    if (body.detail != null && typeof body.detail === 'object') {
+      const message = (body.detail as { message?: unknown }).message
+      if (typeof message === 'string') return message
+    }
     if (body.detail != null) return JSON.stringify(body.detail)
   } catch {
     // Non-JSON body; the status code alone will have to do.
@@ -144,5 +150,106 @@ export async function inscribe(body: InscribeRequest): Promise<InventoryLot> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+// --- Bulk onboarding: decklist paste (VEG-414) -----------------------------
+
+/** Max rows the backend accepts in one resolve/bulk batch (mirrors the API). */
+export const MAX_BULK_ROWS = 10000
+
+/** One parsed decklist line, ready to become a resolve entry. */
+export interface ParsedLine {
+  line_number: number
+  name: string
+  quantity: number
+  set_code: string | null
+  collector_number: string | null
+}
+
+/** A decklist line the parser could not read — surfaced, never dropped. */
+export interface ParseProblem {
+  line_number: number
+  text: string
+  reason: string
+}
+
+export interface ParseResult {
+  entries: ParsedLine[]
+  problems: ParseProblem[]
+}
+
+/** Parse pasted decklist text into entries + per-line problems (no catalog). */
+export async function parseDecklist(text: string): Promise<ParseResult> {
+  return request<ParseResult>('/onboarding/parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+/** One entry to resolve against the catalog. Mirrors the backend RawEntry. */
+export interface ResolveEntry {
+  name: string
+  set_code?: string | null
+  collector_number?: string | null
+  quantity?: number
+}
+
+export type ResolutionStatus = 'matched' | 'ambiguous' | 'unmatched'
+
+/** How one entry resolved: a single match, several candidates, or nothing. */
+export interface ResolveResult {
+  // Echoed back verbatim — the backend serializes the whole RawEntry, so the
+  // acquisition fields are present even though the decklist flow doesn't set them.
+  input: ResolveEntry & {
+    quantity: number
+    finish: string | null
+    condition: string | null
+    language: string | null
+  }
+  status: ResolutionStatus
+  match: CardPrinting | null
+  candidates: CardPrinting[]
+}
+
+export interface ResolveResponse {
+  results: ResolveResult[]
+  summary: Record<ResolutionStatus, number>
+}
+
+/** Resolve parsed entries to catalog printings; writes nothing. */
+export async function resolveDecklist(
+  entries: ResolveEntry[],
+): Promise<ResolveResponse> {
+  return request<ResolveResponse>('/onboarding/resolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+  })
+}
+
+/** One resolved row to inscribe in the atomic bulk batch. */
+export interface BulkInscribeRow {
+  scryfall_id: string
+  quantity: number
+  finish: Finish
+  condition: Condition
+  location?: string | null
+}
+
+export interface BulkInscribeResponse {
+  created: InventoryLot[]
+  count: number
+}
+
+/** Inscribe many resolved rows in one all-or-nothing batch. */
+export async function inscribeBulk(
+  rows: BulkInscribeRow[],
+): Promise<BulkInscribeResponse> {
+  return request<BulkInscribeResponse>('/inventory/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
   })
 }
