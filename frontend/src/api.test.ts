@@ -4,6 +4,7 @@ import {
   autocompleteNames,
   inscribe,
   inscribeBulk,
+  parseCsv,
   parseDecklist,
   resolveDecklist,
   searchPrintings,
@@ -204,6 +205,54 @@ describe('inscribeBulk', () => {
     ).rejects.toMatchObject({
       status: 422,
       detail: 'nothing was imported. Re-run the preview and try again.',
+    })
+  })
+})
+
+describe('parseCsv', () => {
+  it('POSTs text + optional format and returns the parsed result', async () => {
+    const body = { format: 'manabox', entries: [], problems: [] }
+    const fetchMock = mockFetch(body)
+    const result = await parseCsv('Name,Quantity\nSol Ring,1', 'manabox')
+    expect(result).toEqual(body)
+    expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/parse-csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: 'Name,Quantity\nSol Ring,1',
+        format: 'manabox',
+      }),
+    })
+  })
+
+  it('omits format when auto-detecting', async () => {
+    const fetchMock = mockFetch({
+      format: 'deckbox',
+      entries: [],
+      problems: [],
+    })
+    await parseCsv('Count,Name\n1,Sol Ring')
+    expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/parse-csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Count,Name\n1,Sol Ring' }),
+    })
+  })
+
+  it('throws ApiError with the message on an unrecognized format', async () => {
+    mockFetch(
+      {
+        detail: {
+          message: 'Could not recognize the CSV format.',
+          supported: [],
+        },
+      },
+      false,
+      422,
+    )
+    await expect(parseCsv('Foo,Bar\n1,2')).rejects.toMatchObject({
+      status: 422,
+      detail: 'Could not recognize the CSV format.',
     })
   })
 })
