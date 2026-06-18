@@ -54,11 +54,12 @@ def test_unknown_header_raises() -> None:
         parse_csv("Foo,Bar,Baz\n1,2,3\n")
 
 
-def test_declared_format_overrides_detection() -> None:
-    # Manabox columns but force deckbox: parsing follows the declared spec, so
-    # the (absent) deckbox columns make every row a problem rather than guessing.
-    result = parse_csv(MANABOX, declared_format="deckbox")
-    assert result.format == "deckbox"
+def test_declared_format_is_honored_when_it_matches() -> None:
+    # Declaring the matching format skips detection and parses normally; a
+    # mismatched declaration is rejected (see test_declared_format_mismatch).
+    result = parse_csv(MANABOX, declared_format="manabox")
+    assert result.format == "manabox"
+    assert [entry.name for entry in result.entries] == ["Lightning Bolt", "Sol Ring"]
 
 
 # --- Manabox ---------------------------------------------------------------
@@ -174,6 +175,45 @@ def test_every_data_row_is_an_entry_or_a_problem() -> None:
     )
     result = parse_csv(csv_text)
     assert len(result.entries) + len(result.problems) == 2
+
+
+def test_row_with_extra_columns_is_a_problem_not_a_crash() -> None:
+    """A row with more cells than the header is reported, never crashes the parse."""
+    csv_text = (
+        "Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,"
+        "Scryfall ID,Condition,Language\n"
+        "Sol Ring,cmd,Commander,256,normal,uncommon,1,sol-cmd,near_mint,en,OOPS,EXTRA\n"
+    )
+    result = parse_csv(csv_text)
+    assert result.entries == []
+    assert len(result.problems) == 1
+    assert "column" in result.problems[0].reason
+
+
+def test_declared_format_mismatch_is_rejected() -> None:
+    """Forcing a format whose columns are absent must not silently mis-map."""
+    deckbox_text = "Count,Name,Edition,Card Number,Condition,Language,Foil\n"
+    with pytest.raises(UnknownCsvFormat):
+        parse_csv(deckbox_text, declared_format="manabox")
+
+
+def test_etched_finish_normalizes() -> None:
+    csv_text = (
+        "Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,"
+        "Scryfall ID,Condition,Language\n"
+        "Mishra's Bauble,2xm,Double Masters,260,etched,rare,1,bauble,near_mint,en\n"
+    )
+    (entry,) = parse_csv(csv_text).entries
+    assert entry.finish == "etched"
+
+
+def test_deckbox_played_maps_to_moderately_played() -> None:
+    csv_text = (
+        "Count,Name,Edition,Card Number,Condition,Language,Foil\n"
+        "1,Counterspell,Modern Horizons 2,267,Played,English,\n"
+    )
+    (entry,) = parse_csv(csv_text).entries
+    assert entry.condition == "MP"
 
 
 def test_blank_lines_between_rows_are_ignored() -> None:

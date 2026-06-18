@@ -28,7 +28,9 @@ disjoint set of distinctive columns (Manabox `scryfall id + set code + foil`,
 Archidekt `scryfall id + edition code + finish`, Deckbox `count + edition + card
 number`). An unrecognized header with no `format` override is a 422 carrying the
 observed headers and the supported sources, so the UI prompts for an explicit
-choice. A declared `format` skips detection (hand-edited exports).
+choice. A declared `format` skips detection but is still validated against its signature
+columns — forcing a format the file doesn't structurally match is rejected
+(otherwise an absent Finish column would silently read as non-foil).
 
 **3. Per-source normalization; an unmappable value is a row problem.** Finish and
 condition map per source into `{nonfoil,foil,etched}` / `{NM,LP,MP,HP,DMG}`; a

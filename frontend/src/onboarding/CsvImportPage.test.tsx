@@ -191,6 +191,119 @@ describe('CsvImportPage', () => {
     expect(parseMock).toHaveBeenLastCalledWith('Foo,Bar\n1,2', 'deckbox')
   })
 
+  it('disambiguates an ambiguous row and inscribes the chosen printing', async () => {
+    parseMock.mockResolvedValue(
+      parsed([
+        csvRow({ name: 'Lightning Bolt', finish: 'nonfoil', condition: 'NM' }),
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Lightning Bolt', 1),
+          status: 'ambiguous',
+          match: null,
+          candidates: [
+            printing({
+              scryfall_id: 'lea-bolt',
+              name: 'Lightning Bolt',
+              set_name: 'Limited Edition Alpha',
+            }),
+            printing({
+              scryfall_id: 'm10-bolt',
+              name: 'Lightning Bolt',
+              set_name: 'Magic 2010',
+              set_code: 'm10',
+            }),
+          ],
+        },
+      ],
+      summary: { matched: 0, ambiguous: 1, unmatched: 0 },
+    })
+    inscribeMock.mockResolvedValue({ created: [], count: 1 })
+
+    const user = await resolveText('Name,Quantity\nLightning Bolt,1')
+
+    // Nothing chosen yet → inscribe disabled.
+    await screen.findByRole('heading', { name: 'Review the Import' })
+    expect(
+      screen.getByRole('button', { name: /Inscribe 0 folios/ }),
+    ).toBeDisabled()
+
+    // Pick the M10 printing → row becomes ready and inscribes with that id.
+    await user.click(screen.getByRole('button', { name: /Magic 2010/ }))
+    await user.click(
+      await screen.findByRole('button', { name: /Inscribe 1 folio/ }),
+    )
+    await waitFor(() =>
+      expect(inscribeMock).toHaveBeenCalledWith([
+        {
+          scryfall_id: 'm10-bolt',
+          quantity: 1,
+          finish: 'nonfoil',
+          condition: 'NM',
+          language: 'en',
+        },
+      ]),
+    )
+  })
+
+  it('populates the textarea from an uploaded file', async () => {
+    const user = userEvent.setup()
+    parseMock.mockResolvedValue(parsed([csvRow({})]))
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Sol Ring', 1),
+          status: 'matched',
+          match: printing({ scryfall_id: 'sol-cmd' }),
+          candidates: [],
+        },
+      ],
+      summary: { matched: 1, ambiguous: 0, unmatched: 0 },
+    })
+    render(<CsvImportPage />)
+
+    const csv = 'Name,Quantity\nSol Ring,1'
+    const file = new File([csv], 'collection.csv', { type: 'text/csv' })
+    // jsdom doesn't implement Blob.text() reliably; stub it for handleFile.
+    Object.defineProperty(file, 'text', { value: () => Promise.resolve(csv) })
+    await user.upload(screen.getByLabelText('CSV file'), file)
+    // The file contents land in the textarea (async read), ready to resolve.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/paste CSV text/)).toHaveValue(
+        'Name,Quantity\nSol Ring,1',
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Resolve CSV' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Review the Import' }),
+    ).toBeInTheDocument()
+  })
+
+  it('guards against a resolve result/entry length mismatch', async () => {
+    parseMock.mockResolvedValue(
+      parsed([csvRow({}), csvRow({ name: 'Mana Crypt' })]),
+    )
+    // Backend returns fewer results than entries — must not mis-zip or crash.
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Sol Ring', 1),
+          status: 'matched',
+          match: printing({ scryfall_id: 'sol-cmd' }),
+          candidates: [],
+        },
+      ],
+      summary: { matched: 1, ambiguous: 0, unmatched: 0 },
+    })
+    await resolveText('Name,Quantity\nSol Ring,1\nMana Crypt,1')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /returned 1 results for 2 rows/,
+    )
+    expect(inscribeMock).not.toHaveBeenCalled()
+  })
+
   it('reports unreadable rows when nothing parses', async () => {
     parseMock.mockResolvedValue(
       parsed(

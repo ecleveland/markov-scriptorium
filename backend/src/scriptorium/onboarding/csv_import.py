@@ -23,6 +23,10 @@ CsvFormat = Literal["manabox", "deckbox", "archidekt"]
 
 SUPPORTED_FORMATS: tuple[CsvFormat, ...] = ("manabox", "deckbox", "archidekt")
 
+# DictReader stashes a row's surplus cells (more fields than headers) under this
+# key as a list, so a ragged row is reported rather than crashing the parse.
+_EXTRA = "__extra__"
+
 
 @dataclass(frozen=True)
 class CsvRow:
@@ -171,9 +175,14 @@ _LANGUAGE: dict[str, str] = {
 }
 
 
+def _columns(header: list[str]) -> frozenset[str]:
+    """The header's column names, trimmed and lowercased, for signature matching."""
+    return frozenset(column.strip().lower() for column in header)
+
+
 def detect_format(header: list[str]) -> CsvFormat | None:
     """Return the unique source whose signature columns are all present, else None."""
-    columns = frozenset(column.strip().lower() for column in header)
+    columns = _columns(header)
     matches = [fmt for fmt, spec in _SPECS.items() if spec.signature <= columns]
     return matches[0] if len(matches) == 1 else None
 
@@ -186,10 +195,18 @@ def parse_csv(text: str, declared_format: CsvFormat | None = None) -> CsvParseRe
     problem, so nothing is dropped. Raises :class:`UnknownCsvFormat` when no
     format is declared and the header matches none.
     """
-    reader = csv.DictReader(io.StringIO(text))
+    # restkey/restval keep ragged rows addressable: surplus cells land under
+    # _EXTRA (a list) instead of the default None key, and short rows fill with
+    # "" instead of None — so a malformed row becomes a problem, never a crash.
+    reader = csv.DictReader(io.StringIO(text), restkey=_EXTRA, restval="")
     header = list(reader.fieldnames or [])
     fmt = declared_format or detect_format(header)
     if fmt is None:
+        raise UnknownCsvFormat(header)
+    # A declared override must still actually be that format; otherwise its
+    # columns are absent and every row would mis-map (e.g. a missing Foil column
+    # silently reads as non-foil). Verify the signature before trusting it.
+    if declared_format is not None and not _SPECS[declared_format].signature <= _columns(header):
         raise UnknownCsvFormat(header)
     spec = _SPECS[fmt]
 
@@ -205,8 +222,13 @@ def parse_csv(text: str, declared_format: CsvFormat | None = None) -> CsvParseRe
     return CsvParseResult(format=fmt, entries=entries, problems=problems)
 
 
-def _normalize_row(row_number: int, raw: dict[str, str | None], spec: _Spec) -> CsvRow | CsvProblem:
+def _normalize_row(
+    row_number: int, raw: dict[str, str | list[str] | None], spec: _Spec
+) -> CsvRow | CsvProblem:
     text = _raw_text(raw)
+
+    if raw.get(_EXTRA):
+        return CsvProblem(row_number, text, "row has more columns than the header")
 
     name = _clean(raw.get(spec.name))
     if not name:
@@ -220,17 +242,15 @@ def _normalize_row(row_number: int, raw: dict[str, str | None], spec: _Spec) -> 
     if quantity < 1:
         return CsvProblem(row_number, text, "quantity must be at least 1")
 
-    raw_finish = raw.get(spec.finish)
-    finish = _FINISH.get((raw_finish or "").strip().lower())
+    raw_finish = _cell(raw.get(spec.finish)) or ""
+    finish = _FINISH.get(raw_finish.strip().lower())
     if finish is None:
-        return CsvProblem(row_number, text, f"unrecognized finish {(raw_finish or '').strip()!r}")
+        return CsvProblem(row_number, text, f"unrecognized finish {raw_finish.strip()!r}")
 
-    raw_condition = raw.get(spec.condition)
-    condition = _CONDITION.get((raw_condition or "").strip().lower())
+    raw_condition = _cell(raw.get(spec.condition)) or ""
+    condition = _CONDITION.get(raw_condition.strip().lower())
     if condition is None:
-        return CsvProblem(
-            row_number, text, f"unrecognized condition {(raw_condition or '').strip()!r}"
-        )
+        return CsvProblem(row_number, text, f"unrecognized condition {raw_condition.strip()!r}")
 
     return CsvRow(
         row_number=row_number,
@@ -246,7 +266,7 @@ def _normalize_row(row_number: int, raw: dict[str, str | None], spec: _Spec) -> 
     )
 
 
-def _normalize_language(value: str | None) -> str | None:
+def _normalize_language(value: str | list[str] | None) -> str | None:
     """Map a language display name to its short code; pass unknowns through."""
     cleaned = _clean(value)
     if cleaned is None:
@@ -254,14 +274,25 @@ def _normalize_language(value: str | None) -> str | None:
     return _LANGUAGE.get(cleaned.lower(), cleaned)
 
 
-def _clean(value: str | None) -> str | None:
+def _cell(value: str | list[str] | None) -> str | None:
+    """One cell value; the surplus-columns list (under _EXTRA) collapses to None."""
+    return value if isinstance(value, str) else None
+
+
+def _clean(value: str | list[str] | None) -> str | None:
     """Strip a cell; an empty or missing cell becomes None."""
-    if value is None:
+    cell = _cell(value)
+    if cell is None:
         return None
-    stripped = value.strip()
-    return stripped or None
+    return cell.strip() or None
 
 
-def _raw_text(raw: dict[str, str | None]) -> str:
-    """Re-join a row's cells for display in a problem report."""
-    return ",".join(value for value in raw.values() if value)
+def _raw_text(raw: dict[str, str | list[str] | None]) -> str:
+    """Re-join a row's cells for display in a problem report (surplus cells too)."""
+    parts: list[str] = []
+    for value in raw.values():
+        if isinstance(value, list):
+            parts.extend(item for item in value if item)
+        elif value:
+            parts.append(value)
+    return ",".join(parts)

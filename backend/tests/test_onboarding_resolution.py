@@ -190,6 +190,16 @@ def test_set_name_filter_narrows_ambiguous(catalog_conn: sqlite3.Connection) -> 
     assert result["match"]["scryfall_id"] == "bolt-war"
 
 
+def test_set_name_with_no_matching_edition_is_unmatched(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A misspelled/unknown edition name must surface as unmatched, not mis-resolve."""
+    result = resolve_entry(
+        catalog_conn, RawEntry(name="Lightning Bolt", set_name="No Such Edition")
+    )
+    assert result["status"] == "unmatched"
+
+
 def test_set_code_takes_precedence_over_set_name(catalog_conn: sqlite3.Connection) -> None:
     """When both are present (unusual), the exact code wins over the display name."""
     result = resolve_entry(
