@@ -258,3 +258,29 @@ def test_printings_by_name_exact_case_insensitive_ordered(catalog_conn: sqlite3.
     # A name with no printing, and a blank query, both yield [].
     assert catalog.printings_by_name(catalog_conn, "Black Lotus") == []
     assert catalog.printings_by_name(catalog_conn, "  ") == []
+
+
+def test_printings_by_name_matches_front_face(catalog_conn: sqlite3.Connection) -> None:
+    """A multi-faced card resolves by its front-face name (decklists write the front)."""
+    # `dfc-1` is stored as "Delver of Secrets // Insectile Aberration"; a decklist
+    # line names only the front face.
+    front = catalog.printings_by_name(catalog_conn, "Delver of Secrets")
+    assert [p["scryfall_id"] for p in front] == ["dfc-1"]
+    # Case-insensitive, like the full-name match.
+    assert [
+        p["scryfall_id"] for p in catalog.printings_by_name(catalog_conn, "delver OF secrets")
+    ] == ["dfc-1"]
+    # The full "A // B" name still matches exactly.
+    full = catalog.printings_by_name(catalog_conn, "Delver of Secrets // Insectile Aberration")
+    assert [p["scryfall_id"] for p in full] == ["dfc-1"]
+    # Only the front face matches — the back face is not a decklist reference.
+    assert catalog.printings_by_name(catalog_conn, "Insectile Aberration") == []
+
+
+def test_printings_by_name_front_face_does_not_swallow_plain_names(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A single-faced name must not match a different card that merely shares a word."""
+    # "Lightning" is the front-face-shaped prefix of nothing here; the bare word
+    # resolves to no printing (the two Bolts are "Lightning Bolt", not "Lightning").
+    assert catalog.printings_by_name(catalog_conn, "Lightning") == []

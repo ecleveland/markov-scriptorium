@@ -9,6 +9,7 @@ caller disambiguates, then commits via ``POST /inventory/bulk``.
 from __future__ import annotations
 
 from contextlib import closing
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter
@@ -16,9 +17,14 @@ from pydantic import BaseModel, Field
 
 from scriptorium import inventory
 from scriptorium.db import connect
-from scriptorium.onboarding import resolution
+from scriptorium.onboarding import decklist, resolution
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+# Upper bound on a pasted decklist's size. A full Cube list is a few thousand
+# short lines; a megabyte is comfortably above any real paste and caps the work
+# a single request can ask the parser to do.
+PARSE_MAX_CHARS = 1_000_000
 
 
 class RawEntryIn(BaseModel):
@@ -32,6 +38,27 @@ class RawEntryIn(BaseModel):
     finish: str | None = None
     condition: str | None = None
     language: str | None = None
+
+
+class ParseRequest(BaseModel):
+    """Body for parsing raw decklist text (POST /onboarding/parse)."""
+
+    text: str = Field(min_length=1, max_length=PARSE_MAX_CHARS)
+
+
+@router.post("/parse")
+def parse(payload: ParseRequest) -> dict[str, Any]:
+    """Parse decklist text into entries + per-line problems; writes nothing.
+
+    The format-specific step of bulk onboarding: turn pasted text into structured
+    entries the catalog-aware ``/onboarding/resolve`` step can consume, reporting
+    every unreadable line rather than dropping it.
+    """
+    result = decklist.parse_decklist(payload.text)
+    return {
+        "entries": [asdict(entry) for entry in result.entries],
+        "problems": [asdict(problem) for problem in result.problems],
+    }
 
 
 class ResolveRequest(BaseModel):

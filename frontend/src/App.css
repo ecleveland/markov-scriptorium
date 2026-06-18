@@ -18,6 +18,16 @@
   color: var(--ink-dim);
 }
 
+.scriptorium-nav {
+  display: flex;
+  gap: 1.25rem;
+  justify-content: center;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .status {
   display: inline-block;
   padding: 0.6rem 1rem;

@@ -3,6 +3,9 @@ import {
   ApiError,
   autocompleteNames,
   inscribe,
+  inscribeBulk,
+  parseDecklist,
+  resolveDecklist,
   searchPrintings,
   type CardPrinting,
 } from './api'
@@ -127,6 +130,73 @@ describe('inscribe', () => {
         condition: 'NM',
       }),
     })
+  })
+})
+
+describe('parseDecklist', () => {
+  it('POSTs the raw text and returns entries + problems', async () => {
+    const body = { entries: [{ name: 'Sol Ring' }], problems: [] }
+    const fetchMock = mockFetch(body)
+    const result = await parseDecklist('1 Sol Ring')
+    expect(result).toEqual(body)
+    expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '1 Sol Ring' }),
+    })
+  })
+})
+
+describe('resolveDecklist', () => {
+  it('POSTs entries and returns results + summary', async () => {
+    const body = {
+      results: [],
+      summary: { matched: 0, ambiguous: 0, unmatched: 0 },
+    }
+    const fetchMock = mockFetch(body)
+    const entries = [{ name: 'Sol Ring', quantity: 2 }]
+    const result = await resolveDecklist(entries)
+    expect(result).toEqual(body)
+    expect(fetchMock).toHaveBeenCalledWith('/api/onboarding/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries }),
+    })
+  })
+})
+
+describe('inscribeBulk', () => {
+  it('POSTs the rows wrapped in { rows } and returns created + count', async () => {
+    const body = { created: [{ id: 1 }], count: 1 }
+    const fetchMock = mockFetch(body)
+    const rows = [
+      {
+        scryfall_id: 'a',
+        quantity: 4,
+        finish: 'nonfoil' as const,
+        condition: 'NM' as const,
+      },
+    ]
+    const result = await inscribeBulk(rows)
+    expect(result).toEqual(body)
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows }),
+    })
+  })
+
+  it('surfaces the structured 422 detail as a stringified ApiError detail', async () => {
+    mockFetch(
+      { detail: { message: 'unknown rows', unknown: [{ index: 0 }] } },
+      false,
+      422,
+    )
+    await expect(
+      inscribeBulk([
+        { scryfall_id: 'x', quantity: 1, finish: 'nonfoil', condition: 'NM' },
+      ]),
+    ).rejects.toMatchObject({ status: 422 })
   })
 })
 
