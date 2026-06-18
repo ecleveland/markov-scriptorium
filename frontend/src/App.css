@@ -18,34 +18,136 @@
   color: var(--muted);
 }
 
+/* ---- App shell header (VEG-422) ----------------------------------------- */
+
+.scriptorium-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4) var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.scriptorium-header-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
+}
+
+/* Brand mark — wax seal + wordmark, the link home. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.brand-seal {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  filter: drop-shadow(var(--elevation-1));
+}
+.brand-seal-wax {
+  fill: var(--oxblood);
+}
+.brand-seal-ring {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 1.25;
+  opacity: 0.85;
+}
+.brand-seal-mark {
+  fill: var(--gold);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  letter-spacing: 0.02em;
+  line-height: var(--leading-tight);
+}
+.brand-title-accent {
+  color: var(--gold);
+}
+
+/* Primary nav — uppercase sans links with an oxblood active underline. */
 .scriptorium-nav {
   display: flex;
-  gap: var(--space-5);
-  justify-content: center;
-  margin: 0 0 var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.status {
-  display: inline-block;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  letter-spacing: 0.02em;
+.scriptorium-nav a {
+  padding-bottom: var(--space-1);
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.scriptorium-nav a:hover {
+  color: var(--text-primary);
+}
+.scriptorium-nav a[aria-current='page'] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
 }
 
-.status[data-state='ok'] {
-  color: var(--success);
+/* Status chip — compact mono pill with a state-coloured dot. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
-.status[data-state='pending'] {
+
+.status-dot {
+  font-size: 0.7em;
+  line-height: 1;
   color: var(--muted);
 }
-.status[data-state='error'] {
+.status[data-state='ok'] .status-dot {
+  color: var(--success);
+}
+.status[data-state='pending'] .status-dot {
+  color: var(--gold);
+}
+.status[data-state='error'] .status-dot {
   color: var(--danger);
+}
+
+/* Narrow widths: stack the brand above the nav/status row. */
+@media (max-width: 32rem) {
+  .scriptorium-header {
+    justify-content: center;
+    text-align: center;
+  }
+  .scriptorium-header-end {
+    justify-content: center;
+    width: 100%;
+  }
 }
