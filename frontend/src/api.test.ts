@@ -186,9 +186,14 @@ describe('inscribeBulk', () => {
     })
   })
 
-  it('surfaces the structured 422 detail as a stringified ApiError detail', async () => {
+  it('surfaces the structured 422 detail.message, not the raw JSON blob', async () => {
     mockFetch(
-      { detail: { message: 'unknown rows', unknown: [{ index: 0 }] } },
+      {
+        detail: {
+          message: 'nothing was imported. Re-run the preview and try again.',
+          unknown: [{ index: 0 }],
+        },
+      },
       false,
       422,
     )
@@ -196,7 +201,10 @@ describe('inscribeBulk', () => {
       inscribeBulk([
         { scryfall_id: 'x', quantity: 1, finish: 'nonfoil', condition: 'NM' },
       ]),
-    ).rejects.toMatchObject({ status: 422 })
+    ).rejects.toMatchObject({
+      status: 422,
+      detail: 'nothing was imported. Re-run the preview and try again.',
+    })
   })
 })
 

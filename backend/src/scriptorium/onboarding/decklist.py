@@ -51,6 +51,13 @@ class ParsedLine:
     set_code: str | None = None
     collector_number: str | None = None
 
+    def __post_init__(self) -> None:
+        # The parser already rejects a non-positive quantity as a problem; this
+        # makes the invariant total, so a directly-built ParsedLine can't smuggle
+        # quantity 0 (which a NOT NULL / gt=0 column downstream would reject).
+        if self.quantity < 1:
+            raise ValueError("quantity must be at least 1")
+
 
 @dataclass(frozen=True)
 class ParseProblem:

@@ -41,6 +41,11 @@ function parsed(
   return { entries, problems }
 }
 
+/** The echoed RawEntry the backend returns on each resolve result. */
+function inputOf(name: string, quantity: number) {
+  return { name, quantity, finish: null, condition: null, language: null }
+}
+
 afterEach(() => vi.clearAllMocks())
 
 async function resolveText(text: string) {
@@ -81,7 +86,7 @@ describe('DecklistPage', () => {
     const resolveResponse: ResolveResponse = {
       results: [
         {
-          input: { name: 'Sol Ring', quantity: 1 },
+          input: inputOf('Sol Ring', 1),
           status: 'matched',
           match: printing({
             scryfall_id: 'sol-1',
@@ -91,7 +96,7 @@ describe('DecklistPage', () => {
           candidates: [],
         },
         {
-          input: { name: 'Lightning Bolt', quantity: 4 },
+          input: inputOf('Lightning Bolt', 4),
           status: 'ambiguous',
           match: null,
           candidates: [
@@ -107,7 +112,7 @@ describe('DecklistPage', () => {
           ],
         },
         {
-          input: { name: 'Black Lotus', quantity: 1 },
+          input: inputOf('Black Lotus', 1),
           status: 'unmatched',
           match: null,
           candidates: [],
@@ -162,6 +167,126 @@ describe('DecklistPage', () => {
     expect(summary).toHaveTextContent(/1 line skipped/)
   })
 
+  it('lets the user re-pick an ambiguous row via "Change"', async () => {
+    parseMock.mockResolvedValue(
+      parsed([
+        {
+          line_number: 1,
+          name: 'Lightning Bolt',
+          quantity: 4,
+          set_code: null,
+          collector_number: null,
+        },
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Lightning Bolt', 4),
+          status: 'ambiguous',
+          match: null,
+          candidates: [
+            printing({
+              scryfall_id: 'lea-bolt',
+              set_name: 'Limited Edition Alpha',
+            }),
+            printing({
+              scryfall_id: 'm10-bolt',
+              set_name: 'Magic 2010',
+              set_code: 'm10',
+            }),
+          ],
+        },
+      ],
+      summary: { matched: 0, ambiguous: 1, unmatched: 0 },
+    })
+
+    const user = await resolveText('4 Lightning Bolt')
+
+    // Nothing chosen yet → inscribe disabled.
+    await screen.findByRole('heading', { name: 'Review the Decklist' })
+    expect(
+      screen.getByRole('button', { name: /Inscribe 0 folios/ }),
+    ).toBeDisabled()
+
+    // Pick LEA → ready; then "Change" → back to the picker, count resets to 0.
+    await user.click(
+      screen.getByRole('button', { name: /Limited Edition Alpha/ }),
+    )
+    expect(
+      await screen.findByRole('button', { name: /Inscribe 1 folio/ }),
+    ).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Change' }))
+    expect(
+      await screen.findByRole('button', { name: /Inscribe 0 folios/ }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('listbox', { name: /Printings of Lightning Bolt/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('inscribes the ready rows and counts leftover ambiguous as skipped', async () => {
+    parseMock.mockResolvedValue(
+      parsed([
+        {
+          line_number: 1,
+          name: 'Sol Ring',
+          quantity: 1,
+          set_code: null,
+          collector_number: null,
+        },
+        {
+          line_number: 2,
+          name: 'Lightning Bolt',
+          quantity: 4,
+          set_code: null,
+          collector_number: null,
+        },
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Sol Ring', 1),
+          status: 'matched',
+          match: printing({ scryfall_id: 'sol-1', name: 'Sol Ring' }),
+          candidates: [],
+        },
+        {
+          input: inputOf('Lightning Bolt', 4),
+          status: 'ambiguous',
+          match: null,
+          candidates: [printing({ scryfall_id: 'lea-bolt' })],
+        },
+      ],
+      summary: { matched: 1, ambiguous: 1, unmatched: 0 },
+    })
+    inscribeMock.mockResolvedValue({ created: [], count: 1 })
+
+    const user = await resolveText('Sol Ring\n4 Lightning Bolt')
+
+    // Inscribe the matched Sol Ring while the Bolt stays ambiguous.
+    await screen.findByText(/1 unresolved line will be skipped/)
+    await user.click(
+      await screen.findByRole('button', { name: /Inscribe 1 folio/ }),
+    )
+
+    // Only the matched row went to the backend.
+    await waitFor(() =>
+      expect(inscribeMock).toHaveBeenCalledWith([
+        {
+          scryfall_id: 'sol-1',
+          quantity: 1,
+          finish: 'nonfoil',
+          condition: 'NM',
+        },
+      ]),
+    )
+    const summary = await screen.findByRole('status')
+    expect(summary).toHaveTextContent(/Inscribed 1 folio \(1 copy\)/)
+    expect(summary).toHaveTextContent(/1 line skipped/)
+  })
+
   it('reports unreadable lines and blocks when nothing parses', async () => {
     parseMock.mockResolvedValue(
       parsed(
@@ -195,7 +320,7 @@ describe('DecklistPage', () => {
     resolveMock.mockResolvedValue({
       results: [
         {
-          input: { name: 'Sol Ring', quantity: 1 },
+          input: inputOf('Sol Ring', 1),
           status: 'matched',
           match: printing({ scryfall_id: 'sol-1', name: 'Sol Ring' }),
           candidates: [],

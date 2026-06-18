@@ -73,6 +73,12 @@ async function errorDetail(res: Response): Promise<string | undefined> {
   try {
     const body = (await res.json()) as { detail?: unknown }
     if (typeof body.detail === 'string') return body.detail
+    // Structured details (e.g. the bulk-inscribe 422 `{message, unknown}`) carry
+    // a human sentence in `message` — surface that, not the raw JSON blob.
+    if (body.detail != null && typeof body.detail === 'object') {
+      const message = (body.detail as { message?: unknown }).message
+      if (typeof message === 'string') return message
+    }
     if (body.detail != null) return JSON.stringify(body.detail)
   } catch {
     // Non-JSON body; the status code alone will have to do.
@@ -194,7 +200,14 @@ export type ResolutionStatus = 'matched' | 'ambiguous' | 'unmatched'
 
 /** How one entry resolved: a single match, several candidates, or nothing. */
 export interface ResolveResult {
-  input: ResolveEntry & { quantity: number }
+  // Echoed back verbatim — the backend serializes the whole RawEntry, so the
+  // acquisition fields are present even though the decklist flow doesn't set them.
+  input: ResolveEntry & {
+    quantity: number
+    finish: string | null
+    condition: string | null
+    language: string | null
+  }
   status: ResolutionStatus
   match: CardPrinting | null
   candidates: CardPrinting[]

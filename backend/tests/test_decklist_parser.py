@@ -7,11 +7,19 @@ foil markers, and the per-line problem reports that ensure no line is dropped.
 
 from __future__ import annotations
 
+import pytest
+
 from scriptorium.onboarding.decklist import (
     ParsedLine,
     ParseProblem,
     parse_decklist,
 )
+
+
+def test_parsed_line_rejects_non_positive_quantity() -> None:
+    """The quantity>=1 invariant is total, not only enforced on the parse path."""
+    with pytest.raises(ValueError):
+        ParsedLine(line_number=1, name="Forest", quantity=0)
 
 
 def test_quantity_and_name() -> None:

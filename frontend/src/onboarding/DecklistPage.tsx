@@ -12,19 +12,25 @@ import {
   type Finish,
   type ParsedLine,
   type ParseProblem,
-  type ResolutionStatus,
 } from '../api'
 import { CandidatePicker } from './CandidatePicker'
 import './decklist.css'
 
-/** A parsed line paired with how it resolved against the catalog. */
-interface PreviewRow {
-  entry: ParsedLine
-  status: ResolutionStatus
-  candidates: CardPrinting[]
-  /** The printing to inscribe: the lone match, or the user's pick; else null. */
-  chosen: CardPrinting | null
-}
+/**
+ * A parsed line paired with how it resolved. A discriminated union so the three
+ * outcomes are the only representable states: a `matched` row always carries the
+ * printing to inscribe, only an `ambiguous` row carries candidates and a pending
+ * pick, and an `unmatched` row carries neither.
+ */
+type PreviewRow =
+  | { entry: ParsedLine; status: 'matched'; chosen: CardPrinting }
+  | {
+      entry: ParsedLine
+      status: 'ambiguous'
+      candidates: CardPrinting[]
+      chosen: CardPrinting | null
+    }
+  | { entry: ParsedLine; status: 'unmatched'; chosen: null }
 
 type Step = 'paste' | 'preview' | 'summary'
 
@@ -77,7 +83,10 @@ export function DecklistPage() {
     skipped: number
   } | null>(null)
 
-  const readyRows = rows.filter((row) => row.chosen)
+  // Narrow to rows with a printing so the inscribe mapping needs no `!`.
+  const readyRows = rows.filter(
+    (row): row is PreviewRow & { chosen: CardPrinting } => row.chosen !== null,
+  )
   const unresolvedCount = rows.filter(
     (row) => row.status === 'ambiguous' && !row.chosen,
   ).length
@@ -111,15 +120,31 @@ export function DecklistPage() {
           quantity: entry.quantity,
         })),
       )
+      // resolve preserves order 1:1; if the counts diverge the response is
+      // unusable — say so plainly instead of letting an undefined row read as a
+      // network error below.
+      if (resolved.results.length !== parsed.entries.length) {
+        setError(
+          `The catalog returned ${resolved.results.length} results for ${parsed.entries.length} lines; nothing was imported.`,
+        )
+        return
+      }
       setRows(
-        parsed.entries.map((entry, index) => {
+        parsed.entries.map((entry, index): PreviewRow => {
           const result = resolved.results[index]
-          return {
-            entry,
-            status: result.status,
-            candidates: result.candidates,
-            chosen: result.status === 'matched' ? result.match : null,
+          if (result.status === 'ambiguous') {
+            return {
+              entry,
+              status: 'ambiguous',
+              candidates: result.candidates,
+              chosen: null,
+            }
           }
+          if (result.status === 'matched' && result.match) {
+            return { entry, status: 'matched', chosen: result.match }
+          }
+          // 'unmatched', or the contract-violating 'matched' with no printing.
+          return { entry, status: 'unmatched', chosen: null }
         }),
       )
       setStep('preview')
@@ -132,8 +157,13 @@ export function DecklistPage() {
   }
 
   function choose(index: number, printing: CardPrinting | null) {
+    // Only ambiguous rows expose a picker, so only they are re-chosen.
     setRows((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, chosen: printing } : row)),
+      prev.map((row, i) =>
+        i === index && row.status === 'ambiguous'
+          ? { ...row, chosen: printing }
+          : row,
+      ),
     )
   }
 
@@ -143,7 +173,7 @@ export function DecklistPage() {
     try {
       const response = await inscribeBulk(
         readyRows.map((row) => ({
-          scryfall_id: row.chosen!.scryfall_id,
+          scryfall_id: row.chosen.scryfall_id,
           quantity: row.entry.quantity,
           finish,
           condition,
