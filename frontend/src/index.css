@@ -1,16 +1,11 @@
-:root {
-  --bg: #14110f;
-  --panel: #1c1715;
-  --border: #2e2724;
-  --ink: #d8cfc4;
-  --ink-dim: #8c7f74;
-  --gold: #c9a44c;
+@import './styles/tokens.css';
 
-  font:
-    18px/1.5 Georgia,
-    'Times New Roman',
-    serif;
-  color: var(--ink);
+:root {
+  /* 112.5% of the 16px default = 18px, so 1rem (--text-base) === 18px. */
+  font-size: 112.5%;
+  font-family: var(--font-body);
+  line-height: var(--leading-normal);
+  color: var(--text);
   background: var(--bg);
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
@@ -25,4 +20,17 @@ body {
 #root {
   display: flex;
   min-height: 100svh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  line-height: var(--leading-tight);
+  font-weight: 700;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
