@@ -31,7 +31,14 @@ monorepo: `backend/` (Python, managed with **uv**) and `frontend/`
 Most of the above also run automatically on commit via pre-commit (`.pre-commit-config.yaml`);
 run all hooks manually with `pre-commit run --all-files`.
 
-No E2E suite exists yet — state "E2E: none configured" when reporting the gate.
+### E2E (Playwright — VEG-434, ADR 0015)
+- Run as the **last** gate step: `cd frontend && npm run test:e2e` (Playwright, Chromium).
+- Hermetic: boots only the Vite dev server and stubs `/api/**` in-browser (`e2e/stubs.ts`) —
+  no backend, no Scryfall, no network. First run on a machine needs `npx playwright install chromium`.
+- Specs live in `frontend/e2e/`; cover the app shell (brand/nav/status), the Inscribe golden
+  path, and screenshot capability. Add/extend a spec for any new user-facing flow.
+- If the dev server or browser can't start, state "E2E: could not run (reason)" rather than
+  claiming success. Not yet wired into CI (no GitHub Actions in this repo).
 
 ## Commit / PR conventions
 - Imperative mood, present tense ("Add scanner endpoint"). Body explains *why* if non-obvious.
