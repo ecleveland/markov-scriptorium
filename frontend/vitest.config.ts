@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // Separate from vite.config.ts on purpose: Vitest bundles its own Vite version,
 // so its `test`-field types only apply here. This file is intentionally not in
@@ -11,5 +11,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: false,
+    // Playwright owns `e2e/` (real browser). Keep Vitest out of it, or it would
+    // try to run the *.spec.ts files there in jsdom and fail.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
   },
 })
