@@ -8,6 +8,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Fail loudly if :5173 is taken rather than silently moving to :5174 — the
+    // Playwright e2e harness waits on a fixed port (see playwright.config.ts).
+    strictPort: true,
     proxy: {
       // Forward API calls to the FastAPI backend during development.
       '/api': {
