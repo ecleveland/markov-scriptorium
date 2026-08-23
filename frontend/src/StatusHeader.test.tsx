@@ -14,20 +14,24 @@ function renderHeader(path = '/inscribe') {
 afterEach(() => vi.restoreAllMocks())
 
 describe('StatusHeader', () => {
-  it('renders the brand mark linking to Inscribe', () => {
+  it('renders the brand mark linking to the Catalog', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
     renderHeader()
 
     const brand = screen.getByRole('link', { name: /the markov scriptorium/i })
-    expect(brand).toHaveAttribute('href', '/inscribe')
+    expect(brand).toHaveAttribute('href', '/catalog')
   })
 
-  it('renders the primary nav with the three onboarding links', () => {
+  it('renders the primary nav with the collection and onboarding links', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
     renderHeader()
 
     const nav = screen.getByRole('navigation', { name: /primary/i })
     expect(nav).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Catalog' })).toHaveAttribute(
+      'href',
+      '/catalog',
+    )
     expect(screen.getByRole('link', { name: 'Inscribe' })).toHaveAttribute(
       'href',
       '/inscribe',

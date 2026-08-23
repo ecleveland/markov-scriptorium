@@ -154,7 +154,12 @@ def list_inventory(
 # and a Scryfall ID isn't parsed as an integer lot id.
 @router.get("/card/{scryfall_id}")
 def owned_copies(scryfall_id: str) -> dict[str, Any]:
-    """All owned copies of one printing, with a per-folio quantity rollup."""
+    """All owned copies of one printing, with a per-folio quantity rollup.
+
+    The response also carries ``across_printings``: the same card's total over
+    every printing of it, so a detail view can say "N copies across M printings"
+    without a second request (VEG-220).
+    """
     with closing(connect()) as conn:
         if not inventory.printing_exists(conn, scryfall_id):
             raise _not_in_catalog(scryfall_id)

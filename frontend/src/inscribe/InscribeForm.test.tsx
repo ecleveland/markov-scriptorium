@@ -97,12 +97,18 @@ describe('InscribeForm quantity submission', () => {
       quantity: 1,
       finish: 'nonfoil',
       condition: 'NM',
+      language: 'en',
       location: null,
+      acquired_at: null,
+      price_paid: null,
+      notes: null,
+      tags: null,
       card: {
         name: 'Lightning Bolt',
         set_code: 'lea',
         set_name: 'Limited Edition Alpha',
         collector_number: '161',
+        rarity: 'common',
         image_uris: null,
       },
     })

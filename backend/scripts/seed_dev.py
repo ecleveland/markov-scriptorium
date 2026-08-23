@@ -29,9 +29,13 @@ _DEFAULTS: dict[str, Any] = {"lang": "en", "layout": "normal"}
 
 # A small, varied set. `colors`/`finishes`/`image_uris` are stored as JSON text,
 # matching the bulk importer; image_uris is left absent (no offline images).
+# The two Lightning Bolt printings share an `oracle_id`, so the catalog's
+# cross-printing ownership summary exercises the real grouping path locally
+# rather than its NULL-oracle_id name fallback.
 _CARDS: list[dict[str, Any]] = [
     {
         "scryfall_id": "dev-bolt-lea",
+        "oracle_id": "dev-oracle-lightning-bolt",
         "name": "Lightning Bolt",
         "set_code": "lea",
         "set_name": "Limited Edition Alpha",
@@ -45,6 +49,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-bolt-2x2",
+        "oracle_id": "dev-oracle-lightning-bolt",
         "name": "Lightning Bolt",
         "set_code": "2x2",
         "set_name": "Double Masters 2022",
@@ -58,6 +63,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-sol-cmd",
+        "oracle_id": "dev-oracle-sol-ring",
         "name": "Sol Ring",
         "set_code": "cmd",
         "set_name": "Commander 2011",
@@ -71,6 +77,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-counterspell-mh2",
+        "oracle_id": "dev-oracle-counterspell",
         "name": "Counterspell",
         "set_code": "mh2",
         "set_name": "Modern Horizons 2",
@@ -84,6 +91,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-brainstorm-ema",
+        "oracle_id": "dev-oracle-brainstorm",
         "name": "Brainstorm",
         "set_code": "ema",
         "set_name": "Eternal Masters",
@@ -97,6 +105,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-llanowar-m19",
+        "oracle_id": "dev-oracle-llanowar-elves",
         "name": "Llanowar Elves",
         "set_code": "m19",
         "set_name": "Core Set 2019",
@@ -110,6 +119,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-swords-cmr",
+        "oracle_id": "dev-oracle-swords-to-plowshares",
         "name": "Swords to Plowshares",
         "set_code": "cmr",
         "set_name": "Commander Legends",
@@ -123,6 +133,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-edgar-vow",
+        "oracle_id": "dev-oracle-edgar-charmed-groom",
         "name": "Edgar, Charmed Groom",
         "set_code": "vow",
         "set_name": "Innistrad: Crimson Vow",

@@ -6,6 +6,10 @@ of an owned printing. List and detail reads join ``cards`` and attach a nested
 round-trip per row. The ``tags`` JSON-text column is (de)serialized here, at the
 edge, mirroring :mod:`scriptorium.catalog`'s handling of the card JSON columns.
 
+Two rollups sit on top of the CRUD: :func:`owned_for_printing` sums one printing
+by folio, and :func:`owned_across_printings` sums a whole card over every
+printing of it (VEG-220).
+
 Write functions commit their own transaction: each call is a complete operation,
 so a created/updated/deleted lot is durable when the function returns. All
 functions expect a connection opened via :func:`scriptorium.db.connect` (i.e.
@@ -56,6 +60,9 @@ _CARD_DISPLAY_COLUMNS = (
     "rarity",
     "image_uris",
 )
+
+# Card fields naming a printing in the cross-printing ownership breakdown.
+_PRINTING_SUMMARY_COLUMNS = ("set_code", "set_name", "collector_number", "rarity")
 
 # The shared SELECT: every inventory column plus the card display columns aliased
 # under a ``card_`` prefix, so :func:`_row_to_lot` can split them back apart.
@@ -283,6 +290,58 @@ def owned_for_printing(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, 
         "lots": lots,
         "rollup": rollup,
         "total_quantity": total_quantity,
+        "across_printings": owned_across_printings(conn, scryfall_id),
+    }
+
+
+def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] | None:
+    """Ownership of one *card* summed over every printing of it, or ``None``.
+
+    Answers "you own N copies across M printings" for the card that
+    ``scryfall_id`` is a printing of. Returns the grouping key used, the card
+    name, the summed ``total_quantity``, the ``printing_count`` (printings that
+    own at least one copy), and a per-printing breakdown ordered by set. A
+    printing with nothing owned is absent from the breakdown, so a wholly
+    unowned card yields a zero total and an empty list. ``None`` means the
+    anchor printing isn't in the catalog at all.
+
+    Printings are grouped by ``oracle_id``, which is what Scryfall uses to tie
+    reprints of one card together. When it is NULL the card name is the fallback:
+    ``WHERE oracle_id = NULL`` matches nothing in SQLite, and lumping the NULLs
+    together would merge unrelated cards into one total.
+    """
+    anchor = conn.execute(
+        "SELECT oracle_id, name FROM cards WHERE scryfall_id = ?", (scryfall_id,)
+    ).fetchone()
+    if anchor is None:
+        return None
+
+    oracle_id, name = anchor["oracle_id"], anchor["name"]
+    if oracle_id is not None:
+        grouping, predicate, param = "oracle_id", "c.oracle_id = ?", oracle_id
+    else:
+        # NOCASE matches idx_cards_name's collation, so the fallback uses the index.
+        grouping, predicate, param = "name", "c.name = ? COLLATE NOCASE", name
+
+    rows = conn.execute(
+        "SELECT i.scryfall_id, "
+        + ", ".join(f"c.{col}" for col in _PRINTING_SUMMARY_COLUMNS)
+        + ", SUM(i.quantity) AS quantity, COUNT(*) AS lots "
+        "FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id "
+        f"WHERE {predicate} "
+        "GROUP BY i.scryfall_id "
+        "ORDER BY c.set_code, c.collector_number",
+        (param,),
+    ).fetchall()
+    printings = [dict(row) for row in rows]
+
+    return {
+        "grouping": grouping,
+        "oracle_id": oracle_id,
+        "name": name,
+        "total_quantity": sum(printing["quantity"] for printing in printings),
+        "printing_count": len(printings),
+        "printings": printings,
     }
 
 

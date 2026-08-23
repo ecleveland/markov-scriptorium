@@ -2,12 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError,
   autocompleteNames,
+  CATALOG_PAGE_SIZE,
+  deleteLot,
+  getLot,
   inscribe,
   inscribeBulk,
+  listInventory,
+  ownedForPrinting,
   parseCsv,
   parseDecklist,
   resolveDecklist,
   searchPrintings,
+  updateLot,
   type CardPrinting,
 } from './api'
 
@@ -282,5 +288,92 @@ describe('error handling', () => {
         condition: 'NM',
       }),
     ).rejects.toMatchObject({ status: 422, detail: 'quantity must be > 0' })
+  })
+})
+
+describe('listInventory', () => {
+  it('requests the first page with the default size', async () => {
+    const fetchMock = mockFetch({ results: [], total: 0, limit: 25, offset: 0 })
+    await listInventory()
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/inventory?limit=${CATALOG_PAGE_SIZE}&offset=0`,
+      undefined,
+    )
+  })
+
+  it('passes an explicit offset through', async () => {
+    const fetchMock = mockFetch({
+      results: [],
+      total: 0,
+      limit: 25,
+      offset: 25,
+    })
+    await listInventory(25)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/inventory?limit=${CATALOG_PAGE_SIZE}&offset=25`,
+      undefined,
+    )
+  })
+})
+
+describe('getLot', () => {
+  it('reads one lot by id', async () => {
+    const fetchMock = mockFetch({ id: 7 })
+    expect(await getLot(7)).toEqual({ id: 7 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/7', undefined)
+  })
+})
+
+describe('updateLot', () => {
+  it('PATCHes only the fields given', async () => {
+    const fetchMock = mockFetch({ id: 7, quantity: 3 })
+    await updateLot(7, { quantity: 3 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/7', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantity: 3 }),
+    })
+  })
+
+  it('sends an explicit null to clear a location', async () => {
+    const fetchMock = mockFetch({ id: 7 })
+    await updateLot(7, { location: null })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/inventory/7',
+      expect.objectContaining({ body: JSON.stringify({ location: null }) }),
+    )
+  })
+})
+
+describe('deleteLot', () => {
+  it('does not try to parse the empty 204 body', async () => {
+    const json = vi.fn()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(deleteLot(7)).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/7', {
+      method: 'DELETE',
+    })
+    expect(json).not.toHaveBeenCalled()
+  })
+
+  it('throws ApiError when the lot is already gone', async () => {
+    mockFetch({ detail: 'No inventory lot with id 7.' }, false, 404)
+    await expect(deleteLot(7)).rejects.toMatchObject({
+      status: 404,
+      detail: 'No inventory lot with id 7.',
+    })
+  })
+})
+
+describe('ownedForPrinting', () => {
+  it('reads the printing rollup and encodes the id', async () => {
+    const fetchMock = mockFetch({ scryfall_id: 'a/b', across_printings: null })
+    await ownedForPrinting('a/b')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/inventory/card/a%2Fb',
+      undefined,
+    )
   })
 })

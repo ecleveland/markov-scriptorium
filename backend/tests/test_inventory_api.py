@@ -340,3 +340,29 @@ def test_bulk_inscribe_maps_fk_violation_to_422(monkeypatch: pytest.MonkeyPatch)
     assert resp.status_code == 422
     assert "catalog" in resp.json()["detail"]["message"].lower()
     assert client.get("/inventory").json()["total"] == 0
+
+
+def test_owned_copies_includes_across_printings_summary() -> None:
+    """The rollup response carries the card-level total across printings."""
+    with closing(db.connect()) as conn:
+        _insert_card(conn, "bolt-2", "Lightning Bolt", set_code="2x2", oracle_id="oracle-bolt")
+        conn.execute("UPDATE cards SET oracle_id = 'oracle-bolt' WHERE scryfall_id = 'bolt-1'")
+        conn.commit()
+    _inscribe(quantity=2)
+    resp = client.post("/inventory", json={"scryfall_id": "bolt-2", "quantity": 3})
+    assert resp.status_code == 201, resp.text
+
+    body = client.get("/inventory/card/bolt-1").json()
+
+    assert body["total_quantity"] == 2  # this printing only
+    across = body["across_printings"]
+    assert across["grouping"] == "oracle_id"
+    assert across["name"] == "Lightning Bolt"
+    assert across["total_quantity"] == 5
+    assert across["printing_count"] == 2
+
+
+def test_owned_copies_across_printings_zero_for_unowned() -> None:
+    across = client.get("/inventory/card/helix-1").json()["across_printings"]
+    assert across["total_quantity"] == 0
+    assert across["printings"] == []
