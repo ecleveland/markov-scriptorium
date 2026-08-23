@@ -1,6 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CATALOG_PAGE_SIZE, listInventory } from '../api'
 import { LotRow } from './LotRow'
 import { inventoryKeys } from './queryKeys'
@@ -11,14 +10,31 @@ function pageRange(offset: number, shown: number): string {
   return shown === 0 ? '0' : `${offset + 1} to ${offset + shown}`
 }
 
+/** The 1-based page from `?page=`, defaulting to the first on anything odd. */
+function pageFromParams(params: URLSearchParams): number {
+  const raw = Number(params.get('page'))
+  return Number.isInteger(raw) && raw > 0 ? raw : 1
+}
+
 /**
  * The Catalog: every owned lot, newest inscription first, one page at a time.
  *
  * Deliberately unfiltered. Search and faceted browse are The Index (M5); this
  * view exists so the collection can be read back at all.
+ *
+ * The page lives in the URL rather than component state, so opening a folio and
+ * coming back does not silently drop you on page one.
  */
 export function CatalogPage() {
-  const [offset, setOffset] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const page = pageFromParams(searchParams)
+  const offset = (page - 1) * CATALOG_PAGE_SIZE
+
+  function goToPage(next: number) {
+    // Page one is the bare URL; no `?page=1` clutter.
+    setSearchParams(next <= 1 ? {} : { page: String(next) })
+  }
+
   const query = useQuery({
     queryKey: inventoryKeys.list(offset),
     queryFn: () => listInventory(offset),
@@ -47,7 +63,10 @@ export function CatalogPage() {
     )
   }
 
-  const { results, total } = query.data
+  // The offset the rows on screen actually came from. `keepPreviousData` holds
+  // the old page during a fetch, so pairing the *requested* offset with them
+  // would read "Showing 26 to 50 of 30" above rows 1 to 25.
+  const { results, total, offset: shownOffset } = query.data
 
   if (total === 0) {
     return (
@@ -63,13 +82,13 @@ export function CatalogPage() {
     )
   }
 
-  const lastPage = offset + CATALOG_PAGE_SIZE >= total
+  const onLastPage = offset + CATALOG_PAGE_SIZE >= total
 
   return (
     <section className="catalog">
       <h1>The Catalog</h1>
       <p className="catalog__count">
-        Showing {pageRange(offset, results.length)} of {total}{' '}
+        Showing {pageRange(shownOffset, results.length)} of {total}{' '}
         {total === 1 ? 'folio' : 'folios'}
       </p>
 
@@ -99,15 +118,15 @@ export function CatalogPage() {
       <nav className="catalog__pager" aria-label="Catalog pages">
         <button
           type="button"
-          disabled={offset === 0}
-          onClick={() => setOffset(Math.max(0, offset - CATALOG_PAGE_SIZE))}
+          disabled={page <= 1}
+          onClick={() => goToPage(page - 1)}
         >
           Previous
         </button>
         <button
           type="button"
-          disabled={lastPage}
-          onClick={() => setOffset(offset + CATALOG_PAGE_SIZE)}
+          disabled={onLastPage}
+          onClick={() => goToPage(page + 1)}
         >
           Next
         </button>

@@ -508,3 +508,19 @@ def test_owned_for_printing_carries_the_across_printings_summary(
     assert owned["total_quantity"] == 1  # this printing only, unchanged
     assert owned["across_printings"]["total_quantity"] == 3
     assert owned["across_printings"]["printing_count"] == 2
+
+
+def test_owned_across_printings_orders_collector_numbers_numerically(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """Collector number is TEXT, so a plain sort would read 10 as before 2."""
+    for scryfall_id, number in (("bolt-a", "10"), ("bolt-b", "2"), ("bolt-c", "117")):
+        _insert_card(
+            catalog_conn, scryfall_id, "Lightning Bolt", set_code="2x2", collector_number=number
+        )
+        _set_oracle_id(catalog_conn, scryfall_id, "oracle-bolt")
+        inventory.create_lot(catalog_conn, scryfall_id=scryfall_id)
+
+    across = _across(catalog_conn, "bolt-a")
+
+    assert [p["collector_number"] for p in across["printings"]] == ["2", "10", "117"]

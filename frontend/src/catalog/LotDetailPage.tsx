@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ApiError,
   CONDITIONS,
@@ -121,7 +121,7 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
  * Deliberately not `window.confirm`: a native modal blocks the Playwright and
  * browser-automation harness (ADR 0015), and it can't be styled or tested.
  */
-function RemoveLot({ lot }: { lot: InventoryLot }) {
+function RemoveLot({ lot, backTo }: { lot: InventoryLot; backTo: string }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
@@ -129,8 +129,12 @@ function RemoveLot({ lot }: { lot: InventoryLot }) {
   const remove = useMutation({
     mutationFn: () => deleteLot(lot.id),
     onSuccess: () => {
+      // Drop this lot's cache entry before invalidating the tree. `all` prefix-
+      // matches `lot(id)`, and the detail query is still mounted, so invalidating
+      // alone would refetch an id that no longer exists and cache the 404.
+      queryClient.removeQueries({ queryKey: inventoryKeys.lot(lot.id) })
       queryClient.invalidateQueries({ queryKey: inventoryKeys.all })
-      navigate('/catalog')
+      navigate(backTo)
     },
   })
 
@@ -185,6 +189,13 @@ export function LotDetailPage() {
   const id = Number(lotId)
   const valid = Number.isInteger(id) && id > 0
 
+  // The Catalog hands its page along in link state (see LotRow); a folio opened
+  // by URL has none, and falls back to the first page.
+  const { state } = useLocation()
+  const catalogSearch = (state as { catalogSearch?: string } | null)
+    ?.catalogSearch
+  const backTo = `/catalog${catalogSearch ?? ''}`
+
   const query = useQuery({
     queryKey: inventoryKeys.lot(id),
     queryFn: () => getLot(id),
@@ -220,7 +231,7 @@ export function LotDetailPage() {
   return (
     <section className="lot-detail">
       <p className="lot-detail__back">
-        <Link to="/catalog">← Back to the Catalog</Link>
+        <Link to={backTo}>← Back to the Catalog</Link>
       </p>
 
       <header className="lot-detail__head">
@@ -258,7 +269,7 @@ export function LotDetailPage() {
 
       <LotEditor key={lot.id} lot={lot} />
       <OwnershipSummary scryfallId={lot.scryfall_id} />
-      <RemoveLot lot={lot} />
+      <RemoveLot lot={lot} backTo={backTo} />
     </section>
   )
 }

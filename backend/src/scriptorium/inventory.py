@@ -330,7 +330,10 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
         "FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id "
         f"WHERE {predicate} "
         "GROUP BY i.scryfall_id "
-        "ORDER BY c.set_code, c.collector_number",
+        # collector_number is TEXT (it can hold ★, letters, and the like), so a
+        # plain sort puts "10" before "2". Cast for the numeric ordering people
+        # expect and keep the raw value as the tiebreaker for non-numeric ones.
+        "ORDER BY c.set_code, CAST(c.collector_number AS INTEGER), c.collector_number",
         (param,),
     ).fetchall()
     printings = [dict(row) for row in rows]

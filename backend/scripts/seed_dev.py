@@ -160,19 +160,38 @@ def _row(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def seed() -> tuple[int, int]:
-    """Insert the dev cards idempotently; return ``(newly_added, catalog_total)``."""
+    """Insert or refresh the dev cards; return ``(newly_added, catalog_total)``.
+
+    Upserts rather than skipping rows that already exist. A dev database seeded
+    before a card definition changed (``oracle_id`` arrived with VEG-220, for
+    instance) would otherwise keep the stale row forever, and local behaviour
+    would quietly diverge from a fresh clone's.
+    """
     with closing(db.connect()) as conn:
         apply_migrations(conn)
+        ids = [card["scryfall_id"] for card in _CARDS]
+        placeholders = ", ".join("?" for _ in ids)
+        present = {
+            row[0]
+            for row in conn.execute(
+                f"SELECT scryfall_id FROM cards WHERE scryfall_id IN ({placeholders})", ids
+            ).fetchall()
+        }
         added = 0
         for card in _CARDS:
             row = _row(card)
             columns = ", ".join(row)
-            placeholders = ", ".join("?" for _ in row)
-            cur = conn.execute(
-                f"INSERT OR IGNORE INTO cards ({columns}) VALUES ({placeholders})",
+            values = ", ".join("?" for _ in row)
+            assignments = ", ".join(
+                f"{column} = excluded.{column}" for column in row if column != "scryfall_id"
+            )
+            conn.execute(
+                f"INSERT INTO cards ({columns}) VALUES ({values}) "
+                f"ON CONFLICT(scryfall_id) DO UPDATE SET {assignments}",
                 tuple(row.values()),
             )
-            added += cur.rowcount
+            if card["scryfall_id"] not in present:
+                added += 1
         # FTS5 external content must be told to rebuild after direct inserts so
         # autocomplete/search can find the seeded names.
         catalog.rebuild_name_index(conn)
@@ -183,9 +202,10 @@ def seed() -> tuple[int, int]:
 
 def main() -> None:
     added, total = seed()
+    refreshed = len(_CARDS) - added
     print(f"Seeded {added} new card(s); catalog now holds {total}.")
-    if added == 0:
-        print("(Dev cards already present — nothing to do.)")
+    if refreshed:
+        print(f"(Refreshed {refreshed} card(s) already present.)")
 
 
 if __name__ == "__main__":

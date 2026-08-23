@@ -133,6 +133,27 @@ describe('LotDetailPage', () => {
     expect(await screen.findByText('The Catalog list')).toBeInTheDocument()
   })
 
+  it('does not re-read the lot it just deleted', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    deleteMock.mockResolvedValue(undefined)
+    renderDetail()
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Remove from the collection',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Confirm removal' }))
+    await screen.findByText('The Catalog list')
+
+    // Invalidating `inventoryKeys.all` prefix-matches the deleted lot's key; if
+    // its entry is not dropped first, the still-mounted query refetches a gone
+    // id and caches the 404 under it.
+    expect(getMock).toHaveBeenCalledTimes(1)
+  })
+
   it('backs out of a removal without deleting anything', async () => {
     const user = userEvent.setup()
     getMock.mockResolvedValue(lot({ id: 7 }))

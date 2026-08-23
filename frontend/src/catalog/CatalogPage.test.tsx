@@ -19,9 +19,9 @@ function page(results: ReturnType<typeof lot>[], total = results.length) {
   return { results, total, limit: CATALOG_PAGE_SIZE, offset: 0 }
 }
 
-function renderCatalog() {
+function renderCatalog(entry = '/catalog') {
   return renderWithQuery(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <CatalogPage />
     </MemoryRouter>,
   )
@@ -108,5 +108,46 @@ describe('CatalogPage', () => {
     listMock.mockResolvedValue(page([lot()], 1))
     renderCatalog()
     expect(await screen.findByRole('button', { name: 'Next' })).toBeDisabled()
+  })
+
+  it('keeps the shown range tied to the rows on screen, not the pending page', async () => {
+    const user = userEvent.setup()
+    listMock.mockResolvedValueOnce({
+      results: [lot({ id: 1 })],
+      total: 30,
+      limit: CATALOG_PAGE_SIZE,
+      offset: 0,
+    })
+    // The next page never resolves, so keepPreviousData holds page one on screen.
+    listMock.mockReturnValueOnce(new Promise(() => {}))
+    renderCatalog()
+
+    await screen.findByText('Showing 1 to 1 of 30 folios')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(screen.getByText('Showing 1 to 1 of 30 folios')).toBeInTheDocument()
+  })
+
+  it('reads the page out of the URL, so a folio round trip keeps your place', async () => {
+    listMock.mockResolvedValue({
+      results: [lot()],
+      total: 60,
+      limit: CATALOG_PAGE_SIZE,
+      offset: CATALOG_PAGE_SIZE,
+    })
+    renderCatalog('/catalog?page=2')
+
+    await waitFor(() =>
+      expect(listMock).toHaveBeenCalledWith(CATALOG_PAGE_SIZE),
+    )
+    expect(
+      await screen.findByRole('button', { name: 'Previous' }),
+    ).toBeEnabled()
+  })
+
+  it('falls back to the first page on a nonsense ?page=', async () => {
+    listMock.mockResolvedValue(page([lot()], 1))
+    renderCatalog('/catalog?page=-3')
+    await waitFor(() => expect(listMock).toHaveBeenCalledWith(0))
   })
 })
