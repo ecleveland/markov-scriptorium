@@ -36,11 +36,21 @@ screen would be worse than leaving the themed one unspent.
 **Cross-printing ownership rides on the existing endpoint.**
 `GET /inventory/card/{scryfall_id}` gains an `across_printings` block beside its
 per-folio `rollup`, so the detail view answers "how many of this card do I own
-anywhere" in the same request. Printings are grouped by Scryfall's `oracle_id`,
-falling back to the card name when the catalog row has none. The fallback is not
-optional: `WHERE oracle_id = NULL` matches nothing in SQLite, so without it an
-un-oracled card would silently report only its own printing, and grouping the
-NULLs together would merge unrelated cards into one total.
+anywhere" in the same request.
+
+A printing's card identity is its `oracle_id`, which is what Scryfall uses to tie
+reprints together, and its name only when the catalog row has no `oracle_id`
+(`WHERE oracle_id = NULL` matches nothing in SQLite, so the column alone cannot
+group the un-oracled rows). **The two groups never mix.** That restriction is
+what makes the answer independent of the folio it was asked from: identity has to
+be an equivalence relation, and "oracled rows also pull in same-name un-oracled
+ones" is not one. With printings A (`oracle X`), B (no oracle) and C (`oracle Y`)
+all sharing a name, that looser rule reports A+B from A, C+B from C, and all
+three from B. Three answers to one question.
+
+The cost is that a card whose printings are inconsistently oracled counts as two
+cards. That is the better failure: an under-count is visible on the page, while
+silently merging two different cards into one total is not.
 
 **Removal is a two-step inline confirm, not `window.confirm`.** A native modal
 blocks the Playwright harness and the browser-automation tooling from
@@ -63,6 +73,10 @@ blocks the Playwright harness and the browser-automation tooling from
 - **Group printings by name only.** Simpler, and it works for the dev seed. Wrong
   for the real catalog: distinct cards share names across Un-sets and tokens, and
   `oracle_id` is the field Scryfall provides for exactly this.
+- **Let an oracled group also claim same-name un-oracled printings.** Tried, and
+  reverted: it looks like it repairs patchy bulk data, but it is not transitive,
+  so it reintroduces the per-folio divergence it was meant to remove. See the
+  A/B/C case above.
 - **`/index` for the browse route now.** Rejected: it collides with M5, and this
   ticket ships no search, so the name would arrive half-delivered.
 

@@ -526,25 +526,52 @@ def test_owned_across_printings_orders_collector_numbers_numerically(
     assert [p["collector_number"] for p in across["printings"]] == ["2", "10", "117"]
 
 
-def test_owned_across_printings_includes_siblings_the_bulk_data_left_un_oracled(
+def test_owned_across_printings_gives_the_same_answer_from_any_folio(
     catalog_conn: sqlite3.Connection,
 ) -> None:
-    """A same-name printing with no oracle_id still counts toward its card.
+    """The card total must not depend on which printing you asked from.
 
-    Scryfall omits ``oracle_id`` on some layouts, so one printing of a card can
-    carry it while another does not. Matching on the column alone would drop the
-    un-oracled sibling, and the card's total would depend on which folio you
-    happened to open.
+    A printing with no ``oracle_id`` is its own group. Grouping it with an
+    oracled same-name sibling reads as helpful but cannot be made transitive:
+    with A (oracle X), B (no oracle) and C (oracle Y) all sharing a name, A
+    would see A+B, C would see C+B, and B would see all three. Card identity is
+    therefore the ``oracle_id`` when there is one and the name only when there
+    is not, which is an equivalence and so answers the same from every side.
+    """
+    printings = (("bolt-x", "oracle-x"), ("bolt-null", None), ("bolt-y", "oracle-y"))
+    for scryfall_id, oracle in printings:
+        _insert_card(catalog_conn, scryfall_id, "Lightning Bolt", set_code="2x2")
+        _set_oracle_id(catalog_conn, scryfall_id, oracle)
+        inventory.create_lot(catalog_conn, scryfall_id=scryfall_id, quantity=1)
+
+    from_x = _across(catalog_conn, "bolt-x")
+    from_null = _across(catalog_conn, "bolt-null")
+    from_y = _across(catalog_conn, "bolt-y")
+
+    # Each is its own card: three names collide, three oracle identities do not.
+    assert from_x["total_quantity"] == 1
+    assert from_null["total_quantity"] == 1
+    assert from_y["total_quantity"] == 1
+    assert [p["scryfall_id"] for p in from_x["printings"]] == ["bolt-x"]
+    assert [p["scryfall_id"] for p in from_null["printings"]] == ["bolt-null"]
+    assert [p["scryfall_id"] for p in from_y["printings"]] == ["bolt-y"]
+
+
+def test_owned_across_printings_name_fallback_ignores_oracled_rows(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """The name fallback groups un-oracled rows only, never oracled ones.
+
+    Otherwise the fallback reaches across into a real card's group and reports a
+    total that printing's own folio would never agree with.
     """
     _insert_card(catalog_conn, "bolt-2", "Lightning Bolt", set_code="2x2")
-    _set_oracle_id(catalog_conn, "bolt-1", "oracle-bolt")  # bolt-2 stays NULL
-    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=1)
-    inventory.create_lot(catalog_conn, scryfall_id="bolt-2", quantity=2)
+    _set_oracle_id(catalog_conn, "bolt-2", "oracle-bolt")
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=1)  # oracle_id NULL
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-2", quantity=9)
 
-    from_oracled = _across(catalog_conn, "bolt-1")
-    from_un_oracled = _across(catalog_conn, "bolt-2")
+    across = _across(catalog_conn, "bolt-1")
 
-    assert from_oracled["total_quantity"] == 3
-    assert from_oracled["printing_count"] == 2
-    assert from_un_oracled["total_quantity"] == from_oracled["total_quantity"]
-    assert from_un_oracled["printing_count"] == from_oracled["printing_count"]
+    assert across["grouping"] == "name"
+    assert across["total_quantity"] == 1
+    assert [p["scryfall_id"] for p in across["printings"]] == ["bolt-1"]

@@ -45,6 +45,15 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
 
   const copies = readQuantity(quantity)
 
+  // Editing after a save must clear the green "Amended." confirmation, or it
+  // sits there vouching for changes that have not been sent.
+  function edited<T>(setter: (value: T) => void) {
+    return (value: T) => {
+      if (save.isSuccess || save.isError) save.reset()
+      setter(value)
+    }
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (copies === null) return
@@ -67,7 +76,7 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
             required
             aria-invalid={copies === null}
             value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
+            onChange={(event) => edited(setQuantity)(event.target.value)}
           />
         </label>
         <label>
@@ -89,7 +98,7 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
             type="text"
             value={location}
             placeholder="binder, box, deck sleeve…"
-            onChange={(event) => setLocation(event.target.value)}
+            onChange={(event) => edited(setLocation)(event.target.value)}
           />
         </label>
         <label className="lot-editor__notes">
@@ -97,7 +106,7 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
           <textarea
             rows={3}
             value={notes}
-            onChange={(event) => setNotes(event.target.value)}
+            onChange={(event) => edited(setNotes)(event.target.value)}
           />
         </label>
       </div>

@@ -95,6 +95,23 @@ describe('LotDetailPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Amended.')
   })
 
+  it('drops the saved confirmation once the folio is edited again', async () => {
+    const user = userEvent.setup()
+    const record = lot({ id: 7, quantity: 2 })
+    getMock.mockResolvedValue(record)
+    ownedMock.mockResolvedValue(owned())
+    updateMock.mockResolvedValue(record)
+    renderDetail()
+
+    await user.click(await screen.findByRole('button', { name: 'Amend' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Amended.')
+
+    await user.type(screen.getByLabelText('Volume'), 'Long box')
+
+    // Leaving it up would vouch for an edit that has not been sent.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
   it('clears a blanked volume back to null rather than an empty string', async () => {
     const user = userEvent.setup()
     const record = lot({ id: 7, location: 'Red binder' })

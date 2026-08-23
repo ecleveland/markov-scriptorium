@@ -305,10 +305,16 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
     unowned card yields a zero total and an empty list. ``None`` means the
     anchor printing isn't in the catalog at all.
 
-    Printings are grouped by ``oracle_id``, which is what Scryfall uses to tie
-    reprints of one card together. When it is NULL the card name is the fallback:
-    ``WHERE oracle_id = NULL`` matches nothing in SQLite, and lumping the NULLs
-    together would merge unrelated cards into one total.
+    A printing's card identity is its ``oracle_id``, which is what Scryfall uses
+    to tie reprints together, and its name only when there is no ``oracle_id``
+    (``WHERE oracle_id = NULL`` matches nothing in SQLite, so the column alone
+    cannot group the un-oracled rows). Those two groups never mix. That keeps
+    identity an equivalence relation, which is what makes the total independent
+    of the folio it was asked from; a rule that reached from one group into the
+    other would report a different number per printing. The cost is that a card
+    whose printings are inconsistently oracled counts as two, which is the
+    better failure: an under-count is visible, a silent merge of two different
+    cards is not.
     """
     anchor = conn.execute(
         "SELECT oracle_id, name FROM cards WHERE scryfall_id = ?", (scryfall_id,)
@@ -318,15 +324,17 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
 
     oracle_id, name = anchor["oracle_id"], anchor["name"]
     if oracle_id is not None:
-        # Sibling printings the bulk data left un-oracled are pulled in by name,
-        # or the same card would report different totals depending on which folio
-        # you opened: the un-oracled side groups by name and does match back.
-        grouping = "oracle_id"
-        predicate = "(c.oracle_id = ? OR (c.oracle_id IS NULL AND c.name = ? COLLATE NOCASE))"
-        params: tuple[str, ...] = (oracle_id, name)
+        grouping, predicate = "oracle_id", "c.oracle_id = ?"
+        params: tuple[str, ...] = (oracle_id,)
     else:
-        # NOCASE matches idx_cards_name's collation, so the fallback uses the index.
-        grouping, predicate, params = "name", "c.name = ? COLLATE NOCASE", (name,)
+        # Un-oracled rows group among themselves, never with an oracled one.
+        # Reaching across would not be an equivalence and so could not answer the
+        # same from every side: with A (oracle X), B (no oracle) and C (oracle Y)
+        # sharing a name, A would see A+B, C would see C+B, and B all three.
+        # NOCASE matches idx_cards_name's collation, so this uses the index.
+        grouping = "name"
+        predicate = "c.oracle_id IS NULL AND c.name = ? COLLATE NOCASE"
+        params = (name,)
 
     rows = conn.execute(
         "SELECT i.scryfall_id, "
