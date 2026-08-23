@@ -150,4 +150,22 @@ describe('CatalogPage', () => {
     renderCatalog('/catalog?page=-3')
     await waitFor(() => expect(listMock).toHaveBeenCalledWith(0))
   })
+
+  it('lands on the last real page when the collection shrank underneath it', async () => {
+    // Page 2 held the only folio past 25; removing it leaves ?page=2 pointing
+    // past the end, which used to render a headers-only table.
+    listMock.mockResolvedValueOnce({
+      results: [],
+      total: CATALOG_PAGE_SIZE,
+      limit: CATALOG_PAGE_SIZE,
+      offset: CATALOG_PAGE_SIZE,
+    })
+    listMock.mockResolvedValue(page([lot()], CATALOG_PAGE_SIZE))
+    renderCatalog('/catalog?page=2')
+
+    expect(
+      await screen.findByRole('link', { name: 'Lightning Bolt' }),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(listMock).toHaveBeenLastCalledWith(0))
+  })
 })

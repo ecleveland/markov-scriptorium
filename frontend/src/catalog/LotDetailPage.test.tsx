@@ -114,6 +114,38 @@ describe('LotDetailPage', () => {
     )
   })
 
+  it('refuses a blanked quantity instead of silently writing one copy', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(lot({ id: 7, quantity: 12 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    await user.clear(await screen.findByLabelText('Copies'))
+    await user.click(screen.getByRole('button', { name: 'Amend' }))
+
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A folio holds at least one copy.',
+    )
+  })
+
+  it('refuses a zero quantity, which the schema would reject anyway', async () => {
+    // Distinct from the blank case: `required` is satisfied here, so the
+    // component's own guard is the only thing standing between a typo and a
+    // PATCH that overwrites 12 copies.
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(lot({ id: 7, quantity: 12 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const copies = await screen.findByLabelText('Copies')
+    await user.clear(copies)
+    await user.type(copies, '0')
+    await user.click(screen.getByRole('button', { name: 'Amend' }))
+
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
   it('removes only after a second, explicit confirmation', async () => {
     const user = userEvent.setup()
     getMock.mockResolvedValue(lot({ id: 7 }))

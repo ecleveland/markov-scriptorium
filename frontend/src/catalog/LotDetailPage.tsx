@@ -11,9 +11,9 @@ import {
   type InventoryLot,
   type LotPatch,
 } from '../api'
-import { coerceQuantity } from '../inscribe/quantity'
 import { CardThumb } from './CardThumb'
 import { OwnershipSummary } from './OwnershipSummary'
+import { readQuantity } from './quantity'
 import { inventoryKeys } from './queryKeys'
 import './catalog.css'
 
@@ -43,10 +43,13 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
     },
   })
 
+  const copies = readQuantity(quantity)
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (copies === null) return
     save.mutate({
-      quantity: coerceQuantity(quantity),
+      quantity: copies,
       condition,
       location: orNull(location),
       notes: orNull(notes),
@@ -61,6 +64,8 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
           <input
             type="number"
             min={1}
+            required
+            aria-invalid={copies === null}
             value={quantity}
             onChange={(event) => setQuantity(event.target.value)}
           />
@@ -101,6 +106,11 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
         <button type="submit" disabled={save.isPending}>
           {save.isPending ? 'Amending…' : 'Amend'}
         </button>
+        {copies === null && (
+          <span className="lot-editor__error" role="alert">
+            A folio holds at least one copy. Remove it below to let it go.
+          </span>
+        )}
         {save.isSuccess && (
           <span className="lot-editor__saved" role="status">
             Amended.

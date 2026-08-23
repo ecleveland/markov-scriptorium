@@ -318,10 +318,15 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
 
     oracle_id, name = anchor["oracle_id"], anchor["name"]
     if oracle_id is not None:
-        grouping, predicate, param = "oracle_id", "c.oracle_id = ?", oracle_id
+        # Sibling printings the bulk data left un-oracled are pulled in by name,
+        # or the same card would report different totals depending on which folio
+        # you opened: the un-oracled side groups by name and does match back.
+        grouping = "oracle_id"
+        predicate = "(c.oracle_id = ? OR (c.oracle_id IS NULL AND c.name = ? COLLATE NOCASE))"
+        params: tuple[str, ...] = (oracle_id, name)
     else:
         # NOCASE matches idx_cards_name's collation, so the fallback uses the index.
-        grouping, predicate, param = "name", "c.name = ? COLLATE NOCASE", name
+        grouping, predicate, params = "name", "c.name = ? COLLATE NOCASE", (name,)
 
     rows = conn.execute(
         "SELECT i.scryfall_id, "
@@ -334,7 +339,7 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
         # plain sort puts "10" before "2". Cast for the numeric ordering people
         # expect and keep the raw value as the tiebreaker for non-numeric ones.
         "ORDER BY c.set_code, CAST(c.collector_number AS INTEGER), c.collector_number",
-        (param,),
+        params,
     ).fetchall()
     printings = [dict(row) for row in rows]
 

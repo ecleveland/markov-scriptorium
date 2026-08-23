@@ -524,3 +524,27 @@ def test_owned_across_printings_orders_collector_numbers_numerically(
     across = _across(catalog_conn, "bolt-a")
 
     assert [p["collector_number"] for p in across["printings"]] == ["2", "10", "117"]
+
+
+def test_owned_across_printings_includes_siblings_the_bulk_data_left_un_oracled(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A same-name printing with no oracle_id still counts toward its card.
+
+    Scryfall omits ``oracle_id`` on some layouts, so one printing of a card can
+    carry it while another does not. Matching on the column alone would drop the
+    un-oracled sibling, and the card's total would depend on which folio you
+    happened to open.
+    """
+    _insert_card(catalog_conn, "bolt-2", "Lightning Bolt", set_code="2x2")
+    _set_oracle_id(catalog_conn, "bolt-1", "oracle-bolt")  # bolt-2 stays NULL
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=1)
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-2", quantity=2)
+
+    from_oracled = _across(catalog_conn, "bolt-1")
+    from_un_oracled = _across(catalog_conn, "bolt-2")
+
+    assert from_oracled["total_quantity"] == 3
+    assert from_oracled["printing_count"] == 2
+    assert from_un_oracled["total_quantity"] == from_oracled["total_quantity"]
+    assert from_un_oracled["printing_count"] == from_oracled["printing_count"]

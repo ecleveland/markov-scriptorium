@@ -1,10 +1,12 @@
 """Seed a handful of cards into the local catalog for development.
 
 Lets the Inscribe flow be exercised without the full ~500 MB Scryfall bulk
-download. Idempotent: re-running inserts nothing new (rows are keyed by their
-fake Scryfall id with ``INSERT OR IGNORE``). The set deliberately includes a
-name reprinted across two sets (Lightning Bolt) so the printing picker has
-something to disambiguate, and a mix of finishes/colors.
+download. Safe to re-run: rows are keyed by their fake Scryfall id and upserted,
+so a database seeded before a card definition changed picks the new values up.
+That also means a re-run **overwrites** any hand-edit you made to a seeded row.
+The set deliberately includes a name reprinted across two sets (Lightning Bolt)
+so the printing picker has something to disambiguate, and a mix of
+finishes/colors.
 
 Run from the backend directory:
 

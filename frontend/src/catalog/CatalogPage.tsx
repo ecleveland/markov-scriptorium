@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { CATALOG_PAGE_SIZE, listInventory } from '../api'
 import { LotRow } from './LotRow'
 import { inventoryKeys } from './queryKeys'
@@ -67,6 +67,19 @@ export function CatalogPage() {
   // the old page during a fetch, so pairing the *requested* offset with them
   // would read "Showing 26 to 50 of 30" above rows 1 to 25.
   const { results, total, offset: shownOffset } = query.data
+
+  // The collection can shrink under a bookmarked or returned-to page (remove the
+  // only folio on page 2 and page 2 stops existing). Land on the last real page
+  // rather than an empty table with headers.
+  if (total > 0 && offset >= total) {
+    const lastPage = Math.ceil(total / CATALOG_PAGE_SIZE)
+    return (
+      <Navigate
+        to={lastPage <= 1 ? '/catalog' : `/catalog?page=${lastPage}`}
+        replace
+      />
+    )
+  }
 
   if (total === 0) {
     return (
