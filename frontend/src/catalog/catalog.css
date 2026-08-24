@@ -291,9 +291,14 @@
 }
 
 .ownership__pending,
-.ownership__error {
+.lot-detail__pending {
   font-size: var(--text-sm);
   color: var(--text-muted);
+}
+
+.ownership__error {
+  font-size: var(--text-sm);
+  color: var(--danger);
 }
 
 /* ---- Removal ------------------------------------------------------------ */

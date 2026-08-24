@@ -83,7 +83,9 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
           Condition
           <select
             value={condition}
-            onChange={(event) => setCondition(event.target.value as Condition)}
+            onChange={(event) =>
+              edited(setCondition)(event.target.value as Condition)
+            }
           >
             {CONDITIONS.map((grade) => (
               <option key={grade} value={grade}>

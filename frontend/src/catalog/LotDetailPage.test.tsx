@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { lot, owned } from '../test/fixtures'
@@ -95,22 +95,48 @@ describe('LotDetailPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Amended.')
   })
 
-  it('drops the saved confirmation once the folio is edited again', async () => {
-    const user = userEvent.setup()
-    const record = lot({ id: 7, quantity: 2 })
-    getMock.mockResolvedValue(record)
-    ownedMock.mockResolvedValue(owned())
-    updateMock.mockResolvedValue(record)
-    renderDetail()
+  // Every field, not just one: the Condition select was missed the first time
+  // this was fixed precisely because the test only exercised Volume.
+  it.each([
+    [
+      'Copies',
+      async (user: UserEvent) =>
+        user.type(screen.getByLabelText('Copies'), '3'),
+    ],
+    [
+      'Condition',
+      async (user: UserEvent) =>
+        user.selectOptions(screen.getByLabelText('Condition'), 'MP'),
+    ],
+    [
+      'Volume',
+      async (user: UserEvent) =>
+        user.type(screen.getByLabelText('Volume'), 'Box'),
+    ],
+    [
+      'Notes',
+      async (user: UserEvent) =>
+        user.type(screen.getByLabelText('Notes'), 'signed'),
+    ],
+  ])(
+    'drops the saved confirmation once %s is edited again',
+    async (_field, edit) => {
+      const user = userEvent.setup()
+      const record = lot({ id: 7, quantity: 2 })
+      getMock.mockResolvedValue(record)
+      ownedMock.mockResolvedValue(owned())
+      updateMock.mockResolvedValue(record)
+      renderDetail()
 
-    await user.click(await screen.findByRole('button', { name: 'Amend' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Amended.')
+      await user.click(await screen.findByRole('button', { name: 'Amend' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Amended.')
 
-    await user.type(screen.getByLabelText('Volume'), 'Long box')
+      await edit(user)
 
-    // Leaving it up would vouch for an edit that has not been sent.
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-  })
+      // Leaving it up would vouch for an edit that has not been sent.
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    },
+  )
 
   it('clears a blanked volume back to null rather than an empty string', async () => {
     const user = userEvent.setup()
