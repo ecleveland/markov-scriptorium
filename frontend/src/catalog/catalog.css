@@ -1,0 +1,341 @@
+/* The Catalog list and the folio detail view (VEG-220). Tokens only, per
+   ADR 0014 — no raw colours, fonts, or spacing values below. */
+
+.catalog,
+.lot-detail {
+  max-width: 56rem;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.catalog__count,
+.catalog__pending,
+.catalog__empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.catalog__error,
+.lot-detail__error {
+  color: var(--danger);
+}
+
+.catalog__empty a {
+  color: var(--accent-secondary);
+}
+
+/* ---- The list ----------------------------------------------------------- */
+
+.catalog__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-4);
+}
+
+.catalog__table th {
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.catalog__table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.catalog__row:hover {
+  background: var(--surface);
+}
+
+.catalog__art {
+  width: 3rem;
+}
+
+.catalog__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.catalog__name {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.catalog__name:hover {
+  color: var(--accent-hover);
+}
+
+.catalog__folio,
+.catalog__unset {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.catalog__unset {
+  font-style: italic;
+}
+
+.catalog__quantity {
+  text-align: right;
+}
+
+.catalog__pager {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}
+
+/* ---- Card art ----------------------------------------------------------- */
+
+.card-thumb {
+  display: block;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elevation-1);
+}
+
+.card-thumb--thumb {
+  width: 3rem;
+}
+
+.card-thumb--full {
+  width: 13rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
+}
+
+.card-thumb--empty {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 5 / 7;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+/* ---- Quantity stepper --------------------------------------------------- */
+
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.qty-stepper__step {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.qty-stepper__step:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.qty-stepper__step:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.qty-stepper__value {
+  font-family: var(--font-mono);
+  color: var(--accent-secondary);
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.qty-stepper__error {
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+/* ---- Detail view -------------------------------------------------------- */
+
+.lot-detail__back a {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.lot-detail__head {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+
+.lot-detail__folio {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.lot-detail__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: var(--space-4) 0 0;
+}
+
+.lot-detail__facts dt {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.lot-detail__facts dd {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* ---- Edit form ---------------------------------------------------------- */
+
+.lot-editor {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.lot-editor__fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.lot-editor__notes {
+  grid-column: 1 / -1;
+}
+
+.lot-editor label {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.lot-editor input,
+.lot-editor select,
+.lot-editor textarea {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.lot-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.lot-editor__saved {
+  font-size: var(--text-sm);
+  color: var(--success);
+}
+
+.lot-editor__error,
+.lot-remove__error {
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* ---- Ownership summary -------------------------------------------------- */
+
+.ownership {
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.ownership__sentence {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+
+.ownership__printings {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.ownership__printings li[aria-current='true'] {
+  color: var(--accent-secondary);
+}
+
+.ownership__pending,
+.lot-detail__pending {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.ownership__error {
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* ---- Removal ------------------------------------------------------------ */
+
+.lot-remove {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.lot-remove--confirming {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.lot-remove p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.lot-remove__start,
+.lot-remove__confirm {
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  cursor: pointer;
+}
+
+.lot-remove__confirm {
+  color: var(--text-primary);
+  background: var(--accent);
+  border-color: var(--accent);
+}

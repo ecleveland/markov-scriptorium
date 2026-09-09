@@ -37,19 +37,25 @@ export interface InscribeRequest {
   location?: string | null
 }
 
-/** The created inventory lot, enriched with a nested card display object. */
+/** An inventory lot (one acquisition), enriched with a nested card object. */
 export interface InventoryLot {
   id: number
   scryfall_id: string
   quantity: number
   finish: string
   condition: string
+  language: string
   location: string | null
+  acquired_at: string | null
+  price_paid: string | null
+  notes: string | null
+  tags: string[] | null
   card: {
     name: string
     set_code: string
     set_name: string
     collector_number: string
+    rarity: string
     image_uris: Record<string, string> | null
   }
 }
@@ -86,7 +92,7 @@ async function errorDetail(res: Response): Promise<string | undefined> {
   return undefined
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
     const detail = await errorDetail(res)
@@ -96,7 +102,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       detail,
     )
   }
-  return (await res.json()) as T
+  return res
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await (await send(path, init)).json()) as T
+}
+
+/** Like `request`, for endpoints that answer 204 with no body to parse. */
+async function requestVoid(path: string, init?: RequestInit): Promise<void> {
+  await send(path, init)
 }
 
 /** Distinct card names matching `query`, for type-ahead. Blank query → []. */
@@ -307,4 +322,110 @@ export async function parseCsv(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, format }),
   })
+}
+
+// --- Browsing and managing the collection (VEG-220) ------------------------
+
+/** Default page size for the Catalog list; the backend caps `limit` at 200. */
+export const CATALOG_PAGE_SIZE = 25
+
+export interface InventoryListResponse {
+  results: InventoryLot[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/** The four fields PATCH /inventory/{id} accepts. Omitted keys stay unchanged. */
+export interface LotPatch {
+  quantity?: number
+  condition?: Condition
+  location?: string | null
+  notes?: string | null
+}
+
+/** One (finish, condition, language) folio group within a single printing. */
+export interface FolioRollup {
+  finish: string
+  condition: string
+  language: string
+  quantity: number
+  lots: number
+}
+
+/** One printing's share of a card's total ownership. */
+export interface PrintingOwnership {
+  scryfall_id: string
+  set_code: string
+  set_name: string
+  collector_number: string
+  rarity: string
+  quantity: number
+  lots: number
+}
+
+/**
+ * A whole card's ownership, summed over every printing of it. `grouping` says
+ * how the backend tied the printings together: by Scryfall's `oracle_id`, or by
+ * card name when the catalog row has no oracle_id to group on.
+ */
+export interface AcrossPrintings {
+  grouping: 'oracle_id' | 'name'
+  oracle_id: string | null
+  name: string
+  total_quantity: number
+  printing_count: number
+  printings: PrintingOwnership[]
+}
+
+/** GET /inventory/card/{id}: one printing's lots, its folio rollup, and the
+ *  same card's total across every printing. */
+export interface OwnedForPrinting {
+  scryfall_id: string
+  card: InventoryLot['card'] | null
+  lots: InventoryLot[]
+  rollup: FolioRollup[]
+  total_quantity: number
+  across_printings: AcrossPrintings | null
+}
+
+/** One page of owned lots, newest first. */
+export async function listInventory(
+  offset = 0,
+  limit: number = CATALOG_PAGE_SIZE,
+): Promise<InventoryListResponse> {
+  return request<InventoryListResponse>(
+    `/inventory?limit=${limit}&offset=${offset}`,
+  )
+}
+
+/** One lot by id. Throws ApiError 404 when it does not exist. */
+export async function getLot(lotId: number): Promise<InventoryLot> {
+  return request<InventoryLot>(`/inventory/${lotId}`)
+}
+
+/** Amend a lot; returns the updated record. */
+export async function updateLot(
+  lotId: number,
+  patch: LotPatch,
+): Promise<InventoryLot> {
+  return request<InventoryLot>(`/inventory/${lotId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+}
+
+/** Remove a lot from the collection. Answers 204, so there is nothing to read. */
+export async function deleteLot(lotId: number): Promise<void> {
+  return requestVoid(`/inventory/${lotId}`, { method: 'DELETE' })
+}
+
+/** Everything owned of one printing, plus the card-level cross-printing total. */
+export async function ownedForPrinting(
+  scryfallId: string,
+): Promise<OwnedForPrinting> {
+  return request<OwnedForPrinting>(
+    `/inventory/card/${encodeURIComponent(scryfallId)}`,
+  )
 }

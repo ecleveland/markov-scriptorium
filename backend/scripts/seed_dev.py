@@ -1,10 +1,12 @@
 """Seed a handful of cards into the local catalog for development.
 
 Lets the Inscribe flow be exercised without the full ~500 MB Scryfall bulk
-download. Idempotent: re-running inserts nothing new (rows are keyed by their
-fake Scryfall id with ``INSERT OR IGNORE``). The set deliberately includes a
-name reprinted across two sets (Lightning Bolt) so the printing picker has
-something to disambiguate, and a mix of finishes/colors.
+download. Safe to re-run: rows are keyed by their fake Scryfall id and upserted,
+so a database seeded before a card definition changed picks the new values up.
+That also means a re-run **overwrites** any hand-edit you made to a seeded row.
+The set deliberately includes a name reprinted across two sets (Lightning Bolt)
+so the printing picker has something to disambiguate, and a mix of
+finishes/colors.
 
 Run from the backend directory:
 
@@ -29,9 +31,13 @@ _DEFAULTS: dict[str, Any] = {"lang": "en", "layout": "normal"}
 
 # A small, varied set. `colors`/`finishes`/`image_uris` are stored as JSON text,
 # matching the bulk importer; image_uris is left absent (no offline images).
+# The two Lightning Bolt printings share an `oracle_id`, so the catalog's
+# cross-printing ownership summary exercises the real grouping path locally
+# rather than its NULL-oracle_id name fallback.
 _CARDS: list[dict[str, Any]] = [
     {
         "scryfall_id": "dev-bolt-lea",
+        "oracle_id": "dev-oracle-lightning-bolt",
         "name": "Lightning Bolt",
         "set_code": "lea",
         "set_name": "Limited Edition Alpha",
@@ -45,6 +51,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-bolt-2x2",
+        "oracle_id": "dev-oracle-lightning-bolt",
         "name": "Lightning Bolt",
         "set_code": "2x2",
         "set_name": "Double Masters 2022",
@@ -58,6 +65,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-sol-cmd",
+        "oracle_id": "dev-oracle-sol-ring",
         "name": "Sol Ring",
         "set_code": "cmd",
         "set_name": "Commander 2011",
@@ -71,6 +79,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-counterspell-mh2",
+        "oracle_id": "dev-oracle-counterspell",
         "name": "Counterspell",
         "set_code": "mh2",
         "set_name": "Modern Horizons 2",
@@ -84,6 +93,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-brainstorm-ema",
+        "oracle_id": "dev-oracle-brainstorm",
         "name": "Brainstorm",
         "set_code": "ema",
         "set_name": "Eternal Masters",
@@ -97,6 +107,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-llanowar-m19",
+        "oracle_id": "dev-oracle-llanowar-elves",
         "name": "Llanowar Elves",
         "set_code": "m19",
         "set_name": "Core Set 2019",
@@ -110,6 +121,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-swords-cmr",
+        "oracle_id": "dev-oracle-swords-to-plowshares",
         "name": "Swords to Plowshares",
         "set_code": "cmr",
         "set_name": "Commander Legends",
@@ -123,6 +135,7 @@ _CARDS: list[dict[str, Any]] = [
     },
     {
         "scryfall_id": "dev-edgar-vow",
+        "oracle_id": "dev-oracle-edgar-charmed-groom",
         "name": "Edgar, Charmed Groom",
         "set_code": "vow",
         "set_name": "Innistrad: Crimson Vow",
@@ -149,19 +162,38 @@ def _row(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def seed() -> tuple[int, int]:
-    """Insert the dev cards idempotently; return ``(newly_added, catalog_total)``."""
+    """Insert or refresh the dev cards; return ``(newly_added, catalog_total)``.
+
+    Upserts rather than skipping rows that already exist. A dev database seeded
+    before a card definition changed (``oracle_id`` arrived with VEG-220, for
+    instance) would otherwise keep the stale row forever, and local behaviour
+    would quietly diverge from a fresh clone's.
+    """
     with closing(db.connect()) as conn:
         apply_migrations(conn)
+        ids = [card["scryfall_id"] for card in _CARDS]
+        placeholders = ", ".join("?" for _ in ids)
+        present = {
+            row[0]
+            for row in conn.execute(
+                f"SELECT scryfall_id FROM cards WHERE scryfall_id IN ({placeholders})", ids
+            ).fetchall()
+        }
         added = 0
         for card in _CARDS:
             row = _row(card)
             columns = ", ".join(row)
-            placeholders = ", ".join("?" for _ in row)
-            cur = conn.execute(
-                f"INSERT OR IGNORE INTO cards ({columns}) VALUES ({placeholders})",
+            values = ", ".join("?" for _ in row)
+            assignments = ", ".join(
+                f"{column} = excluded.{column}" for column in row if column != "scryfall_id"
+            )
+            conn.execute(
+                f"INSERT INTO cards ({columns}) VALUES ({values}) "
+                f"ON CONFLICT(scryfall_id) DO UPDATE SET {assignments}",
                 tuple(row.values()),
             )
-            added += cur.rowcount
+            if card["scryfall_id"] not in present:
+                added += 1
         # FTS5 external content must be told to rebuild after direct inserts so
         # autocomplete/search can find the seeded names.
         catalog.rebuild_name_index(conn)
@@ -172,9 +204,10 @@ def seed() -> tuple[int, int]:
 
 def main() -> None:
     added, total = seed()
+    refreshed = len(_CARDS) - added
     print(f"Seeded {added} new card(s); catalog now holds {total}.")
-    if added == 0:
-        print("(Dev cards already present — nothing to do.)")
+    if refreshed:
+        print(f"(Refreshed {refreshed} card(s) already present.)")
 
 
 if __name__ == "__main__":

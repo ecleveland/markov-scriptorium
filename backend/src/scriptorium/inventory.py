@@ -6,6 +6,10 @@ of an owned printing. List and detail reads join ``cards`` and attach a nested
 round-trip per row. The ``tags`` JSON-text column is (de)serialized here, at the
 edge, mirroring :mod:`scriptorium.catalog`'s handling of the card JSON columns.
 
+Two rollups sit on top of the CRUD: :func:`owned_for_printing` sums one printing
+by folio, and :func:`owned_across_printings` sums a whole card over every
+printing of it (VEG-220).
+
 Write functions commit their own transaction: each call is a complete operation,
 so a created/updated/deleted lot is durable when the function returns. All
 functions expect a connection opened via :func:`scriptorium.db.connect` (i.e.
@@ -56,6 +60,9 @@ _CARD_DISPLAY_COLUMNS = (
     "rarity",
     "image_uris",
 )
+
+# Card fields naming a printing in the cross-printing ownership breakdown.
+_PRINTING_SUMMARY_COLUMNS = ("set_code", "set_name", "collector_number", "rarity")
 
 # The shared SELECT: every inventory column plus the card display columns aliased
 # under a ``card_`` prefix, so :func:`_row_to_lot` can split them back apart.
@@ -283,6 +290,74 @@ def owned_for_printing(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, 
         "lots": lots,
         "rollup": rollup,
         "total_quantity": total_quantity,
+        "across_printings": owned_across_printings(conn, scryfall_id),
+    }
+
+
+def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] | None:
+    """Ownership of one *card* summed over every printing of it, or ``None``.
+
+    Answers "you own N copies across M printings" for the card that
+    ``scryfall_id`` is a printing of. Returns the grouping key used, the card
+    name, the summed ``total_quantity``, the ``printing_count`` (printings that
+    own at least one copy), and a per-printing breakdown ordered by set. A
+    printing with nothing owned is absent from the breakdown, so a wholly
+    unowned card yields a zero total and an empty list. ``None`` means the
+    anchor printing isn't in the catalog at all.
+
+    A printing's card identity is its ``oracle_id``, which is what Scryfall uses
+    to tie reprints together, and its name only when there is no ``oracle_id``
+    (``WHERE oracle_id = NULL`` matches nothing in SQLite, so the column alone
+    cannot group the un-oracled rows). Those two groups never mix. That keeps
+    identity an equivalence relation, which is what makes the total independent
+    of the folio it was asked from; a rule that reached from one group into the
+    other would report a different number per printing. The cost is that a card
+    whose printings are inconsistently oracled counts as two, which is the
+    better failure: an under-count is visible, a silent merge of two different
+    cards is not.
+    """
+    anchor = conn.execute(
+        "SELECT oracle_id, name FROM cards WHERE scryfall_id = ?", (scryfall_id,)
+    ).fetchone()
+    if anchor is None:
+        return None
+
+    oracle_id, name = anchor["oracle_id"], anchor["name"]
+    if oracle_id is not None:
+        grouping, predicate = "oracle_id", "c.oracle_id = ?"
+        params: tuple[str, ...] = (oracle_id,)
+    else:
+        # Un-oracled rows group among themselves, never with an oracled one.
+        # Reaching across would not be an equivalence and so could not answer the
+        # same from every side: with A (oracle X), B (no oracle) and C (oracle Y)
+        # sharing a name, A would see A+B, C would see C+B, and B all three.
+        # NOCASE matches idx_cards_name's collation, so this uses the index.
+        grouping = "name"
+        predicate = "c.oracle_id IS NULL AND c.name = ? COLLATE NOCASE"
+        params = (name,)
+
+    rows = conn.execute(
+        "SELECT i.scryfall_id, "
+        + ", ".join(f"c.{col}" for col in _PRINTING_SUMMARY_COLUMNS)
+        + ", SUM(i.quantity) AS quantity, COUNT(*) AS lots "
+        "FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id "
+        f"WHERE {predicate} "
+        "GROUP BY i.scryfall_id "
+        # collector_number is TEXT (it can hold ★, letters, and the like), so a
+        # plain sort puts "10" before "2". Cast for the numeric ordering people
+        # expect and keep the raw value as the tiebreaker for non-numeric ones.
+        "ORDER BY c.set_code, CAST(c.collector_number AS INTEGER), c.collector_number",
+        params,
+    ).fetchall()
+    printings = [dict(row) for row in rows]
+
+    return {
+        "grouping": grouping,
+        "oracle_id": oracle_id,
+        "name": name,
+        "total_quantity": sum(printing["quantity"] for printing in printings),
+        "printing_count": len(printings),
+        "printings": printings,
     }
 
 
