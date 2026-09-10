@@ -56,6 +56,7 @@ describe('design tokens contract', () => {
   it('defines semantic aliases over the raw palette', () => {
     for (const name of [
       '--surface',
+      '--surface-hover',
       '--border',
       '--accent',
       '--danger',

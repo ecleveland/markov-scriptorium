@@ -66,4 +66,12 @@ describe('App routing', () => {
       await screen.findByRole('heading', { name: 'No such folio' }),
     ).toBeInTheDocument()
   })
+
+  it('serves the component specimen sheet in development', async () => {
+    // Vitest runs with DEV set, so the lazily loaded route is registered.
+    renderAt('/specimens')
+    expect(
+      await screen.findByRole('heading', { name: 'Specimens' }),
+    ).toBeInTheDocument()
+  })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { searchPrintings, type PrintingsResult } from '../api'
+import { PrintingChip } from '../components/PrintingChip'
 
 interface Props {
   name: string
@@ -58,18 +59,7 @@ export function PrintingPicker({ name, onPick, onCancel }: Props) {
           {result.printings.map((printing) => (
             <li key={printing.scryfall_id} role="option" aria-selected={false}>
               <button type="button" onClick={() => onPick(printing)}>
-                {printing.image_uris?.small && (
-                  <img
-                    src={printing.image_uris.small}
-                    alt=""
-                    width={48}
-                    loading="lazy"
-                  />
-                )}
-                <span>
-                  {printing.set_name} ({printing.set_code.toUpperCase()}) · #
-                  {printing.collector_number}
-                </span>
+                <PrintingChip printing={printing} size="md" />
               </button>
             </li>
           ))}

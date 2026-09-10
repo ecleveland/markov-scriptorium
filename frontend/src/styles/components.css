@@ -1,0 +1,243 @@
+/*
+ * The Markov Scriptorium — shared component layer (VEG-423)
+ *
+ * One global stylesheet for the presentational components in
+ * src/components/. Rules here consume design tokens only (tokens.css); no raw
+ * colours or font names. The focus ring is drawn once, globally, by index.css's
+ * :focus-visible outline, and nothing here may set `outline`.
+ * src/styles/components.test.ts enforces both.
+ *
+ * Loaded from index.css before any page sheet, so a page rule at equal
+ * specificity wins: pages layer layout and one-off tweaks on top of these
+ * classes rather than restyling elements from scratch. Hover guards use
+ * :where() so they add no specificity of their own.
+ *
+ * Convention and alternatives: docs/decisions/0017-component-layer-convention.md
+ */
+
+/* ---- Button --------------------------------------------------------------
+   .btn--secondary  the default: quiet, bordered
+   .btn--primary    filled oxblood, the one action on a screen
+   .btn--ghost      borderless, for tertiary actions inline with text
+   .btn--danger     outlined oxblood-bright; hue is shared with primary, the
+                    outline is what says "destructive" (ADR 0014 §3) */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: var(--leading-snug);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+/* Hover lays the translucent hover fill over whatever the variant's colour is. */
+.btn:hover:where(:not(:disabled)) {
+  background-image: linear-gradient(var(--surface-hover), var(--surface-hover));
+  border-color: var(--text-faint);
+}
+
+.btn--primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+.btn--primary:hover:where(:not(:disabled)) {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn--ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+.btn--ghost:hover:where(:not(:disabled)) {
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.btn--danger {
+  background-color: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn--danger:hover:where(:not(:disabled)) {
+  border-color: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The wax-seal glyph beside a signature action's label. */
+.btn__seal {
+  width: 1.25em;
+  height: 1.25em;
+  flex-shrink: 0;
+}
+.btn__seal-wax {
+  fill: var(--bg);
+  opacity: 0.55;
+}
+.btn__seal-ring {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2.5;
+}
+
+/* ---- Tag / status pill --------------------------------------------------
+   neutral (default), success (ready), warning (choose printing),
+   danger (unmatched). */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.15em var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tag--success {
+  color: var(--success);
+  border-color: var(--success);
+}
+.tag--warning {
+  color: var(--accent-secondary);
+  border-color: var(--accent-secondary);
+}
+.tag--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- Panel ---------------------------------------------------------------
+   A bordered surface with the oxblood top-rule. Layout (flex, grid) belongs
+   to the page class that sits beside .panel, not here. */
+
+.panel {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  min-inline-size: 0;
+}
+
+.panel > legend {
+  padding: 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---- Field + form controls --------------------------------------------- */
+
+.field {
+  display: block;
+}
+
+.field__label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.control {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  line-height: var(--leading-snug);
+  transition: border-color 120ms ease;
+}
+
+.control::placeholder {
+  color: var(--text-faint);
+}
+
+.control:hover:where(:not(:disabled)) {
+  border-color: var(--text-faint);
+}
+
+.control:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+textarea.control {
+  resize: vertical;
+}
+
+select.control {
+  cursor: pointer;
+}
+
+/* ---- Printing chip -------------------------------------------------------
+   Card thumbnail + "Set Name (SET) · #num", used inside listbox options. The
+   art is decorative (alt="") so the option's name stays the printing text. */
+
+.printing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  text-align: left;
+}
+
+.printing-chip__thumb {
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+}
+
+.printing-chip--sm .printing-chip__thumb {
+  width: 2rem;
+}
+
+.printing-chip--md .printing-chip__thumb {
+  width: 2.75rem;
+}
+
+/* Typography and colour come from the option button around the chip, so a
+   page can restyle the label through the button it already targets. */
+.printing-chip__text {
+  min-width: 0;
+}
