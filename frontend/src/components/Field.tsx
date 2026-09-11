@@ -1,8 +1,9 @@
-import type { ComponentProps, ReactNode } from 'react'
+import type { ComponentProps } from 'react'
 import { cx } from './cx'
 
-interface FieldProps extends ComponentProps<'label'> {
-  label: ReactNode
+/** `htmlFor` is omitted on purpose. The label wraps its control. */
+export interface FieldProps extends Omit<ComponentProps<'label'>, 'htmlFor'> {
+  label: string
 }
 
 /**

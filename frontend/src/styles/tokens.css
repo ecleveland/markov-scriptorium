@@ -47,7 +47,14 @@
      Translucent bone so it composes over any ground: lay it over an existing
      fill as a background-image, or use it as the fill of a transparent element
      (ADR 0017). */
-  --surface-hover: rgb(236 229 216 / 8%);
+  --surface-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  /* The same step composed onto the raised surface, for opaque elements that
+     swap background-color on hover (buttons). */
+  --surface-raised-hover: color-mix(
+    in srgb,
+    var(--surface-raised),
+    var(--text) 8%
+  );
   --border: var(--line);
 
   --accent: var(--oxblood);

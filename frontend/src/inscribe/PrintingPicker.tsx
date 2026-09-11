@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { searchPrintings, type PrintingsResult } from '../api'
-import { PrintingChip } from '../components/PrintingChip'
+import { PrintingChip } from '../components'
 
 interface Props {
   name: string

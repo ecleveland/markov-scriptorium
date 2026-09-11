@@ -74,4 +74,27 @@ describe('App routing', () => {
       await screen.findByRole('heading', { name: 'Specimens' }),
     ).toBeInTheDocument()
   })
+
+  it('does not register the specimen sheet outside development', async () => {
+    vi.stubEnv('DEV', false)
+    vi.resetModules()
+    try {
+      const { default: ProdApp } = await import('./App')
+      renderWithQuery(
+        <MemoryRouter initialEntries={['/specimens']}>
+          <ProdApp />
+        </MemoryRouter>,
+      )
+      // The shell still renders. The route does not.
+      expect(
+        await screen.findByRole('link', { name: /The Markov Scriptorium/ }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Specimens' }),
+      ).not.toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
+  })
 })

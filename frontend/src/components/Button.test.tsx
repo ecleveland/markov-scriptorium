@@ -28,7 +28,11 @@ describe('Button', () => {
   })
 
   it('renders the wax-seal glyph outside the accessible name', () => {
-    const { container } = render(<Button seal>Inscribe</Button>)
+    const { container } = render(
+      <Button variant="primary" seal>
+        Inscribe
+      </Button>,
+    )
     expect(screen.getByRole('button', { name: 'Inscribe' })).toBeInTheDocument()
     const seal = container.querySelector('.btn__seal')
     expect(seal).not.toBeNull()
@@ -38,5 +42,11 @@ describe('Button', () => {
   it('has no seal glyph unless asked', () => {
     const { container } = render(<Button>Plain</Button>)
     expect(container.querySelector('.btn__seal')).toBeNull()
+  })
+
+  it('only allows the seal on the primary variant (type-level)', () => {
+    // @ts-expect-error the seal is reserved for the primary action
+    void (<Button variant="ghost" seal />)
+    void (<Button variant="primary" seal />)
   })
 })

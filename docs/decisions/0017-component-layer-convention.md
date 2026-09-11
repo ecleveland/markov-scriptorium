@@ -42,13 +42,22 @@ free for elevation without any risk of a component shadow hiding the ring.
 `:hover:where(:not(:disabled))` so they add no specificity. Both are
 contract-tested.
 
-**One new token: `--surface-hover`.** Hover and selected fills were hardcoded
+**Two new tokens for hover.** Hover and selected fills were hardcoded
 translucent white in `inscribe.css` and `decklist.css`; the no-raw-colour rule
-needed a token for them. It is translucent bone, so it composes over any
-ground: buttons lay it over their own fill as a `background-image`, and a
-transparent element (a listbox option) uses it as its fill. Both page sheets
-now use it for their option hover. It sits beside `--surface-raised` in
-`tokens.css` and is pinned in `tokens.test.ts`.
+needed tokens for them. `--surface-hover` is translucent bone, the fill for a
+transparent element such as a listbox option or a ghost button, and both page
+sheets now use it for their option hover. `--surface-raised-hover` is the same
+step composed onto the raised surface with `color-mix()`, for opaque elements
+that swap `background-color` on hover. Both sit beside `--surface-raised` in
+`tokens.css` and are pinned in `tokens.test.ts`.
+
+**Button fills are custom properties.** `.btn` reads `--btn-bg`,
+`--btn-bg-hover`, `--btn-border`, and `--btn-border-hover`; the rest state and
+the single hover rule are written once against those, and each variant is
+fully described by the properties it sets. A page that needs a differently
+coloured button sets the properties on its own class rather than fighting the
+hover rule, and `background-color` stays a transitioned property so every
+variant fades the same way. Contract-tested.
 
 ### Vocabulary
 
@@ -63,7 +72,7 @@ now use it for their option hover. It sits beside `--surface-raised` in
 
 **Primary and danger share the oxblood hue; treatment tells them apart.**
 Primary is filled oxblood. Danger is outlined oxblood-bright. There is no
-filled danger button: the Catalog's confirm-removal button, currently a filled
+filled danger button. The Catalog's confirm-removal button, currently a filled
 accent, becomes `primary` when VEG-424 adopts the layer. The quantity
 stepper's round icon buttons stay bespoke (`.qty-stepper__step`); they are not
 a `Button` variant.
@@ -88,15 +97,15 @@ accessibility pass (VEG-427) needs one page where every state is visible.
 
 ## Alternatives
 
-- **CSS modules.** Zero dependencies with Vite, and real scoping. Rejected:
-  hashed class names break the class-based E2E locators (`.status`) and make
-  page-level overrides awkward, and scoping solves a problem a single-app
-  codebase with one bundled sheet does not have.
-- **Styled primitives** (styled-components, vanilla-extract, or similar).
-  Rejected: a new dependency for theming the tokens already provide, and the
-  project prefers boring tools that still run in five years.
-- **Keep per-page CSS and copy rules between pages.** Rejected: that is the
-  status quo this ticket exists to end. Three pages already carried three
+- **CSS modules.** Zero dependencies with Vite, and real scoping. Rejected
+  because hashed class names break the class-based E2E locators (`.status`)
+  and make page-level overrides awkward, and scoping solves a problem a
+  single-app codebase with one bundled sheet does not have.
+- **CSS-in-JS libraries** (styled-components, vanilla-extract, or similar).
+  Rejected because they add a dependency for theming the tokens already
+  provide, and the project prefers boring tools that still run in five years.
+- **Keep per-page CSS and copy rules between pages.** Rejected because that is
+  the status quo this ticket exists to end. Three pages already carried three
   copies of the same button and listbox rules with three different colours.
 
 ## Follow-ups
@@ -109,7 +118,17 @@ accessibility pass (VEG-427) needs one page where every state is visible.
 
 - VEG-424 replaces the ad-hoc rules in `inscribe.css` and `decklist.css` with
   these classes and drops the two private `describe()` helpers in the
-  onboarding pages in favour of `describePrinting()`.
+  onboarding pages (and the inline copy in `InscribeForm`) in favour of
+  `describePrinting()`. The same pass migrates `catalog.css`, whose
+  `.lot-editor` controls and labels and `.lot-remove__*` buttons duplicate
+  `.control`, `.field__label`, and the button variants.
+- The two pickers' option buttons share near-identical rules in the page
+  sheets at (0,1,1) specificity, which out-ranks any `.btn` variant. VEG-424
+  should add a shared listbox-option class to this layer when it replaces
+  them, rather than reaching for `.btn--ghost`.
+- Double-faced printings show no thumbnail because their art lives on
+  `card_faces` and the picker queries return `cards` rows only. Tracked as
+  VEG-557.
 - `CardThumb` and its `.card-thumb` rules are already token-only and
   presentational; move them from `catalog/` into `components/` when the next
   consumer outside the Catalog appears.

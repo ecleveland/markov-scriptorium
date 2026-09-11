@@ -3,14 +3,18 @@ import { cx } from './cx'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
-interface ButtonProps extends ComponentProps<'button'> {
-  /** `secondary` unless told otherwise; `primary` is the one action on a screen. */
-  variant?: ButtonVariant
-  /** Press the wax seal beside the label. Reserved for the signature Inscribe action. */
-  seal?: boolean
-}
+/**
+ * `secondary` unless told otherwise; `primary` is the one action on a screen.
+ * The wax seal is reserved for the signature Inscribe action, so it is only
+ * accepted alongside `variant="primary"`.
+ */
+export type ButtonProps = ComponentProps<'button'> &
+  (
+    | { variant?: Exclude<ButtonVariant, 'primary'>; seal?: never }
+    | { variant: 'primary'; seal?: boolean }
+  )
 
-/** A small wax seal: a wax disc with a gold ring pressed into it. Decorative. */
+/** A small wax seal, a wax disc with a gold ring pressed into it. Decorative. */
 function WaxSealGlyph() {
   return (
     <svg

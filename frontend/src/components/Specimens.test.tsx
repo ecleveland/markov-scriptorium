@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Specimens } from './Specimens'
 
-// A smoke test: the dev-only specimen sheet must render every component and
+// A smoke test. The dev-only specimen sheet must render every component and
 // state so the design tickets that follow have one page to review.
 describe('Specimens', () => {
   it('renders every button variant', () => {

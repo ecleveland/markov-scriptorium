@@ -100,4 +100,26 @@ describe('PrintingPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Change card' }))
     expect(onCancel).toHaveBeenCalledOnce()
   })
+
+  it('shows card art as decoration, leaving the option named by its printing', async () => {
+    searchMock.mockResolvedValue({
+      printings: [printing({ image_uris: { small: 'https://img/bolt.jpg' } })],
+      truncated: false,
+    })
+    render(
+      <PrintingPicker
+        name="Lightning Bolt"
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    expect(
+      await screen.findByRole('button', {
+        name: 'Limited Edition Alpha (LEA) · #161',
+      }),
+    ).toBeInTheDocument()
+    const art = screen.getByRole('presentation')
+    expect(art).toHaveAttribute('src', 'https://img/bolt.jpg')
+    expect(art).toHaveAttribute('alt', '')
+  })
 })

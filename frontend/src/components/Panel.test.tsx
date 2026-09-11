@@ -38,6 +38,17 @@ describe('Panel', () => {
     expect(aside).toHaveClass('panel', 'decklist__problems')
   })
 
+  it('types attributes and refs by the rendered element (type-level)', () => {
+    const section = createRef<HTMLElement>()
+    void (<Panel as="section" ref={section} />)
+    const div = createRef<HTMLDivElement>()
+    void (<Panel ref={div} />)
+    // @ts-expect-error disabled only exists on a fieldset
+    void (<Panel disabled />)
+    // @ts-expect-error a div ref does not fit a fieldset
+    void (<Panel as="fieldset" ref={div} />)
+  })
+
   it('passes fieldset-only props and refs through to the element', () => {
     const ref = createRef<HTMLFieldSetElement>()
     render(

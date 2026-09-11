@@ -79,4 +79,28 @@ describe('CandidatePicker', () => {
     expect(options[0]).toHaveAttribute('aria-selected', 'false')
     expect(options[1]).toHaveAttribute('aria-selected', 'true')
   })
+
+  it('shows card art as decoration, leaving the option named by its printing', () => {
+    render(
+      <CandidatePicker
+        name="Lightning Bolt"
+        candidates={[
+          printing({
+            scryfall_id: 'a',
+            image_uris: { small: 'https://img/bolt.jpg' },
+          }),
+        ]}
+        selectedId={null}
+        onPick={() => {}}
+      />,
+    )
+    expect(
+      screen.getByRole('button', {
+        name: 'Limited Edition Alpha (LEA) · #161',
+      }),
+    ).toBeInTheDocument()
+    const art = screen.getByRole('presentation')
+    expect(art).toHaveAttribute('src', 'https://img/bolt.jpg')
+    expect(art).toHaveAttribute('alt', '')
+  })
 })

@@ -1,5 +1,5 @@
 import type { CardPrinting } from '../api'
-import { PrintingChip } from '../components/PrintingChip'
+import { PrintingChip } from '../components'
 
 interface Props {
   name: string

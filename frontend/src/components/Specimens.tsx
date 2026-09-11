@@ -18,8 +18,8 @@ const SOL_RING = {
   set_code: 'c21',
   collector_number: '263',
   image_uris: {
-    // A 1x1 transparent GIF so the specimen shows the thumbnail slot without a
-    // network request.
+    // A 1x1 transparent GIF, so the specimen shows the thumbnail slot without
+    // a network request.
     small:
       'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   },
@@ -40,21 +40,23 @@ export function Specimens() {
       <div className="specimens__row">
         <Button variant="primary" seal>
           Inscribe
-        </Button>{' '}
-        <Button variant="primary">Resolve decklist</Button>{' '}
-        <Button>Change card</Button> <Button variant="ghost">Change</Button>{' '}
-        <Button variant="danger">Remove from the catalog</Button>{' '}
+        </Button>
+        <Button variant="primary">Resolve decklist</Button>
+        <Button>Change card</Button>
+        <Button variant="ghost">Change</Button>
+        <Button variant="danger">Remove from the catalog</Button>
         <Button variant="primary" disabled>
           Inscribing…
-        </Button>{' '}
+        </Button>
         <Button disabled>Disabled</Button>
       </div>
 
       <h2>Tags</h2>
       <div className="specimens__row">
-        <Tag tone="success">ready</Tag>{' '}
-        <Tag tone="warning">choose printing</Tag>{' '}
-        <Tag tone="danger">unmatched</Tag> <Tag>foil</Tag>
+        <Tag tone="success">ready</Tag>
+        <Tag tone="warning">choose printing</Tag>
+        <Tag tone="danger">unmatched</Tag>
+        <Tag>foil</Tag>
       </div>
 
       <h2>Panel and fields</h2>
@@ -77,7 +79,7 @@ export function Specimens() {
           />
         </Field>
         <Field label="Disabled">
-          <Input type="text" value="Sealed" disabled readOnly />
+          <Input type="text" defaultValue="Sealed" disabled />
         </Field>
       </Panel>
 

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { PrintingChip } from './PrintingChip'
+import type { PrintingOwnership } from '../api'
+import { PrintingChip, type PrintingChipPrinting } from './PrintingChip'
 
 const bolt = {
   set_name: 'Limited Edition Alpha',
@@ -45,6 +46,23 @@ describe('PrintingChip', () => {
     )
     expect(
       screen.getByRole('button', { name: /Limited Edition Alpha/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('accepts any printing shape with the summary fields, art optional', () => {
+    const owned: PrintingOwnership = {
+      scryfall_id: 'lea-bolt',
+      set_code: 'lea',
+      set_name: 'Limited Edition Alpha',
+      collector_number: '161',
+      rarity: 'common',
+      quantity: 2,
+      lots: 1,
+    }
+    const printing: PrintingChipPrinting = owned
+    render(<PrintingChip printing={printing} />)
+    expect(
+      screen.getByText('Limited Edition Alpha (LEA) · #161'),
     ).toBeInTheDocument()
   })
 })

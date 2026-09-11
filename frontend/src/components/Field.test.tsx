@@ -36,4 +36,9 @@ describe('Field', () => {
       'lot-editor__notes',
     )
   })
+
+  it('cannot be re-pointed at another element (type-level)', () => {
+    // @ts-expect-error the label wraps its control; htmlFor would break that
+    void (<Field label="Finish" htmlFor="elsewhere" />)
+  })
 })
