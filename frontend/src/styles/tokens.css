@@ -43,6 +43,18 @@
   --color-bg: var(--bg);
   --surface: var(--panel);
   --surface-raised: #1d1925;
+  /* Hover / selected fill for interactive surfaces (buttons, listbox options).
+     Translucent bone so it composes over any ground: lay it over an existing
+     fill as a background-image, or use it as the fill of a transparent element
+     (ADR 0017). */
+  --surface-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  /* The same step composed onto the raised surface, for opaque elements that
+     swap background-color on hover (buttons). */
+  --surface-raised-hover: color-mix(
+    in srgb,
+    var(--surface-raised),
+    var(--text) 8%
+  );
   --border: var(--line);
 
   --accent: var(--oxblood);
@@ -51,16 +63,18 @@
 
   --danger: var(--oxblood-bright);
   --success: var(--green);
+  --warning: var(--gold);
 
   --text-primary: var(--text);
   --text-muted: var(--muted);
   --text-faint: var(--faint);
 
   /* Focus ring — gold reads clearly on obsidian and stays distinct from the
-     oxblood content accent. Disambiguates focus from selection/danger. */
+     oxblood content accent. Disambiguates focus from selection/danger. Drawn
+     as an outline (index.css) so box-shadow stays free for elevation. */
   --focus-ring-width: 2px;
   --focus-ring-color: var(--gold);
-  --focus-ring: 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+  --focus-ring: var(--focus-ring-width) solid var(--focus-ring-color);
 
   /* ---- 3a. Type families ------------------------------------------------ */
   /* Self-hosted OFL fonts (loaded via @fontsource in main.tsx) lead each

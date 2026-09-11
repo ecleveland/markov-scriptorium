@@ -1,22 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { CardPrinting } from '../api'
+import { printing } from '../test/fixtures'
 import { CandidatePicker } from './CandidatePicker'
-
-function printing(overrides: Partial<CardPrinting>): CardPrinting {
-  return {
-    scryfall_id: 'id',
-    name: 'Lightning Bolt',
-    set_code: 'lea',
-    set_name: 'Limited Edition Alpha',
-    collector_number: '161',
-    rarity: 'common',
-    finishes: ['nonfoil'],
-    image_uris: null,
-    ...overrides,
-  }
-}
 
 describe('CandidatePicker', () => {
   it('renders the given candidates without fetching the catalog', () => {
@@ -78,5 +64,29 @@ describe('CandidatePicker', () => {
     const options = screen.getAllByRole('option')
     expect(options[0]).toHaveAttribute('aria-selected', 'false')
     expect(options[1]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows card art as decoration, leaving the option named by its printing', () => {
+    render(
+      <CandidatePicker
+        name="Lightning Bolt"
+        candidates={[
+          printing({
+            scryfall_id: 'a',
+            image_uris: { small: 'https://img/bolt.jpg' },
+          }),
+        ]}
+        selectedId={null}
+        onPick={() => {}}
+      />,
+    )
+    expect(
+      screen.getByRole('button', {
+        name: 'Limited Edition Alpha (LEA) · #161',
+      }),
+    ).toBeInTheDocument()
+    const art = screen.getByRole('presentation')
+    expect(art).toHaveAttribute('src', 'https://img/bolt.jpg')
+    expect(art).toHaveAttribute('alt', '')
   })
 })

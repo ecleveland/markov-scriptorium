@@ -1,4 +1,5 @@
 import type { CardPrinting } from '../api'
+import { PrintingChip } from '../components'
 
 interface Props {
   name: string
@@ -32,18 +33,7 @@ export function CandidatePicker({
           aria-selected={printing.scryfall_id === selectedId}
         >
           <button type="button" onClick={() => onPick(printing)}>
-            {printing.image_uris?.small && (
-              <img
-                src={printing.image_uris.small}
-                alt=""
-                width={36}
-                loading="lazy"
-              />
-            )}
-            <span>
-              {printing.set_name} ({printing.set_code.toUpperCase()}) · #
-              {printing.collector_number}
-            </span>
+            <PrintingChip printing={printing} />
           </button>
         </li>
       ))}

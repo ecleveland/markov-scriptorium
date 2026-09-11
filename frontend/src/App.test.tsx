@@ -66,4 +66,42 @@ describe('App routing', () => {
       await screen.findByRole('heading', { name: 'No such folio' }),
     ).toBeInTheDocument()
   })
+
+  it('serves the component specimen sheet in development', async () => {
+    // Vitest runs with DEV set, so the lazily loaded route is registered.
+    // The wait covers React's fixed 300ms Suspense throttle plus a cold
+    // worker's transform of the chunk, so the default 1s cannot flake.
+    renderAt('/specimens')
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Specimens' },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('does not register the specimen sheet outside development', async () => {
+    vi.stubEnv('DEV', false)
+    vi.resetModules()
+    try {
+      const { default: ProdApp } = await import('./App')
+      renderWithQuery(
+        <MemoryRouter initialEntries={['/specimens']}>
+          <ProdApp />
+        </MemoryRouter>,
+      )
+      // The shell still renders. The route does not: with no match, Routes
+      // renders nothing, so main is empty. A registered lazy route would
+      // already have committed its Suspense fallback here, so this assertion
+      // fails if the DEV gate is ever dropped.
+      expect(
+        await screen.findByRole('link', { name: /The Markov Scriptorium/ }),
+      ).toBeInTheDocument()
+      await vi.dynamicImportSettled()
+      expect(screen.getByRole('main')).toBeEmptyDOMElement()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })

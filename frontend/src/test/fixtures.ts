@@ -1,7 +1,27 @@
 // Shared builders for the inventory shapes the API returns. Test-only: nothing
 // in src imports these, so they never reach the bundle.
 
-import type { AcrossPrintings, InventoryLot, OwnedForPrinting } from '../api'
+import type {
+  AcrossPrintings,
+  CardPrinting,
+  InventoryLot,
+  OwnedForPrinting,
+} from '../api'
+
+/** A catalog printing, as the search and printings endpoints return it. */
+export function printing(overrides: Partial<CardPrinting> = {}): CardPrinting {
+  return {
+    scryfall_id: 'bolt-lea',
+    name: 'Lightning Bolt',
+    set_code: 'lea',
+    set_name: 'Limited Edition Alpha',
+    collector_number: '161',
+    rarity: 'common',
+    finishes: ['nonfoil'],
+    image_uris: null,
+    ...overrides,
+  }
+}
 
 export function lot(overrides: Partial<InventoryLot> = {}): InventoryLot {
   const { card, ...rest } = overrides
