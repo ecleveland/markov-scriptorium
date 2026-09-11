@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CardPrinting, PrintingsResult } from '../api'
+import type { PrintingsResult } from '../api'
+import { printing } from '../test/fixtures'
 import { PrintingPicker } from './PrintingPicker'
 
 vi.mock('../api', async (importOriginal) => {
@@ -12,20 +13,6 @@ vi.mock('../api', async (importOriginal) => {
 import { searchPrintings } from '../api'
 
 const searchMock = vi.mocked(searchPrintings)
-
-function printing(overrides: Partial<CardPrinting>): CardPrinting {
-  return {
-    scryfall_id: 'lea-bolt',
-    name: 'Lightning Bolt',
-    set_code: 'lea',
-    set_name: 'Limited Edition Alpha',
-    collector_number: '161',
-    rarity: 'common',
-    finishes: ['nonfoil'],
-    image_uris: null,
-    ...overrides,
-  }
-}
 
 function deferred<T>() {
   let resolve!: (value: T) => void

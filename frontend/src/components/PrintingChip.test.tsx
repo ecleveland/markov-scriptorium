@@ -1,15 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { PrintingOwnership } from '../api'
+import { printing } from '../test/fixtures'
 import { PrintingChip } from './PrintingChip'
 import type { PrintingSummary } from './printing'
 
-const bolt = {
-  set_name: 'Limited Edition Alpha',
-  set_code: 'lea',
-  collector_number: '161',
-  image_uris: null,
-}
+// A CardPrinting fits the chip's structural PrintingSummary.
+const bolt = printing()
 
 describe('PrintingChip', () => {
   it('describes the printing and keeps an unlabelled slot when there is no art', () => {

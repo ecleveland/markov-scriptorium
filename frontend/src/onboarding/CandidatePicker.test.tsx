@@ -1,22 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { CardPrinting } from '../api'
+import { printing } from '../test/fixtures'
 import { CandidatePicker } from './CandidatePicker'
-
-function printing(overrides: Partial<CardPrinting>): CardPrinting {
-  return {
-    scryfall_id: 'id',
-    name: 'Lightning Bolt',
-    set_code: 'lea',
-    set_name: 'Limited Edition Alpha',
-    collector_number: '161',
-    rarity: 'common',
-    finishes: ['nonfoil'],
-    image_uris: null,
-    ...overrides,
-  }
-}
 
 describe('CandidatePicker', () => {
   it('renders the given candidates without fetching the catalog', () => {
