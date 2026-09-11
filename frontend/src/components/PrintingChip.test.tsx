@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { PrintingOwnership } from '../api'
 import { PrintingChip, type PrintingChipPrinting } from './PrintingChip'
@@ -64,5 +64,17 @@ describe('PrintingChip', () => {
     expect(
       screen.getByText('Limited Edition Alpha (LEA) · #161'),
     ).toBeInTheDocument()
+  })
+
+  it('gives the reserved slot back when the art fails to load', () => {
+    render(
+      <PrintingChip
+        printing={{ ...bolt, image_uris: { small: 'https://img/gone.jpg' } }}
+      />,
+    )
+    const img = screen.getByRole('presentation')
+    expect(img).not.toHaveAttribute('hidden')
+    fireEvent.error(img)
+    expect(img).toHaveAttribute('hidden')
   })
 })

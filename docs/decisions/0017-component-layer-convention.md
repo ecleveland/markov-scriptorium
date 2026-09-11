@@ -49,7 +49,11 @@ transparent element such as a listbox option or a ghost button, and both page
 sheets now use it for their option hover. `--surface-raised-hover` is the same
 step composed onto the raised surface with `color-mix()`, for opaque elements
 that swap `background-color` on hover. Both sit beside `--surface-raised` in
-`tokens.css` and are pinned in `tokens.test.ts`.
+`tokens.css` and are pinned in `tokens.test.ts`. `color-mix()` sets the
+browser floor at Chrome 111, Safari 16.2, and Firefox 113 (all 2023); older
+engines drop the hover fill and the selected-candidate highlight, which is
+acceptable for a single-user local app that ships inside a current WebKit
+once packaged.
 
 **Button fills are custom properties.** `.btn` reads `--btn-bg`,
 `--btn-bg-hover`, `--btn-border`, and `--btn-border-hover`; the rest state and

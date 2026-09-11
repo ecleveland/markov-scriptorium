@@ -22,7 +22,17 @@ export function PrintingChip({ printing, size = 'sm' }: PrintingChipProps) {
   return (
     <span className={cx('printing-chip', `printing-chip--${size}`)}>
       {art && (
-        <img className="printing-chip__thumb" src={art} alt="" loading="lazy" />
+        <img
+          className="printing-chip__thumb"
+          src={art}
+          alt=""
+          loading="lazy"
+          // The slot is reserved for the card's proportions while the image
+          // loads; if the art never arrives, give the space back.
+          onError={(event) => {
+            event.currentTarget.hidden = true
+          }}
+        />
       )}
       <span className="printing-chip__text">{describePrinting(printing)}</span>
     </span>

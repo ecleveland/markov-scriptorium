@@ -10,7 +10,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
  */
 export type ButtonProps = ComponentProps<'button'> &
   (
-    | { variant?: Exclude<ButtonVariant, 'primary'>; seal?: never }
+    | { variant?: Exclude<ButtonVariant, 'primary'>; seal?: false }
     | { variant: 'primary'; seal?: boolean }
   )
 

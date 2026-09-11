@@ -19,8 +19,10 @@ function cssFiles(dir: string): string[] {
   })
 }
 
+const rootSheet = join(srcDir, 'index.css')
+
 const sheets = cssFiles(srcDir)
-  .filter((path) => !path.endsWith('/index.css'))
+  .filter((path) => path !== rootSheet)
   .map((path) => ({
     name: path.slice(srcDir.length),
     css: readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''),

@@ -32,7 +32,7 @@ function App() {
             <Route
               path="/specimens"
               element={
-                <Suspense fallback={null}>
+                <Suspense fallback={<p>Laying out the specimens…</p>}>
                   <Specimens />
                 </Suspense>
               }

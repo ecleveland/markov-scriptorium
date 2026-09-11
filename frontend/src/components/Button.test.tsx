@@ -49,4 +49,13 @@ describe('Button', () => {
     void (<Button variant="ghost" seal />)
     void (<Button variant="primary" seal />)
   })
+
+  it('accepts an explicit seal={false} on any variant (type-level)', () => {
+    void (<Button seal={false}>Change</Button>)
+    void (
+      <Button variant="ghost" seal={false}>
+        Change
+      </Button>
+    )
+  })
 })

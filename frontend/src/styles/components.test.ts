@@ -7,9 +7,8 @@ import { describe, expect, it } from 'vitest'
 //
 // The component layer consumes design tokens only. No raw colours or font
 // names may appear here, so a later re-theme is a tokens.css edit and nothing
-// else. It must also leave the focus ring alone. index.css draws the ring with
-// a single global :focus-visible outline, so no component may set `outline`.
-// box-shadow stays free for elevation, since it cannot hide an outline.
+// else. (focus-ring.test.ts separately guarantees no sheet, this one included,
+// sets `outline`; box-shadow stays free for elevation.)
 
 /** Every CSS named colour. A value token matching one of these is a raw colour. */
 const NAMED_COLOURS = new Set([
@@ -179,6 +178,7 @@ describe('component stylesheet contract', () => {
     // `1px solid red`. Token references and property names are stripped
     // first so `--gold` and `white-space` do not trip it.
     const values = declarations
+      .toLowerCase() // CSS keywords are case-insensitive
       .replace(/var\(--[a-z0-9-]+\)/g, '')
       .replace(/^\s*[a-z-]+\s*:/gm, ':')
     const words = values.match(/[a-z]+/g) ?? []
@@ -189,20 +189,18 @@ describe('component stylesheet contract', () => {
     expect(declarations).not.toMatch(/font-family\s*:(?!\s*var\()/)
   })
 
-  it('never sets outline, so the global focus ring survives', () => {
-    expect(declarations).not.toMatch(/\boutline(-[a-z]+)?\s*:/)
-  })
-
-  it('guards every hover rule with :where() so page overrides keep winning', () => {
+  it('guards hover on disableable controls with :where() so page overrides keep winning', () => {
     // A bare `:not(:disabled)` or `:enabled` would lift the rule to (0,3,0),
     // beating any page rule written at the natural (0,2,0). ADR 0017 promises
-    // pages never need !important, so every hover guard must be
-    // specificity-free.
+    // pages never need !important, so the guard must be specificity-free.
+    // Only buttons and form controls can be disabled; other hover rules need
+    // no guard at all.
     const selectorLists = declarations.match(/[^{}]*:hover[^{]*/g) ?? []
     const hovers = selectorLists
       .flatMap((list) => list.split(','))
       .map((selector) => selector.trim())
-      .filter((selector) => selector.includes(':hover'))
+      .filter((selector) => !selector.startsWith('@')) // media preludes
+      .filter((selector) => /^\.(btn|control)\b.*:hover/.test(selector))
     expect(hovers.length).toBeGreaterThan(0)
     for (const selector of hovers) {
       expect(selector).toMatch(/:hover:where\(:not\(:disabled\)\)$/)

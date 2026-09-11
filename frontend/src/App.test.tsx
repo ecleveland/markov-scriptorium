@@ -85,16 +85,17 @@ describe('App routing', () => {
           <ProdApp />
         </MemoryRouter>,
       )
-      // The shell still renders. The route does not.
+      // The shell still renders. The route does not: with no match, Routes
+      // renders nothing, so main is empty. A registered lazy route would
+      // already have committed its Suspense fallback here, so this assertion
+      // fails if the DEV gate is ever dropped.
       expect(
         await screen.findByRole('link', { name: /The Markov Scriptorium/ }),
       ).toBeInTheDocument()
-      expect(
-        screen.queryByRole('heading', { name: 'Specimens' }),
-      ).not.toBeInTheDocument()
+      await vi.dynamicImportSettled()
+      expect(screen.getByRole('main')).toBeEmptyDOMElement()
     } finally {
       vi.unstubAllEnvs()
-      vi.resetModules()
     }
   })
 })
