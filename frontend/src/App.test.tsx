@@ -69,9 +69,15 @@ describe('App routing', () => {
 
   it('serves the component specimen sheet in development', async () => {
     // Vitest runs with DEV set, so the lazily loaded route is registered.
+    // The wait covers React's fixed 300ms Suspense throttle plus a cold
+    // worker's transform of the chunk, so the default 1s cannot flake.
     renderAt('/specimens')
     expect(
-      await screen.findByRole('heading', { name: 'Specimens' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Specimens' },
+        { timeout: 5000 },
+      ),
     ).toBeInTheDocument()
   })
 

@@ -1,9 +1,13 @@
-import { Button } from './Button'
-import { Field } from './Field'
-import { Panel } from './Panel'
-import { PrintingChip } from './PrintingChip'
-import { Tag } from './Tag'
-import { Input, Select, Textarea } from './controls'
+import {
+  Button,
+  Field,
+  Input,
+  Panel,
+  PrintingChip,
+  Select,
+  Tag,
+  Textarea,
+} from '../components'
 import './specimens.css'
 
 const BOLT = {

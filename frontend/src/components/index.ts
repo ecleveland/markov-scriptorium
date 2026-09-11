@@ -5,8 +5,4 @@ export { PrintingChip, type PrintingChipProps } from './PrintingChip'
 export { Tag, type TagProps, type TagTone } from './Tag'
 export { Input, Select, Textarea } from './controls'
 export { cx } from './cx'
-export {
-  describePrinting,
-  type PrintingChipPrinting,
-  type PrintingSummary,
-} from './printing'
+export { describePrinting, type PrintingSummary } from './printing'

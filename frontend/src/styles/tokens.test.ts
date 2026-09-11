@@ -62,6 +62,7 @@ describe('design tokens contract', () => {
       '--accent',
       '--danger',
       '--success',
+      '--warning',
       '--focus-ring',
     ]) {
       expect(declares(name), `missing semantic token ${name}`).toBe(true)
@@ -78,6 +79,7 @@ describe('design tokens contract', () => {
     expect(valueOf('--surface')).toContain('var(--panel)')
     expect(valueOf('--border')).toContain('var(--line)')
     expect(valueOf('--success')).toContain('var(--green)')
+    expect(valueOf('--warning')).toContain('var(--gold)')
     // The hover fills derive from the text token so a palette retune carries
     // them along, rather than transcribing bone by hand.
     expect(valueOf('--surface-hover')).toContain('var(--text)')

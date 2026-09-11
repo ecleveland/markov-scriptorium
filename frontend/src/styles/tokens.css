@@ -63,6 +63,7 @@
 
   --danger: var(--oxblood-bright);
   --success: var(--green);
+  --warning: var(--gold);
 
   --text-primary: var(--text);
   --text-muted: var(--muted);

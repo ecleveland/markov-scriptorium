@@ -3,16 +3,17 @@ import { cx } from './cx'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
-/**
- * `secondary` unless told otherwise; `primary` is the one action on a screen.
- * The wax seal is reserved for the signature Inscribe action, so it is only
- * accepted alongside `variant="primary"`.
- */
-export type ButtonProps = ComponentProps<'button'> &
-  (
-    | { variant?: Exclude<ButtonVariant, 'primary'>; seal?: false }
-    | { variant: 'primary'; seal?: boolean }
-  )
+export interface ButtonProps extends ComponentProps<'button'> {
+  /** `secondary` unless told otherwise; `primary` is the one action on a screen. */
+  variant?: ButtonVariant
+  /**
+   * Press the wax seal beside the label. Reserved for the signature Inscribe
+   * action, so it renders only with `variant="primary"` and is ignored
+   * elsewhere. A flat prop rather than a union: `Omit` and `Pick` collapse a
+   * union and lose the rule, and the rule is cheap to hold at render time.
+   */
+  seal?: boolean
+}
 
 /** A small wax seal, a wax disc with a gold ring pressed into it. Decorative. */
 function WaxSealGlyph() {
@@ -47,7 +48,7 @@ export function Button({
       className={cx('btn', `btn--${variant}`, className)}
       {...rest}
     >
-      {seal && <WaxSealGlyph />}
+      {seal && variant === 'primary' && <WaxSealGlyph />}
       {children}
     </button>
   )

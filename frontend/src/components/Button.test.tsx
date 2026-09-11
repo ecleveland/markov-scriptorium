@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { Button } from './Button'
+import { Button, type ButtonProps } from './Button'
 
 describe('Button', () => {
   it('is a secondary, non-submitting button by default', () => {
@@ -44,18 +44,20 @@ describe('Button', () => {
     expect(container.querySelector('.btn__seal')).toBeNull()
   })
 
-  it('only allows the seal on the primary variant (type-level)', () => {
-    // @ts-expect-error the seal is reserved for the primary action
-    void (<Button variant="ghost" seal />)
-    void (<Button variant="primary" seal />)
+  it('ignores the seal on any variant but primary', () => {
+    const { container } = render(
+      <Button variant="ghost" seal>
+        Change
+      </Button>,
+    )
+    expect(container.querySelector('.btn__seal')).toBeNull()
   })
 
-  it('accepts an explicit seal={false} on any variant (type-level)', () => {
-    void (<Button seal={false}>Change</Button>)
-    void (
-      <Button variant="ghost" seal={false}>
-        Change
-      </Button>
-    )
+  it('keeps the seal rule under derived props types (type-level)', () => {
+    // A flat props type survives Omit/Pick, so wrappers can forward variant
+    // and seal from their own optional props without narrowing.
+    type Wrapped = Omit<ButtonProps, 'children'>
+    const forwarded: Wrapped = { variant: 'ghost', seal: false }
+    void (<Button {...forwarded}>Change</Button>)
   })
 })

@@ -13,7 +13,6 @@ describe('components barrel', () => {
     const modules = readdirSync(dir)
       .filter((name) => /^[A-Z][A-Za-z]+\.tsx$/.test(name))
       .map((name) => name.replace(/\.tsx$/, ''))
-      .filter((name) => name !== 'Specimens') // dev-only sheet, not part of the layer
     expect(modules.length).toBeGreaterThan(3)
     for (const name of modules) {
       expect(components, `barrel is missing ${name}`).toHaveProperty(name)

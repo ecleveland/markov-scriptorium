@@ -135,8 +135,8 @@
   border-color: var(--success);
 }
 .tag--warning {
-  color: var(--accent-secondary);
-  border-color: var(--accent-secondary);
+  color: var(--warning);
+  border-color: var(--warning);
 }
 .tag--danger {
   color: var(--danger);

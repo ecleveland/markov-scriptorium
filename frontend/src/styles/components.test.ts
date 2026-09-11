@@ -177,9 +177,10 @@ describe('component stylesheet contract', () => {
     // Named colours anywhere in a value, including shorthands like
     // `1px solid red`. Token references and property names are stripped
     // first so `--gold` and `white-space` do not trip it.
-    const values = declarations
+    const values = (declarations.match(/\{[^}]*\}/g) ?? []) // blocks only, no selectors
+      .join('\n')
       .toLowerCase() // CSS keywords are case-insensitive
-      .replace(/var\(--[a-z0-9-]+\)/g, '')
+      .replace(/var\(--[a-z0-9-]+(,[^)]*)?\)/g, '') // token refs, with fallbacks
       .replace(/^\s*[a-z-]+\s*:/gm, ':')
     const words = values.match(/[a-z]+/g) ?? []
     expect(words.filter((w) => NAMED_COLOURS.has(w))).toEqual([])

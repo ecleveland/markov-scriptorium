@@ -12,7 +12,7 @@ import { DecklistPage } from './onboarding/DecklistPage'
 // dynamic import lets the production build drop both its chunk and its CSS.
 const Specimens = import.meta.env.DEV
   ? lazy(() =>
-      import('./components/Specimens').then((m) => ({ default: m.Specimens })),
+      import('./specimens/Specimens').then((m) => ({ default: m.Specimens })),
     )
   : null
 

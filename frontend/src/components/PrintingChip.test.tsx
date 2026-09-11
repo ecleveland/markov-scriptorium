@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { PrintingOwnership } from '../api'
-import { PrintingChip, type PrintingChipPrinting } from './PrintingChip'
+import { PrintingChip } from './PrintingChip'
+import type { PrintingSummary } from './printing'
 
 const bolt = {
   set_name: 'Limited Edition Alpha',
@@ -59,7 +60,7 @@ describe('PrintingChip', () => {
       quantity: 2,
       lots: 1,
     }
-    const printing: PrintingChipPrinting = owned
+    const printing: PrintingSummary = owned
     render(<PrintingChip printing={printing} />)
     expect(
       screen.getByText('Limited Edition Alpha (LEA) · #161'),

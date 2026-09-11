@@ -67,7 +67,7 @@ variant fades the same way. Contract-tested.
 
 | Component | Classes | Notes |
 | --- | --- | --- |
-| `Button` | `.btn`, `.btn--primary` / `--secondary` (default) / `--ghost` / `--danger`, `.btn__seal` | Defaults to `type="button"`. `seal` adds the wax-seal glyph, reserved for the signature Inscribe action. |
+| `Button` | `.btn`, `.btn--primary` / `--secondary` (default) / `--ghost` / `--danger`, `.btn__seal` | Defaults to `type="button"`. `seal` adds the wax-seal glyph, reserved for the signature Inscribe action; it renders only with `primary` and is ignored elsewhere (a flat prop, since a union would not survive `Omit`/`Pick` in wrappers). |
 | `Tag` | `.tag`, `.tag--neutral` (default) / `--success` / `--warning` / `--danger` | A `<span>` with no ARIA role. |
 | `Panel` | `.panel`, `.panel > legend` | `as` picks `div` (default), `section`, `aside`, or `fieldset`. A fieldset gets its `<legend>` as first child. |
 | `Field` | `.field`, `.field__label` | The label wraps the control (implicit association, no ids). |
@@ -84,7 +84,9 @@ a `Button` variant.
 **Tag tones carry the import-preview vocabulary.** A row that is ready is
 `success` (verdant), one that still needs a printing chosen is `warning`
 (gold), one that matched nothing is `danger` (oxblood). Everything else is
-`neutral`.
+`neutral`. All three coloured tones read semantic tokens; `--warning` (an
+alias of `--gold`) joins `--success` and `--danger` in `tokens.css` so a tone
+is retuned at the token, never in the component rule.
 
 **The chip does not reuse `CardThumb`.** `CardThumb` renders a placeholder
 with an `aria-label` when the catalog holds no art. Inside a listbox option
@@ -94,9 +96,12 @@ simply omits the thumbnail instead; the option is named by the printing text
 alone.
 
 **A dev-only specimen sheet.** `/specimens` renders every component in every
-state. `App.tsx` imports it lazily and only when `import.meta.env.DEV` is
-true, so the production build drops both its chunk and its stylesheet; it is
-not in the nav. The layer has few consumers until VEG-424 lands, and the
+state. It lives in `src/specimens/` as a page, not in the layer, and imports
+through the barrel it exercises. `App.tsx` imports it lazily and only when
+`import.meta.env.DEV` is true, so the production build drops both its chunk
+and its stylesheet; it is not in the nav. The gate has to stay a module-level
+ternary around `lazy()`: an unconditional `lazy()` with only the route gated
+still emits the chunk, because Rollup cannot prove the call pure. The layer has few consumers until VEG-424 lands, and the
 accessibility pass (VEG-427) needs one page where every state is visible.
 
 ## Alternatives
@@ -115,10 +120,11 @@ accessibility pass (VEG-427) needs one page where every state is visible.
 ## Follow-ups
 
 - Contrast. Field labels and legends use `--text-muted` (about 6.5:1 on the
-  panel surface). The danger button and the danger, success, and warning tags
-  use the palette tokens as they are, and `--danger` on `--surface` is about
-  3.4:1 at 15px. Retuning those tokens is the accessibility pass (VEG-427),
-  which owns the palette; the layer will pick the change up for free.
+  panel surface) and gold passes at about 6.3:1, so the warning tag is fine.
+  The danger button and danger tag use `--danger` as it is, about 3.4:1 on
+  `--surface` at 15px. Retuning that token is the accessibility pass
+  (VEG-427), which owns the palette; the layer will pick the change up for
+  free.
 
 - VEG-424 replaces the ad-hoc rules in `inscribe.css` and `decklist.css` with
   these classes and drops the two private `describe()` helpers in the

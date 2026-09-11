@@ -1,16 +1,13 @@
-/** The fields needed to name a printing on screen. */
+/**
+ * The fields that name a printing on screen, plus Scryfall `image_uris` when
+ * the caller has them. Structural on purpose so `CardPrinting`, a folio's
+ * `card`, and `PrintingOwnership` all fit without this module depending on
+ * the API client.
+ */
 export interface PrintingSummary {
   set_name: string
   set_code: string
   collector_number: string
-}
-
-/**
- * What `PrintingChip` needs, the summary fields plus, optionally, Scryfall
- * `image_uris`. Structural on purpose so `CardPrinting`, a folio's `card`, and
- * `PrintingOwnership` all fit without the chip depending on the API module.
- */
-export interface PrintingChipPrinting extends PrintingSummary {
   image_uris?: Record<string, string> | null
 }
 

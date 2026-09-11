@@ -1,10 +1,8 @@
 import { cx } from './cx'
-import { describePrinting, type PrintingChipPrinting } from './printing'
-
-export type { PrintingChipPrinting }
+import { describePrinting, type PrintingSummary } from './printing'
 
 export interface PrintingChipProps {
-  printing: PrintingChipPrinting
+  printing: PrintingSummary
   /** `sm` for dense candidate lists, `md` for the Inscribe printing picker. */
   size?: 'sm' | 'md'
 }
