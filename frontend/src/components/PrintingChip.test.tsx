@@ -12,12 +12,16 @@ const bolt = {
 }
 
 describe('PrintingChip', () => {
-  it('describes the printing and omits the thumbnail when there is no art', () => {
+  it('describes the printing and keeps an unlabelled slot when there is no art', () => {
     const { container } = render(<PrintingChip printing={bolt} />)
     expect(
       screen.getByText('Limited Edition Alpha (LEA) · #161'),
     ).toBeInTheDocument()
     expect(container.querySelector('img')).toBeNull()
+    const slot = container.querySelector('.printing-chip__thumb--empty')
+    expect(slot).not.toBeNull()
+    expect(slot).toHaveAttribute('aria-hidden', 'true')
+    expect(slot).toBeEmptyDOMElement()
     expect(container.firstElementChild).toHaveClass(
       'printing-chip',
       'printing-chip--sm',
@@ -67,15 +71,18 @@ describe('PrintingChip', () => {
     ).toBeInTheDocument()
   })
 
-  it('gives the reserved slot back when the art fails to load', () => {
-    render(
+  it('swaps a failed image for the empty slot so the row stays aligned', () => {
+    const { container } = render(
       <PrintingChip
         printing={{ ...bolt, image_uris: { small: 'https://img/gone.jpg' } }}
       />,
     )
     const img = screen.getByRole('presentation')
-    expect(img).not.toHaveAttribute('hidden')
+    expect(container.querySelector('.printing-chip__thumb--empty')).toBeNull()
     fireEvent.error(img)
-    expect(img).toHaveAttribute('hidden')
+    expect(container.querySelector('img')).toBeNull()
+    expect(
+      container.querySelector('.printing-chip__thumb--empty'),
+    ).toHaveAttribute('aria-hidden', 'true')
   })
 })

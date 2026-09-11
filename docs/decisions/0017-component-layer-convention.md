@@ -92,8 +92,11 @@ is retuned at the token, never in the component rule.
 with an `aria-label` when the catalog holds no art. Inside a listbox option
 that label would join the option's accessible name, so every "Sol Ring" option
 would read "Sol Ring (no image in the catalog) Commander 2021...". The chip
-simply omits the thumbnail instead; the option is named by the printing text
-alone.
+renders a label-free, `aria-hidden` empty slot of the same width instead, for
+rows with no art and for images that fail to load, so a list that mixes
+printings with and without art (the CSV importer can surface art-series and
+reversible printings whose art lives per face) stays aligned, and the option
+is named by the printing text alone.
 
 **A dev-only specimen sheet.** `/specimens` renders every component in every
 state. It lives in `src/specimens/` as a page, not in the layer, and imports

@@ -222,6 +222,7 @@ select.control {
 /* ---- Printing chip -------------------------------------------------------
    Card thumbnail + "Set Name (SET) · #num", used inside listbox options. The
    art is decorative (alt="") so the option's name stays the printing text.
+   With no art, an empty slot of the same width keeps the rows aligned.
    The text span (.printing-chip__text) carries no rules of its own. Its
    typography and colour come from the option button around the chip, so a
    page restyles the label through the button it already targets. */
@@ -236,10 +237,17 @@ select.control {
 .printing-chip__thumb {
   flex-shrink: 0;
   /* Reserve the card's proportions before the lazy image arrives, so rows do
-     not jump as art loads. No background, so a failed image leaves only an
-     empty slot. */
+     not jump as art loads. */
   aspect-ratio: auto 5 / 7;
   border-radius: var(--radius-sm);
+}
+
+.printing-chip__thumb--empty {
+  display: block;
+  aspect-ratio: 5 / 7;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-sizing: border-box;
 }
 
 .printing-chip--sm .printing-chip__thumb {
