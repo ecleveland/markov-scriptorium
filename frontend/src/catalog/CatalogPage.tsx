@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { CATALOG_PAGE_SIZE, listInventory } from '../api'
+import { Button, Notice } from '../components'
 import { LotRow } from './LotRow'
 import { inventoryKeys } from './queryKeys'
 import './catalog.css'
@@ -47,7 +48,7 @@ export function CatalogPage() {
     return (
       <section className="catalog">
         <h1>The Catalog</h1>
-        <p className="catalog__pending">Consulting the catalog…</p>
+        <Notice>Consulting the catalog…</Notice>
       </section>
     )
   }
@@ -56,9 +57,9 @@ export function CatalogPage() {
     return (
       <section className="catalog">
         <h1>The Catalog</h1>
-        <p className="catalog__error" role="alert">
+        <Notice tone="danger" role="alert">
           The catalog could not be read. {query.error.message}
-        </p>
+        </Notice>
       </section>
     )
   }
@@ -85,12 +86,12 @@ export function CatalogPage() {
     return (
       <section className="catalog">
         <h1>The Catalog</h1>
-        <p className="catalog__empty">
+        <Notice className="catalog__empty">
           Nothing inscribed yet. Add a card through{' '}
           <Link to="/inscribe">Inscribe</Link>, or bring a whole collection in
           from a <Link to="/import/decklist">decklist</Link> or a{' '}
           <Link to="/import/csv">CSV export</Link>.
-        </p>
+        </Notice>
       </section>
     )
   }
@@ -100,10 +101,10 @@ export function CatalogPage() {
   return (
     <section className="catalog">
       <h1>The Catalog</h1>
-      <p className="catalog__count">
+      <Notice>
         Showing {pageRange(shownOffset, results.length)} of {total}{' '}
         {total === 1 ? 'folio' : 'folios'}
-      </p>
+      </Notice>
 
       <table className="catalog__table">
         <caption className="visually-hidden">
@@ -129,20 +130,12 @@ export function CatalogPage() {
       </table>
 
       <nav className="catalog__pager" aria-label="Catalog pages">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => goToPage(page - 1)}
-        >
+        <Button disabled={page <= 1} onClick={() => goToPage(page - 1)}>
           Previous
-        </button>
-        <button
-          type="button"
-          disabled={onLastPage}
-          onClick={() => goToPage(page + 1)}
-        >
+        </Button>
+        <Button disabled={onLastPage} onClick={() => goToPage(page + 1)}>
           Next
-        </button>
+        </Button>
       </nav>
     </section>
   )

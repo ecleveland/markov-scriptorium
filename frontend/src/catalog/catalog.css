@@ -1,23 +1,16 @@
 /* The Catalog list and the folio detail view (VEG-220). Tokens only, per
-   ADR 0014 — no raw colours, fonts, or spacing values below. */
+   ADR 0014: no raw colours, fonts, or spacing values below.
+
+   Buttons, form controls, labels, and the one-line state messages come from
+   the component layer (ADR 0017); what is left here is layout and the pieces
+   the Catalog owns alone, such as the table, the card thumb, and the quantity
+   stepper. */
 
 .catalog,
 .lot-detail {
   max-width: 56rem;
   margin: 0 auto;
   text-align: left;
-}
-
-.catalog__count,
-.catalog__pending,
-.catalog__empty {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.catalog__error,
-.lot-detail__error {
-  color: var(--danger);
 }
 
 .catalog__empty a {
@@ -223,28 +216,6 @@
   grid-column: 1 / -1;
 }
 
-.lot-editor label {
-  display: block;
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-.lot-editor input,
-.lot-editor select,
-.lot-editor textarea {
-  width: 100%;
-  margin-top: var(--space-1);
-  padding: var(--space-2);
-  font: inherit;
-  color: var(--text-primary);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
 .lot-editor__actions {
   display: flex;
   align-items: center;
@@ -290,8 +261,7 @@
   color: var(--accent-secondary);
 }
 
-.ownership__pending,
-.lot-detail__pending {
+.ownership__pending {
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
@@ -321,21 +291,4 @@
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
-}
-
-.lot-remove__start,
-.lot-remove__confirm {
-  color: var(--danger);
-  background: transparent;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  font: inherit;
-  cursor: pointer;
-}
-
-.lot-remove__confirm {
-  color: var(--text-primary);
-  background: var(--accent);
-  border-color: var(--accent);
 }
