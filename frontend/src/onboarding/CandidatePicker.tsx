@@ -22,7 +22,7 @@ export function CandidatePicker({
 }: Props) {
   return (
     <ul
-      className="candidate-picker"
+      className="listbox candidate-picker"
       role="listbox"
       aria-label={`Printings of ${name}`}
     >
@@ -32,7 +32,11 @@ export function CandidatePicker({
           role="option"
           aria-selected={printing.scryfall_id === selectedId}
         >
-          <button type="button" onClick={() => onPick(printing)}>
+          <button
+            type="button"
+            className="listbox__option"
+            onClick={() => onPick(printing)}
+          >
             <PrintingChip printing={printing} />
           </button>
         </li>

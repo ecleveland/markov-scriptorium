@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CardPrinting, InventoryLot } from '../api'
+import { PageHeader, Panel } from '../components'
 import { CardSearch } from './CardSearch'
 import { InscribeForm } from './InscribeForm'
 import { PrintingPicker } from './PrintingPicker'
@@ -47,7 +48,7 @@ export function InscribePage() {
 
   return (
     <section className="inscribe">
-      <h1>Inscribe a Card</h1>
+      <PageHeader eyebrow="Inscription" title="Inscribe a Card" />
 
       {name === null && <CardSearch autoFocus onSelect={setName} />}
 
@@ -70,7 +71,8 @@ export function InscribePage() {
       )}
 
       {session.length > 0 && (
-        <aside
+        <Panel
+          as="aside"
           className="inscribe__session"
           aria-label="Inscribed this session"
         >
@@ -83,7 +85,7 @@ export function InscribePage() {
               </li>
             ))}
           </ul>
-        </aside>
+        </Panel>
       )}
     </section>
   )

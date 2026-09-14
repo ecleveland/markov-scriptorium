@@ -12,7 +12,19 @@ import {
   type CsvSource,
   type Finish,
 } from '../api'
+import {
+  Button,
+  Field,
+  Notice,
+  PageHeader,
+  Panel,
+  Select,
+  Tag,
+  Textarea,
+  describePrinting,
+} from '../components'
 import { CandidatePicker } from './CandidatePicker'
+import { RowStatusTag } from './RowStatusTag'
 import './decklist.css'
 
 /** A parsed CSV row paired with how it resolved. Same three-state union as the
@@ -29,10 +41,6 @@ type PreviewRow =
 
 type Step = 'upload' | 'preview' | 'summary'
 
-function describe(printing: CardPrinting): string {
-  return `${printing.set_name} (${printing.set_code.toUpperCase()}) · #${printing.collector_number}`
-}
-
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError && err.detail) return err.detail
   return 'The scriptorium could not be reached. Please try again.'
@@ -42,7 +50,11 @@ function errorMessage(err: unknown): string {
 function UnreadableRows({ problems }: { problems: CsvProblem[] }) {
   if (problems.length === 0) return null
   return (
-    <aside className="decklist__problems" aria-label="Unreadable rows">
+    <Panel
+      as="aside"
+      className="decklist__problems"
+      aria-label="Unreadable rows"
+    >
       <h2>Unreadable rows</h2>
       <ul>
         {problems.map((problem) => (
@@ -51,7 +63,7 @@ function UnreadableRows({ problems }: { problems: CsvProblem[] }) {
           </li>
         ))}
       </ul>
-    </aside>
+    </Panel>
   )
 }
 
@@ -204,17 +216,15 @@ export function CsvImportPage() {
   if (step === 'summary' && summary) {
     return (
       <section className="decklist">
-        <h1>Collection Inscribed</h1>
-        <p className="decklist__summary" role="status">
+        <PageHeader eyebrow="CSV import" title="Collection Inscribed" />
+        <Notice tone="success" role="status" className="decklist__summary">
           Inscribed {summary.lots} {summary.lots === 1 ? 'folio' : 'folios'} (
           {summary.copies} {summary.copies === 1 ? 'copy' : 'copies'}) into the
           catalog.
           {summary.skipped > 0 &&
             ` ${summary.skipped} row${summary.skipped === 1 ? '' : 's'} skipped.`}
-        </p>
-        <button type="button" onClick={reset}>
-          Import another CSV
-        </button>
+        </Notice>
+        <Button onClick={reset}>Import another CSV</Button>
       </section>
     )
   }
@@ -222,19 +232,16 @@ export function CsvImportPage() {
   if (step === 'preview') {
     return (
       <section className="decklist">
-        <header className="decklist__header">
-          <h1>Review the Import</h1>
-          <button type="button" onClick={() => setStep('upload')}>
-            Back to upload
-          </button>
-        </header>
+        <PageHeader eyebrow="CSV import" title="Review the Import">
+          <Button onClick={() => setStep('upload')}>Back to upload</Button>
+        </PageHeader>
 
-        <p className="decklist__counts">
+        <Notice className="decklist__counts">
           {detected && <>Detected {detected}. </>}
           {readyRows.length} ready · {unresolvedCount} to choose ·{' '}
           {unmatchedCount} unmatched
           {problems.length > 0 && ` · ${problems.length} unreadable`}
-        </p>
+        </Notice>
 
         <ol className="decklist__rows">
           {rows.map((row, index) => (
@@ -242,20 +249,21 @@ export function CsvImportPage() {
               key={index}
               className={`decklist__row decklist__row--${row.status}`}
             >
+              <RowStatusTag status={row.status} chosen={row.chosen} />
               <span className="decklist__line">
                 {row.entry.quantity}× {row.entry.name}
-                {row.entry.finish && row.entry.finish !== 'nonfoil' && (
-                  <> · {row.entry.finish}</>
-                )}{' '}
-                · {row.entry.condition}
               </span>
+              {row.entry.finish && row.entry.finish !== 'nonfoil' && (
+                <Tag>{row.entry.finish}</Tag>
+              )}
+              {row.entry.condition && <Tag>{row.entry.condition}</Tag>}
               {row.chosen ? (
                 <span className="decklist__chosen">
-                  {describe(row.chosen)}
+                  {describePrinting(row.chosen)}
                   {row.status === 'ambiguous' && (
-                    <button type="button" onClick={() => choose(index, null)}>
+                    <Button variant="ghost" onClick={() => choose(index, null)}>
                       Change
-                    </button>
+                    </Button>
                   )}
                 </span>
               ) : row.status === 'ambiguous' ? (
@@ -276,22 +284,27 @@ export function CsvImportPage() {
 
         <UnreadableRows problems={problems} />
 
-        {error && <p role="alert">{error}</p>}
+        {error && (
+          <Notice tone="danger" role="alert">
+            {error}
+          </Notice>
+        )}
 
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          seal
           onClick={handleInscribe}
           disabled={busy || readyRows.length === 0}
         >
           {busy
             ? 'Inscribing…'
             : `Inscribe ${readyRows.length} ${readyRows.length === 1 ? 'folio' : 'folios'}`}
-        </button>
+        </Button>
         {unresolvedCount + unmatchedCount > 0 && readyRows.length > 0 && (
-          <p className="decklist__skip-note">
+          <Notice className="decklist__skip-note">
             {unresolvedCount + unmatchedCount} unresolved row
             {unresolvedCount + unmatchedCount === 1 ? '' : 's'} will be skipped.
-          </p>
+          </Notice>
         )}
       </section>
     )
@@ -299,25 +312,26 @@ export function CsvImportPage() {
 
   return (
     <section className="decklist">
-      <h1>Import a Collection CSV</h1>
+      <PageHeader eyebrow="CSV import" title="Import a Collection CSV" />
       <p>
         Upload a CSV exported from Manabox, Deckbox, or Archidekt. The source is
         detected from its columns; finish, condition, and language come from the
         file.
       </p>
 
-      <div className="decklist__finish">
-        <label>
-          CSV file
+      <Panel className="decklist__controls">
+        <Field label="CSV file">
+          {/* Native input: the .control rules are text-field rules, and a file
+              picker keeps its own rendering (ADR 0017). */}
           <input
+            className="decklist__file"
             type="file"
             accept=".csv,text/csv"
             onChange={(event) => handleFile(event.target.files?.[0])}
           />
-        </label>
-        <label>
-          Source format
-          <select
+        </Field>
+        <Field label="Source format">
+          <Select
             value={format}
             onChange={(event) =>
               setFormat(event.target.value as CsvSource | 'auto')
@@ -329,13 +343,12 @@ export function CsvImportPage() {
                 {source}
               </option>
             ))}
-          </select>
-        </label>
-      </div>
+          </Select>
+        </Field>
+      </Panel>
 
-      <label className="decklist__input">
-        <span className="decklist__input-label">…or paste CSV text</span>
-        <textarea
+      <Field label="…or paste CSV text" className="decklist__input">
+        <Textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={10}
@@ -343,19 +356,23 @@ export function CsvImportPage() {
             'Name,Set code,Collector number,Foil,Quantity,Scryfall ID,Condition,Language'
           }
         />
-      </label>
+      </Field>
 
       <UnreadableRows problems={problems} />
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <Notice tone="danger" role="alert">
+          {error}
+        </Notice>
+      )}
 
-      <button
-        type="button"
+      <Button
+        variant="primary"
         onClick={handleResolve}
         disabled={busy || text.trim().length === 0}
       >
         {busy ? 'Consulting the catalog…' : 'Resolve CSV'}
-      </button>
+      </Button>
     </section>
   )
 }

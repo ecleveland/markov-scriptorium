@@ -1,79 +1,50 @@
+/*
+ * Inscribe pages: layout only. Buttons, fields, notices, listboxes, and the
+ * panel come from the component layer (styles/components.css, ADR 0017); what
+ * is left here is where those pieces sit on the page.
+ */
+
 .inscribe {
   max-width: 40rem;
   margin: 0 auto;
   text-align: left;
 }
 
-.card-search label,
-.inscribe-form__fields label {
-  display: block;
-  font-size: 0.85rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.8;
-}
-
-.card-search input,
-.inscribe-form__fields input,
-.inscribe-form__fields select {
-  width: 100%;
-  padding: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.card-search__results,
-.printing-picker__list {
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 0.25rem;
-}
-
-.card-search__results button,
-.printing-picker__list button {
+/* Card art beside the acquisition fields, stacking on a narrow window. */
+.inscribe-form__body {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.card-search__results button:hover,
-.printing-picker__list button:hover {
-  background: var(--surface-hover);
-}
-
-.printing-picker__header,
-.inscribe-form__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.inscribe-form__fields {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  margin: 1rem 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .inscribe-form__preview {
-  border-radius: 4.75% / 3.5%;
   display: block;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
+}
+
+.inscribe-form__fields {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
 }
 
 .inscribe__session {
-  margin-top: 2rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 1rem;
+  margin-top: var(--space-6);
 }
 
-[role='alert'] {
-  color: #e0a3a3;
+.inscribe__session ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }

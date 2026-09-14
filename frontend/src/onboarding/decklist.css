@@ -1,125 +1,92 @@
+/*
+ * Decklist and CSV import pages: layout only. Buttons, fields, tags, notices,
+ * listboxes, and the panel come from the component layer
+ * (styles/components.css, ADR 0017); what is left here is where those pieces
+ * sit and the status accent down the side of a preview row.
+ */
+
 .decklist {
   max-width: 44rem;
   margin: 0 auto;
   text-align: left;
 }
 
-.decklist__header,
-.decklist__finish {
+/* The batch finish/condition panel, and the CSV file/format panel. */
+.decklist__controls {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-4) 0;
 }
 
-.decklist__input,
-.decklist__input-label {
+.decklist__controls .field {
+  flex: 1 1 12rem;
+}
+
+.decklist__input {
+  margin: var(--space-4) 0;
+}
+
+.decklist__file {
   display: block;
-}
-
-.decklist__input textarea {
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.5rem;
-  font-family: inherit;
-}
-
-.decklist__input-label,
-.decklist__finish label {
-  font-size: 0.85rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.8;
-}
-
-.decklist__counts {
-  opacity: 0.85;
-}
-
-.decklist__finish {
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 0.25rem;
-  padding: 0.75rem 1rem;
-  margin: 1rem 0;
-}
-
-.decklist__finish select {
-  display: block;
-  margin-top: 0.25rem;
-  padding: 0.35rem;
+  margin-top: var(--space-1);
+  font: inherit;
+  color: var(--text-muted);
 }
 
 .decklist__rows {
   list-style: none;
+  margin: var(--space-4) 0;
   padding: 0;
-  margin: 1rem 0;
 }
 
 .decklist__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0.75rem;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
   border-left: 3px solid transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--border);
 }
 
 .decklist__row--matched {
-  border-left-color: #5a9e6f;
+  border-left-color: var(--success);
 }
 
 .decklist__row--ambiguous {
-  border-left-color: #c2a14d;
-  flex-direction: column;
-  align-items: stretch;
+  border-left-color: var(--warning);
 }
 
 .decklist__row--unmatched {
-  border-left-color: #a85b5b;
+  border-left-color: var(--danger);
+}
+
+/* The picker takes a line of its own under the pill, the card, and its tags. */
+.decklist__row .candidate-picker {
+  flex-basis: 100%;
 }
 
 .decklist__line {
+  flex: 1;
+  font-family: var(--font-body);
   font-weight: 600;
 }
 
-.decklist__unmatched {
-  opacity: 0.8;
-  font-style: italic;
-}
-
-.candidate-picker {
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 0.25rem;
-}
-
-.candidate-picker button {
-  display: flex;
+.decklist__chosen {
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.4rem 0.75rem;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
-.candidate-picker button:hover,
-.candidate-picker [aria-selected='true'] button {
-  background: var(--surface-hover);
+.decklist__unmatched {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: var(--text-sm);
 }
 
 .decklist__problems {
-  margin-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 1rem;
-}
-
-.decklist__skip-note {
-  opacity: 0.8;
-  font-size: 0.9rem;
+  margin: var(--space-5) 0;
 }
