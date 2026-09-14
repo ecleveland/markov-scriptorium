@@ -73,6 +73,9 @@ variant fades the same way. Contract-tested.
 | `Field` | `.field`, `.field__label` | The label wraps the control (implicit association, no ids). |
 | `Input`, `Select`, `Textarea` | `.control` | Native controls with the class added. |
 | `PrintingChip` | `.printing-chip`, `--sm` (default) / `--md`, `__thumb`, `__text` | Art plus "Set Name (SET) · #num" via `describePrinting()` from `printing.ts`. |
+| `PageHeader` | `.page-header`, `__eyebrow`, `__title`, `__actions` | The block a page opens with. `level` picks `h1` (default) or `h2`; children become the actions beside the title. Heading type comes from `index.css` and the gold `h1` from `App.css`. |
+| `Notice` | `.notice`, `.notice--muted` (default) / `--success` / `--danger` | A `<p>` for one line about the page's state. No ARIA role of its own; a caller that needs the line announced passes `role="alert"` or `role="status"`. |
+| Listbox (classes only) | `.listbox`, `.listbox__option` | No component: the three pickers own their own markup and ARIA and share only the look. `.listbox [aria-selected='true'] > .listbox__option` draws the gold inset rule on the chosen row. |
 
 **Primary and danger share the oxblood hue; treatment tells them apart.**
 Primary is filled oxblood. Danger is outlined oxblood-bright. There is no
@@ -129,16 +132,18 @@ accessibility pass (VEG-427) needs one page where every state is visible.
   (VEG-427), which owns the palette; the layer will pick the change up for
   free.
 
-- VEG-424 replaces the ad-hoc rules in `inscribe.css` and `decklist.css` with
-  these classes and drops the two private `describe()` helpers in the
+- VEG-424 replaced the ad-hoc rules in `inscribe.css` and `decklist.css` with
+  these classes and dropped the two private `describe()` helpers in the
   onboarding pages (and the inline copy in `InscribeForm`) in favour of
-  `describePrinting()`. The same pass migrates `catalog.css`, whose
-  `.lot-editor` controls and labels and `.lot-remove__*` buttons duplicate
-  `.control`, `.field__label`, and the button variants.
-- The two pickers' option buttons share near-identical rules in the page
+  `describePrinting()`. Both sheets are layout now, on tokens only. Still
+  open: `catalog.css`, whose `.lot-editor` controls and labels and
+  `.lot-remove__*` buttons duplicate `.control`, `.field__label`, and the
+  button variants.
+- The three pickers' option buttons duplicated near-identical rules in the page
   sheets at (0,1,1) specificity, which out-ranks any `.btn` variant. VEG-424
-  should add a shared listbox-option class to this layer when it replaces
-  them, rather than reaching for `.btn--ghost`.
+  added `.listbox` and `.listbox__option` here instead of reaching for
+  `.btn--ghost`; `CardSearch`, `PrintingPicker`, and `CandidatePicker` all
+  render them.
 - Double-faced printings show no thumbnail because their art lives on
   `card_faces` and the picker queries return `cards` rows only. Tracked as
   VEG-557.

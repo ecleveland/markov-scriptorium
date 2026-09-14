@@ -1,5 +1,7 @@
 export { Button, type ButtonProps, type ButtonVariant } from './Button'
 export { Field, type FieldProps } from './Field'
+export { Notice, type NoticeProps, type NoticeTone } from './Notice'
+export { PageHeader, type PageHeaderProps } from './PageHeader'
 export { Panel, type PanelProps } from './Panel'
 export { PrintingChip, type PrintingChipProps } from './PrintingChip'
 export { Tag, type TagProps, type TagTone } from './Tag'

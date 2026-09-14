@@ -109,6 +109,108 @@
   stroke-width: 2.5;
 }
 
+/* ---- Page header ---------------------------------------------------------
+   Eyebrow, title, and the actions that belong to the title. The heading fonts
+   come from index.css and the gold h1 colour from App.css, so nothing here
+   restates them. */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.page-header__eyebrow {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.page-header__title {
+  margin: 0;
+}
+
+/* The title wraps its own text before the action drops below it, so a long
+   heading does not push the button onto a line of its own. */
+.page-header > :first-child {
+  flex: 1 1 60%;
+  min-inline-size: 0;
+}
+
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* ---- Notice --------------------------------------------------------------
+   One line about the page's state. The role, when it needs one, is the
+   caller's; the tone is only colour. */
+
+.notice {
+  margin: var(--space-3) 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.notice--danger {
+  color: var(--danger);
+}
+.notice--success {
+  color: var(--success);
+}
+.notice--muted {
+  color: var(--text-muted);
+}
+
+/* ---- Listbox -------------------------------------------------------------
+   Classes only, no component: the three pickers each own their own markup and
+   ARIA, and share nothing but the look. The option is a button filling its
+   row; the selected row is marked with a gold inset rule. */
+
+.listbox {
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elevation-1);
+  overflow: hidden;
+}
+
+.listbox__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.listbox__option:hover:where(:not(:disabled)) {
+  background-color: var(--surface-hover);
+}
+
+.listbox [aria-selected='true'] > .listbox__option {
+  background-color: var(--surface-hover);
+  box-shadow: inset 3px 0 0 var(--accent-secondary);
+}
+
 /* ---- Tag / status pill --------------------------------------------------
    neutral (default), success (ready), warning (choose printing),
    danger (unmatched). */

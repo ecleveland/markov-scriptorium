@@ -2,6 +2,8 @@ import {
   Button,
   Field,
   Input,
+  Notice,
+  PageHeader,
   Panel,
   PrintingChip,
   Select,
@@ -86,6 +88,30 @@ export function Specimens() {
           <Input type="text" defaultValue="Sealed" disabled />
         </Field>
       </Panel>
+
+      <h2>Page header</h2>
+      <PageHeader eyebrow="Section" title="A page heading" level={2}>
+        <Button>Change card</Button>
+      </PageHeader>
+
+      <h2>Notices</h2>
+      <Notice tone="danger">The catalog could not be reached.</Notice>
+      <Notice tone="success">Inscribed 2 folios (5 copies).</Notice>
+      <Notice>Consulting the catalog…</Notice>
+
+      <h2>Listbox</h2>
+      <ul className="listbox" role="listbox" aria-label="Specimen printings">
+        <li role="option" aria-selected={false}>
+          <button type="button" className="listbox__option">
+            <PrintingChip printing={BOLT} />
+          </button>
+        </li>
+        <li role="option" aria-selected>
+          <button type="button" className="listbox__option">
+            <PrintingChip printing={SOL_RING} />
+          </button>
+        </li>
+      </ul>
 
       <h2>Printing chips</h2>
       <p>

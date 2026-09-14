@@ -201,7 +201,9 @@ describe('component stylesheet contract', () => {
       .flatMap((list) => list.split(','))
       .map((selector) => selector.trim())
       .filter((selector) => !selector.startsWith('@')) // media preludes
-      .filter((selector) => /^\.(btn|control)\b.*:hover/.test(selector))
+      .filter((selector) =>
+        /^\.(btn|control|listbox__option)\b.*:hover/.test(selector),
+      )
     expect(hovers.length).toBeGreaterThan(0)
     for (const selector of hovers) {
       expect(selector).toMatch(/:hover:where\(:not\(:disabled\)\)$/)
@@ -227,6 +229,9 @@ describe('component stylesheet contract', () => {
       '.field',
       '.control',
       '.printing-chip',
+      '.page-header',
+      '.notice',
+      '.listbox',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
     }
