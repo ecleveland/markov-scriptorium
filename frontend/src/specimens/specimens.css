@@ -1,0 +1,18 @@
+/* Layout for the dev-only specimen sheet. Tokens only, like every page sheet. */
+
+.specimens {
+  max-width: 40rem;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.specimens__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.specimens .field + .field {
+  margin-top: var(--space-3);
+}

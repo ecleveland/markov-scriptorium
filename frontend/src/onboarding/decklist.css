@@ -110,7 +110,7 @@
 
 .candidate-picker button:hover,
 .candidate-picker [aria-selected='true'] button {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-hover);
 }
 
 .decklist__problems {

@@ -1,4 +1,5 @@
 @import './styles/tokens.css';
+@import './styles/components.css';
 
 :root {
   /* 112.5% of the 16px default = 18px, so 1rem (--text-base) === 18px. */
@@ -31,8 +32,8 @@ h3 {
 }
 
 :focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* Present to assistive tech, absent from the page. Used for table captions and

@@ -1,0 +1,259 @@
+/*
+ * The Markov Scriptorium, shared component layer (VEG-423)
+ *
+ * One global stylesheet for the presentational components in
+ * src/components/. Rules here consume design tokens only (tokens.css); no raw
+ * colours or font names. The focus ring is drawn once, globally, by index.css's
+ * :focus-visible outline, and nothing here may set `outline`.
+ * src/styles/components.test.ts enforces both.
+ *
+ * Loaded from index.css before any page sheet, so a page rule at equal
+ * specificity wins. Pages layer layout and one-off tweaks on top of these
+ * classes rather than restyling elements from scratch. Hover guards use
+ * :where() so they add no specificity of their own, and a button's fills are
+ * custom properties (--btn-bg, --btn-bg-hover, --btn-border-hover) so a page
+ * or a variant changes them by setting the property, never by undoing a rule.
+ *
+ * Convention and alternatives are in docs/decisions/0017-component-layer-convention.md
+ */
+
+/* ---- Button --------------------------------------------------------------
+   .btn--secondary  the default, quiet and bordered
+   .btn--primary    filled oxblood, the one action on a screen
+   .btn--ghost      borderless, for tertiary actions inline with text
+   .btn--danger     outlined oxblood-bright; hue is shared with primary, the
+                    outline is what says "destructive" (ADR 0014 §3)
+
+   Each variant is fully described by the custom properties it sets. */
+
+.btn {
+  --btn-bg: var(--surface-raised);
+  --btn-bg-hover: var(--surface-raised-hover);
+  --btn-border: var(--border);
+  --btn-border-hover: var(--text-faint);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-md);
+  background-color: var(--btn-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: var(--leading-snug);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.btn:hover:where(:not(:disabled)) {
+  background-color: var(--btn-bg-hover);
+  border-color: var(--btn-border-hover);
+}
+
+.btn--primary {
+  --btn-bg: var(--accent);
+  --btn-bg-hover: var(--accent-hover);
+  --btn-border: var(--accent);
+  --btn-border-hover: var(--accent-hover);
+}
+
+/* Transparent grounds take the translucent hover fill directly. */
+.btn--ghost {
+  --btn-bg: transparent;
+  --btn-bg-hover: var(--surface-hover);
+  --btn-border: transparent;
+  --btn-border-hover: transparent;
+
+  color: var(--text-muted);
+}
+.btn--ghost:hover:where(:not(:disabled)) {
+  color: var(--text-primary);
+}
+
+.btn--danger {
+  --btn-bg: transparent;
+  --btn-bg-hover: var(--surface-hover);
+  --btn-border: var(--danger);
+  --btn-border-hover: var(--danger);
+
+  color: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The wax-seal glyph beside a signature action's label. */
+.btn__seal {
+  width: 1.25em;
+  height: 1.25em;
+  flex-shrink: 0;
+}
+.btn__seal-wax {
+  fill: var(--bg);
+  opacity: 0.55;
+}
+.btn__seal-ring {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2.5;
+}
+
+/* ---- Tag / status pill --------------------------------------------------
+   neutral (default), success (ready), warning (choose printing),
+   danger (unmatched). */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.15em var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tag--success {
+  color: var(--success);
+  border-color: var(--success);
+}
+.tag--warning {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+.tag--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- Panel ---------------------------------------------------------------
+   A bordered surface with the oxblood top-rule. Layout (flex, grid) belongs
+   to the page class that sits beside .panel, not here. */
+
+.panel {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  min-inline-size: 0;
+}
+
+.panel > legend {
+  padding: 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---- Field + form controls --------------------------------------------- */
+
+.field {
+  display: block;
+}
+
+.field__label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.control {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  line-height: var(--leading-snug);
+  transition: border-color 120ms ease;
+}
+
+.control::placeholder {
+  color: var(--text-faint);
+}
+
+.control:hover:where(:not(:disabled)) {
+  border-color: var(--text-faint);
+}
+
+.control:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+textarea.control {
+  resize: vertical;
+}
+
+select.control {
+  cursor: pointer;
+}
+
+/* ---- Printing chip -------------------------------------------------------
+   Card thumbnail + "Set Name (SET) · #num", used inside listbox options. The
+   art is decorative (alt="") so the option's name stays the printing text.
+   With no art, an empty slot of the same width keeps the rows aligned.
+   The text span (.printing-chip__text) carries no rules of its own. Its
+   typography and colour come from the option button around the chip, so a
+   page restyles the label through the button it already targets. */
+
+.printing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+}
+
+.printing-chip__thumb {
+  flex-shrink: 0;
+  /* Reserve the card's proportions before the lazy image arrives, so rows do
+     not jump as art loads. */
+  aspect-ratio: auto 5 / 7;
+  border-radius: var(--radius-sm);
+}
+
+.printing-chip__thumb--empty {
+  display: block;
+  aspect-ratio: 5 / 7;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.printing-chip--sm .printing-chip__thumb {
+  width: 2rem;
+}
+
+.printing-chip--md .printing-chip__thumb {
+  width: 2.667rem; /* 48px at the 18px root, as the picker rendered before */
+}

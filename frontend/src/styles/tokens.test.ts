@@ -56,20 +56,35 @@ describe('design tokens contract', () => {
   it('defines semantic aliases over the raw palette', () => {
     for (const name of [
       '--surface',
+      '--surface-hover',
+      '--surface-raised-hover',
       '--border',
       '--accent',
       '--danger',
       '--success',
+      '--warning',
       '--focus-ring',
     ]) {
       expect(declares(name), `missing semantic token ${name}`).toBe(true)
     }
   })
 
+  it('shapes the focus ring as an outline value, since index.css draws it with outline', () => {
+    expect(valueOf('--focus-ring')).toMatch(/\bsolid\b/)
+    expect(valueOf('--focus-ring')).toContain('var(--focus-ring-width)')
+    expect(valueOf('--focus-ring')).toContain('var(--focus-ring-color)')
+  })
+
   it('routes semantic aliases through raw palette tokens, not literals', () => {
     expect(valueOf('--surface')).toContain('var(--panel)')
     expect(valueOf('--border')).toContain('var(--line)')
     expect(valueOf('--success')).toContain('var(--green)')
+    expect(valueOf('--warning')).toContain('var(--gold)')
+    // The hover fills derive from the text token so a palette retune carries
+    // them along, rather than transcribing bone by hand.
+    expect(valueOf('--surface-hover')).toContain('var(--text)')
+    expect(valueOf('--surface-raised-hover')).toContain('var(--text)')
+    expect(valueOf('--surface-raised-hover')).toContain('var(--surface-raised)')
   })
 
   it('defines the four type-family tokens', () => {
