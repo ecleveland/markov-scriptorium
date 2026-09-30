@@ -1,8 +1,6 @@
 // @vitest-environment node
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { cssSheets } from '../test/sheets'
 
 // Contract tests for the stylesheets (VEG-423, VEG-424, ADR 0017).
 //
@@ -166,37 +164,18 @@ const NAMED_COLOURS = new Set([
   'yellowgreen',
 ])
 
-/** Declarations only. Comments are stripped so prose can name what is forbidden. */
-function declarationsOf(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-const srcDir = fileURLToPath(new URL('..', import.meta.url))
-
-function cssFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) return cssFiles(path)
-    return entry.name.endsWith('.css') ? [path] : []
-  })
-}
-
 /** tokens.css is the one sheet allowed to name a colour or a typeface. */
-const tokenSheet = join(srcDir, 'styles', 'tokens.css')
+const sheets = cssSheets({ exclude: ['styles/tokens.css'] })
 
-const sheets = cssFiles(srcDir)
-  .filter((path) => path !== tokenSheet)
-  .map((path) => ({
-    name: path.slice(srcDir.length),
-    declarations: declarationsOf(readFileSync(path, 'utf8')),
-  }))
-
-const declarations = declarationsOf(
-  readFileSync(
-    fileURLToPath(new URL('./components.css', import.meta.url)),
-    'utf8',
-  ),
+const componentSheet = sheets.find(
+  (sheet) => sheet.name === 'styles/components.css',
 )
+if (!componentSheet) {
+  // The describe below has nothing to assert against, and a silently empty
+  // contract is worse than a red file.
+  throw new Error('styles/components.css was not found under src/')
+}
+const declarations = componentSheet.css
 
 describe('stylesheet contract (every sheet)', () => {
   it('finds the component sheet and every page sheet', () => {
@@ -213,13 +192,13 @@ describe('stylesheet contract (every sheet)', () => {
     expect(sheets.length).toBeGreaterThan(5)
   })
 
-  it.each(sheets)('$name uses no raw colour values', ({ declarations }) => {
-    expect(declarations).not.toMatch(/#[0-9a-f]{3,8}\b/i)
-    expect(declarations).not.toMatch(/\b(rgba?|hsla?|color-mix)\(/)
+  it.each(sheets)('$name uses no raw colour values', ({ css }) => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i)
+    expect(css).not.toMatch(/\b(rgba?|hsla?|color-mix)\(/)
     // Named colours anywhere in a value, including shorthands like
     // `1px solid red`. Token references and property names are stripped
     // first so `--gold` and `white-space` do not trip it.
-    const values = (declarations.match(/\{[^}]*\}/g) ?? []) // blocks only, no selectors
+    const values = (css.match(/\{[^}]*\}/g) ?? []) // blocks only, no selectors
       .join('\n')
       .toLowerCase() // CSS keywords are case-insensitive
       .replace(/var\(--[a-z0-9-]+(,[^)]*)?\)/g, '') // token refs, with fallbacks
@@ -228,8 +207,8 @@ describe('stylesheet contract (every sheet)', () => {
     expect(words.filter((w) => NAMED_COLOURS.has(w))).toEqual([])
   })
 
-  it.each(sheets)('$name uses no raw font family names', ({ declarations }) => {
-    expect(declarations).not.toMatch(/font-family\s*:(?!\s*var\()/)
+  it.each(sheets)('$name uses no raw font family names', ({ css }) => {
+    expect(css).not.toMatch(/font-family\s*:(?!\s*var\()/)
   })
 })
 

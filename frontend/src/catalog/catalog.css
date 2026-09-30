@@ -261,16 +261,6 @@
   color: var(--accent-secondary);
 }
 
-.ownership__pending {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
-.ownership__error {
-  font-size: var(--text-sm);
-  color: var(--danger);
-}
-
 /* ---- Removal ------------------------------------------------------------ */
 
 .lot-remove {

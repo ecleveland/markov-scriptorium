@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ownedForPrinting } from '../api'
+import { Notice } from '../components'
 import { inventoryKeys } from './queryKeys'
 
 function plural(count: number, one: string, many: string): string {
@@ -19,13 +20,13 @@ export function OwnershipSummary({ scryfallId }: { scryfallId: string }) {
   })
 
   if (query.isPending) {
-    return <p className="ownership__pending">Counting copies…</p>
+    return <Notice>Counting copies…</Notice>
   }
   if (query.isError) {
     return (
-      <p className="ownership__error" role="alert">
+      <Notice tone="danger" role="alert">
         Ownership could not be counted. {query.error.message}
-      </p>
+      </Notice>
     )
   }
 

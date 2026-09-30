@@ -30,11 +30,14 @@ export function PageHeader({
   const Heading = level === 1 ? 'h1' : 'h2'
   return (
     <header className={cx('page-header', className)} {...rest}>
-      <div>
+      <div className="page-header__heading">
         {eyebrow && <p className="page-header__eyebrow">{eyebrow}</p>}
         <Heading className="page-header__title">{title}</Heading>
       </div>
-      {children && <div className="page-header__actions">{children}</div>}
+      {/* Only an absent child skips the wrapper; 0 and '' are content. */}
+      {children != null && children !== false && (
+        <div className="page-header__actions">{children}</div>
+      )}
     </header>
   )
 }

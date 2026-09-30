@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  ApiError,
   CSV_SOURCES,
   inscribeBulk,
   parseCsv,
@@ -24,7 +23,9 @@ import {
   describePrinting,
 } from '../components'
 import { CandidatePicker } from './CandidatePicker'
+import { errorMessage } from './errorMessage'
 import { RowStatusTag } from './RowStatusTag'
+import { UnreadableProblems } from './UnreadableProblems'
 import './decklist.css'
 
 /** A parsed CSV row paired with how it resolved. Same three-state union as the
@@ -41,29 +42,18 @@ type PreviewRow =
 
 type Step = 'upload' | 'preview' | 'summary'
 
-function errorMessage(err: unknown): string {
-  if (err instanceof ApiError && err.detail) return err.detail
-  return 'The scriptorium could not be reached. Please try again.'
-}
-
 /** The per-row problems, shown on both the upload and preview steps. */
 function UnreadableRows({ problems }: { problems: CsvProblem[] }) {
-  if (problems.length === 0) return null
   return (
-    <Panel
-      as="aside"
-      className="decklist__problems"
-      aria-label="Unreadable rows"
-    >
-      <h2>Unreadable rows</h2>
-      <ul>
-        {problems.map((problem) => (
-          <li key={problem.row_number}>
-            Row {problem.row_number}: {problem.reason} — “{problem.text}”
-          </li>
-        ))}
-      </ul>
-    </Panel>
+    <UnreadableProblems
+      label="Unreadable rows"
+      noun="Row"
+      problems={problems.map((problem) => ({
+        number: problem.row_number,
+        reason: problem.reason,
+        text: problem.text,
+      }))}
+    />
   )
 }
 

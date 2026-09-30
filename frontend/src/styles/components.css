@@ -139,7 +139,7 @@
 
 /* The title wraps its own text before the action drops below it, so a long
    heading does not push the button onto a line of its own. */
-.page-header > :first-child {
+.page-header__heading {
   flex: 1 1 60%;
   min-inline-size: 0;
 }
@@ -184,7 +184,17 @@
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--elevation-1);
-  overflow: hidden;
+}
+
+/* The end options carry the container's rounding themselves. Clipping it with
+   overflow instead would cut the focus ring, which index.css draws as an
+   outline two pixels outside the button. */
+.listbox > :first-child > .listbox__option {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.listbox > :last-child > .listbox__option {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
 .listbox__option {

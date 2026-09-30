@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  ApiError,
   CONDITIONS,
   FINISHES,
   MAX_BULK_ROWS,
@@ -24,7 +23,9 @@ import {
   describePrinting,
 } from '../components'
 import { CandidatePicker } from './CandidatePicker'
+import { errorMessage } from './errorMessage'
 import { RowStatusTag } from './RowStatusTag'
+import { UnreadableProblems } from './UnreadableProblems'
 import './decklist.css'
 
 /**
@@ -45,29 +46,18 @@ type PreviewRow =
 
 type Step = 'paste' | 'preview' | 'summary'
 
-function errorMessage(err: unknown): string {
-  if (err instanceof ApiError && err.detail) return err.detail
-  return 'The scriptorium could not be reached. Please try again.'
-}
-
 /** The per-line parse problems, shown on both the paste and preview steps. */
 function UnreadableLines({ problems }: { problems: ParseProblem[] }) {
-  if (problems.length === 0) return null
   return (
-    <Panel
-      as="aside"
-      className="decklist__problems"
-      aria-label="Unreadable lines"
-    >
-      <h2>Unreadable lines</h2>
-      <ul>
-        {problems.map((problem) => (
-          <li key={problem.line_number}>
-            Line {problem.line_number}: {problem.reason} — “{problem.text}”
-          </li>
-        ))}
-      </ul>
-    </Panel>
+    <UnreadableProblems
+      label="Unreadable lines"
+      noun="Line"
+      problems={problems.map((problem) => ({
+        number: problem.line_number,
+        reason: problem.reason,
+        text: problem.text,
+      }))}
+    />
   )
 }
 

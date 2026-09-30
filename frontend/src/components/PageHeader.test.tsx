@@ -24,6 +24,15 @@ describe('PageHeader', () => {
     ).toBeInTheDocument()
   })
 
+  it('groups the eyebrow and the title in one named block', () => {
+    render(<PageHeader eyebrow="Inscription" title="Inscribe a Card" />)
+    const block = screen.getByText('Inscription').parentElement
+    expect(block).toHaveClass('page-header__heading')
+    expect(
+      screen.getByRole('heading', { name: 'Inscribe a Card' }).parentElement,
+    ).toBe(block)
+  })
+
   it('renders the eyebrow only when one is given', () => {
     const { container, rerender } = render(<PageHeader title="Review" />)
     expect(container.querySelector('.page-header__eyebrow')).toBeNull()
@@ -46,6 +55,14 @@ describe('PageHeader', () => {
     expect(
       screen.getByRole('button', { name: 'Edit decklist' }).closest('div'),
     ).toBe(actions)
+  })
+
+  it('renders a falsy-but-real child rather than printing it', () => {
+    // `{children && ...}` would leak a bare 0 into the header.
+    const { container } = render(<PageHeader title="Review">{0}</PageHeader>)
+    expect(container.querySelector('.page-header__actions')).toHaveTextContent(
+      '0',
+    )
   })
 
   it('merges a caller className and passes attributes through', () => {
