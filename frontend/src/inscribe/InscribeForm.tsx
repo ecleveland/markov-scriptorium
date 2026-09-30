@@ -9,6 +9,16 @@ import {
   type Finish,
   type InventoryLot,
 } from '../api'
+import {
+  Button,
+  Field,
+  Input,
+  Notice,
+  PageHeader,
+  Panel,
+  Select,
+  describePrinting,
+} from '../components'
 import { coerceQuantity } from './quantity'
 
 interface Props {
@@ -72,80 +82,83 @@ export function InscribeForm({
 
   return (
     <form className="inscribe-form" onSubmit={handleSubmit}>
-      <header className="inscribe-form__header">
-        <h2>
-          {printing.name} — {printing.set_name} (
-          {printing.set_code.toUpperCase()}) · #{printing.collector_number}
-        </h2>
-        <button type="button" onClick={onChangePrinting}>
-          Change printing
-        </button>
-      </header>
+      <PageHeader
+        level={2}
+        title={
+          <>
+            {printing.name} — {describePrinting(printing)}
+          </>
+        }
+      >
+        <Button onClick={onChangePrinting}>Change printing</Button>
+      </PageHeader>
 
-      {printing.image_uris?.normal && (
-        <img
-          className="inscribe-form__preview"
-          src={printing.image_uris.normal}
-          alt={printing.name}
-          width={240}
-        />
-      )}
-
-      <div className="inscribe-form__fields">
-        <label>
-          Finish
-          <select
-            value={finish}
-            onChange={(e) => setFinish(e.target.value as Finish)}
-          >
-            {finishes.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Condition
-          <select
-            value={condition}
-            onChange={(e) => setCondition(e.target.value as Condition)}
-          >
-            {CONDITIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Quantity
-          <input
-            type="number"
-            min={1}
-            value={quantityText}
-            onChange={(e) => setQuantityText(e.target.value)}
+      <div className="inscribe-form__body">
+        {printing.image_uris?.normal && (
+          <img
+            className="inscribe-form__preview"
+            src={printing.image_uris.normal}
+            alt={printing.name}
+            width={240}
           />
-        </label>
+        )}
 
-        <label>
-          Volume (location)
-          <input
-            type="text"
-            value={location}
-            placeholder="e.g. Binder I"
-            onChange={(e) => setLocation(e.target.value)}
-          />
-        </label>
+        <Panel className="inscribe-form__fields">
+          <Field label="Finish">
+            <Select
+              value={finish}
+              onChange={(e) => setFinish(e.target.value as Finish)}
+            >
+              {finishes.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Condition">
+            <Select
+              value={condition}
+              onChange={(e) => setCondition(e.target.value as Condition)}
+            >
+              {CONDITIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Quantity">
+            <Input
+              type="number"
+              min={1}
+              value={quantityText}
+              onChange={(e) => setQuantityText(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Volume (location)">
+            <Input
+              type="text"
+              value={location}
+              placeholder="e.g. Binder I"
+              onChange={(e) => setLocation(e.target.value)}
+            />
+          </Field>
+        </Panel>
       </div>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <Notice tone="danger" role="alert">
+          {error}
+        </Notice>
+      )}
 
-      <button type="submit" disabled={submitting}>
+      <Button type="submit" variant="primary" seal disabled={submitting}>
         {submitting ? 'Inscribing…' : 'Inscribe'}
-      </button>
+      </Button>
     </form>
   )
 }

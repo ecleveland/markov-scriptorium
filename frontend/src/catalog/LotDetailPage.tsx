@@ -11,6 +11,7 @@ import {
   type InventoryLot,
   type LotPatch,
 } from '../api'
+import { Button, Field, Input, Notice, Select, Textarea } from '../components'
 import { CardThumb } from './CardThumb'
 import { OwnershipSummary } from './OwnershipSummary'
 import { readQuantity } from './quantity'
@@ -68,9 +69,8 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
   return (
     <form className="lot-editor" onSubmit={handleSubmit}>
       <div className="lot-editor__fields">
-        <label>
-          Copies
-          <input
+        <Field label="Copies">
+          <Input
             type="number"
             min={1}
             required
@@ -78,10 +78,9 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
             value={quantity}
             onChange={(event) => edited(setQuantity)(event.target.value)}
           />
-        </label>
-        <label>
-          Condition
-          <select
+        </Field>
+        <Field label="Condition">
+          <Select
             value={condition}
             onChange={(event) =>
               edited(setCondition)(event.target.value as Condition)
@@ -92,31 +91,29 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
                 {grade}
               </option>
             ))}
-          </select>
-        </label>
-        <label>
-          Volume
-          <input
+          </Select>
+        </Field>
+        <Field label="Volume">
+          <Input
             type="text"
             value={location}
             placeholder="binder, box, deck sleeve…"
             onChange={(event) => edited(setLocation)(event.target.value)}
           />
-        </label>
-        <label className="lot-editor__notes">
-          Notes
-          <textarea
+        </Field>
+        <Field label="Notes" className="lot-editor__notes">
+          <Textarea
             rows={3}
             value={notes}
             onChange={(event) => edited(setNotes)(event.target.value)}
           />
-        </label>
+        </Field>
       </div>
 
       <div className="lot-editor__actions">
-        <button type="submit" disabled={save.isPending}>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
           {save.isPending ? 'Amending…' : 'Amend'}
-        </button>
+        </Button>
         {copies === null && (
           <span className="lot-editor__error" role="alert">
             A folio holds at least one copy. Remove it below to let it go.
@@ -162,13 +159,9 @@ function RemoveLot({ lot, backTo }: { lot: InventoryLot; backTo: string }) {
   if (!confirming) {
     return (
       <div className="lot-remove">
-        <button
-          type="button"
-          className="lot-remove__start"
-          onClick={() => setConfirming(true)}
-        >
+        <Button variant="danger" onClick={() => setConfirming(true)}>
           Remove from the collection
-        </button>
+        </Button>
       </div>
     )
   }
@@ -179,21 +172,18 @@ function RemoveLot({ lot, backTo }: { lot: InventoryLot; backTo: string }) {
         Remove all {lot.quantity} of this folio? The card stays in the catalog;
         only your record of owning it goes.
       </p>
-      <button
-        type="button"
-        className="lot-remove__confirm"
+      {/* Primary, not danger: the two share the oxblood hue and there is no
+          filled danger button (ADR 0017). */}
+      <Button
+        variant="primary"
         disabled={remove.isPending}
         onClick={() => remove.mutate()}
       >
         {remove.isPending ? 'Removing…' : 'Confirm removal'}
-      </button>
-      <button
-        type="button"
-        disabled={remove.isPending}
-        onClick={() => setConfirming(false)}
-      >
+      </Button>
+      <Button disabled={remove.isPending} onClick={() => setConfirming(false)}>
         Keep it
-      </button>
+      </Button>
       {remove.isError && (
         <span className="lot-remove__error" role="alert">
           {remove.error.message}
@@ -230,7 +220,7 @@ export function LotDetailPage() {
   if (query.isPending) {
     return (
       <section className="lot-detail">
-        <p className="lot-detail__pending">Retrieving the folio…</p>
+        <Notice>Retrieving the folio…</Notice>
       </section>
     )
   }
@@ -240,9 +230,9 @@ export function LotDetailPage() {
     }
     return (
       <section className="lot-detail">
-        <p className="lot-detail__error" role="alert">
+        <Notice tone="danger" role="alert">
           The folio could not be read. {query.error.message}
-        </p>
+        </Notice>
       </section>
     )
   }

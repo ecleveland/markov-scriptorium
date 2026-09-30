@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  ApiError,
   CONDITIONS,
   FINISHES,
   MAX_BULK_ROWS,
@@ -13,7 +12,20 @@ import {
   type ParsedLine,
   type ParseProblem,
 } from '../api'
+import {
+  Button,
+  Field,
+  Notice,
+  PageHeader,
+  Panel,
+  Select,
+  Textarea,
+  describePrinting,
+} from '../components'
 import { CandidatePicker } from './CandidatePicker'
+import { errorMessage } from './errorMessage'
+import { RowStatusTag } from './RowStatusTag'
+import { UnreadableProblems } from './UnreadableProblems'
 import './decklist.css'
 
 /**
@@ -34,30 +46,18 @@ type PreviewRow =
 
 type Step = 'paste' | 'preview' | 'summary'
 
-/** "Limited Edition Alpha (LEA) · #161" — one printing, for the preview rows. */
-function describe(printing: CardPrinting): string {
-  return `${printing.set_name} (${printing.set_code.toUpperCase()}) · #${printing.collector_number}`
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof ApiError && err.detail) return err.detail
-  return 'The scriptorium could not be reached. Please try again.'
-}
-
 /** The per-line parse problems, shown on both the paste and preview steps. */
 function UnreadableLines({ problems }: { problems: ParseProblem[] }) {
-  if (problems.length === 0) return null
   return (
-    <aside className="decklist__problems" aria-label="Unreadable lines">
-      <h2>Unreadable lines</h2>
-      <ul>
-        {problems.map((problem) => (
-          <li key={problem.line_number}>
-            Line {problem.line_number}: {problem.reason} — “{problem.text}”
-          </li>
-        ))}
-      </ul>
-    </aside>
+    <UnreadableProblems
+      label="Unreadable lines"
+      noun="Line"
+      problems={problems.map((problem) => ({
+        number: problem.line_number,
+        reason: problem.reason,
+        text: problem.text,
+      }))}
+    />
   )
 }
 
@@ -206,17 +206,15 @@ export function DecklistPage() {
   if (step === 'summary' && summary) {
     return (
       <section className="decklist">
-        <h1>Decklist Inscribed</h1>
-        <p className="decklist__summary" role="status">
+        <PageHeader eyebrow="Decklist import" title="Decklist Inscribed" />
+        <Notice tone="success" role="status" className="decklist__summary">
           Inscribed {summary.lots} {summary.lots === 1 ? 'folio' : 'folios'} (
           {summary.copies} {summary.copies === 1 ? 'copy' : 'copies'}) into the
           catalog.
           {summary.skipped > 0 &&
             ` ${summary.skipped} line${summary.skipped === 1 ? '' : 's'} skipped.`}
-        </p>
-        <button type="button" onClick={reset}>
-          Inscribe another decklist
-        </button>
+        </Notice>
+        <Button onClick={reset}>Inscribe another decklist</Button>
       </section>
     )
   }
@@ -224,24 +222,20 @@ export function DecklistPage() {
   if (step === 'preview') {
     return (
       <section className="decklist">
-        <header className="decklist__header">
-          <h1>Review the Decklist</h1>
-          <button type="button" onClick={() => setStep('paste')}>
-            Edit decklist
-          </button>
-        </header>
+        <PageHeader eyebrow="Decklist import" title="Review the Decklist">
+          <Button onClick={() => setStep('paste')}>Edit decklist</Button>
+        </PageHeader>
 
-        <p className="decklist__counts">
+        <Notice className="decklist__counts">
           {readyRows.length} ready · {unresolvedCount} to choose ·{' '}
           {unmatchedCount} unmatched
           {problems.length > 0 && ` · ${problems.length} unreadable`}
-        </p>
+        </Notice>
 
-        <fieldset className="decklist__finish">
+        <Panel as="fieldset" className="decklist__controls">
           <legend>Applied to every inscribed card</legend>
-          <label>
-            Finish
-            <select
+          <Field label="Finish">
+            <Select
               value={finish}
               onChange={(event) => setFinish(event.target.value as Finish)}
             >
@@ -250,11 +244,10 @@ export function DecklistPage() {
                   {option}
                 </option>
               ))}
-            </select>
-          </label>
-          <label>
-            Condition
-            <select
+            </Select>
+          </Field>
+          <Field label="Condition">
+            <Select
               value={condition}
               onChange={(event) =>
                 setCondition(event.target.value as Condition)
@@ -265,9 +258,9 @@ export function DecklistPage() {
                   {option}
                 </option>
               ))}
-            </select>
-          </label>
-        </fieldset>
+            </Select>
+          </Field>
+        </Panel>
 
         <ol className="decklist__rows">
           {rows.map((row, index) => (
@@ -275,16 +268,17 @@ export function DecklistPage() {
               key={index}
               className={`decklist__row decklist__row--${row.status}`}
             >
+              <RowStatusTag status={row.status} chosen={row.chosen} />
               <span className="decklist__line">
                 {row.entry.quantity}× {row.entry.name}
               </span>
               {row.chosen ? (
                 <span className="decklist__chosen">
-                  {describe(row.chosen)}
+                  {describePrinting(row.chosen)}
                   {row.status === 'ambiguous' && (
-                    <button type="button" onClick={() => choose(index, null)}>
+                    <Button variant="ghost" onClick={() => choose(index, null)}>
                       Change
-                    </button>
+                    </Button>
                   )}
                 </span>
               ) : row.status === 'ambiguous' ? (
@@ -305,22 +299,27 @@ export function DecklistPage() {
 
         <UnreadableLines problems={problems} />
 
-        {error && <p role="alert">{error}</p>}
+        {error && (
+          <Notice tone="danger" role="alert">
+            {error}
+          </Notice>
+        )}
 
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          seal
           onClick={handleInscribe}
           disabled={busy || readyRows.length === 0}
         >
           {busy
             ? 'Inscribing…'
             : `Inscribe ${readyRows.length} ${readyRows.length === 1 ? 'folio' : 'folios'}`}
-        </button>
+        </Button>
         {unresolvedCount + unmatchedCount > 0 && readyRows.length > 0 && (
-          <p className="decklist__skip-note">
+          <Notice className="decklist__skip-note">
             {unresolvedCount + unmatchedCount} unresolved line
             {unresolvedCount + unmatchedCount === 1 ? '' : 's'} will be skipped.
-          </p>
+          </Notice>
         )}
       </section>
     )
@@ -328,15 +327,14 @@ export function DecklistPage() {
 
   return (
     <section className="decklist">
-      <h1>Inscribe a Decklist</h1>
+      <PageHeader eyebrow="Decklist import" title="Inscribe a Decklist" />
       <p>
         Paste a decklist — one card per line, e.g.{' '}
         <code>4 Lightning Bolt (2X2)</code>. Quantities, set codes, comments,
         and section headers are understood.
       </p>
-      <label className="decklist__input">
-        <span className="decklist__input-label">Decklist</span>
-        <textarea
+      <Field label="Decklist" className="decklist__input">
+        <Textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={12}
@@ -344,19 +342,23 @@ export function DecklistPage() {
             'Deck\n4 Lightning Bolt\n2 Counterspell\n1 Sol Ring (cmd)'
           }
         />
-      </label>
+      </Field>
 
       <UnreadableLines problems={problems} />
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <Notice tone="danger" role="alert">
+          {error}
+        </Notice>
+      )}
 
-      <button
-        type="button"
+      <Button
+        variant="primary"
         onClick={handleResolve}
         disabled={busy || text.trim().length === 0}
       >
         {busy ? 'Consulting the catalog…' : 'Resolve decklist'}
-      </button>
+      </Button>
     </section>
   )
 }

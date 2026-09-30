@@ -1,14 +1,16 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { cssSheets } from '../test/sheets'
 
-// Contract test for the shared component stylesheet (VEG-423, ADR 0017).
+// Contract tests for the stylesheets (VEG-423, VEG-424, ADR 0017).
 //
-// The component layer consumes design tokens only. No raw colours or font
-// names may appear here, so a later re-theme is a tokens.css edit and nothing
-// else. (focus-ring.test.ts separately guarantees no sheet, this one included,
-// sets `outline`; box-shadow stays free for elevation.)
+// Two contracts live here. The first is the component layer's own: how .btn
+// drives its fills, how hover is guarded, and which block classes must exist.
+// The second is the tokens-only rule, which every sheet answers to, not just
+// components.css: no raw colours and no font names outside tokens.css, so a
+// later re-theme is a tokens.css edit and nothing else. (focus-ring.test.ts
+// separately guarantees no sheet sets `outline`; box-shadow stays free for
+// elevation.)
 
 /** Every CSS named colour. A value token matching one of these is a raw colour. */
 const NAMED_COLOURS = new Set([
@@ -162,22 +164,41 @@ const NAMED_COLOURS = new Set([
   'yellowgreen',
 ])
 
-const css = readFileSync(
-  fileURLToPath(new URL('./components.css', import.meta.url)),
-  'utf8',
+/** tokens.css is the one sheet allowed to name a colour or a typeface. */
+const sheets = cssSheets({ exclude: ['styles/tokens.css'] })
+
+const componentSheet = sheets.find(
+  (sheet) => sheet.name === 'styles/components.css',
 )
+if (!componentSheet) {
+  // The describe below has nothing to assert against, and a silently empty
+  // contract is worse than a red file.
+  throw new Error('styles/components.css was not found under src/')
+}
+const declarations = componentSheet.css
 
-/** Declarations only. Comments are stripped so prose can name what is forbidden. */
-const declarations = css.replace(/\/\*[\s\S]*?\*\//g, '')
+describe('stylesheet contract (every sheet)', () => {
+  it('finds the component sheet and every page sheet', () => {
+    expect(sheets.map((sheet) => sheet.name)).toEqual(
+      expect.arrayContaining([
+        'styles/components.css',
+        'App.css',
+        'catalog/catalog.css',
+        'inscribe/inscribe.css',
+        'onboarding/decklist.css',
+        'specimens/specimens.css',
+      ]),
+    )
+    expect(sheets.length).toBeGreaterThan(5)
+  })
 
-describe('component stylesheet contract', () => {
-  it('uses no raw colour values', () => {
-    expect(declarations).not.toMatch(/#[0-9a-f]{3,8}\b/i)
-    expect(declarations).not.toMatch(/\b(rgba?|hsla?|color-mix)\(/)
+  it.each(sheets)('$name uses no raw colour values', ({ css }) => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i)
+    expect(css).not.toMatch(/\b(rgba?|hsla?|color-mix)\(/)
     // Named colours anywhere in a value, including shorthands like
     // `1px solid red`. Token references and property names are stripped
     // first so `--gold` and `white-space` do not trip it.
-    const values = (declarations.match(/\{[^}]*\}/g) ?? []) // blocks only, no selectors
+    const values = (css.match(/\{[^}]*\}/g) ?? []) // blocks only, no selectors
       .join('\n')
       .toLowerCase() // CSS keywords are case-insensitive
       .replace(/var\(--[a-z0-9-]+(,[^)]*)?\)/g, '') // token refs, with fallbacks
@@ -186,10 +207,12 @@ describe('component stylesheet contract', () => {
     expect(words.filter((w) => NAMED_COLOURS.has(w))).toEqual([])
   })
 
-  it('uses no raw font family names', () => {
-    expect(declarations).not.toMatch(/font-family\s*:(?!\s*var\()/)
+  it.each(sheets)('$name uses no raw font family names', ({ css }) => {
+    expect(css).not.toMatch(/font-family\s*:(?!\s*var\()/)
   })
+})
 
+describe('component stylesheet contract', () => {
   it('guards hover on disableable controls with :where() so page overrides keep winning', () => {
     // A bare `:not(:disabled)` or `:enabled` would lift the rule to (0,3,0),
     // beating any page rule written at the natural (0,2,0). ADR 0017 promises
@@ -201,7 +224,9 @@ describe('component stylesheet contract', () => {
       .flatMap((list) => list.split(','))
       .map((selector) => selector.trim())
       .filter((selector) => !selector.startsWith('@')) // media preludes
-      .filter((selector) => /^\.(btn|control)\b.*:hover/.test(selector))
+      .filter((selector) =>
+        /^\.(btn|control|listbox__option)\b.*:hover/.test(selector),
+      )
     expect(hovers.length).toBeGreaterThan(0)
     for (const selector of hovers) {
       expect(selector).toMatch(/:hover:where\(:not\(:disabled\)\)$/)
@@ -227,6 +252,9 @@ describe('component stylesheet contract', () => {
       '.field',
       '.control',
       '.printing-chip',
+      '.page-header',
+      '.notice',
+      '.listbox',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
     }

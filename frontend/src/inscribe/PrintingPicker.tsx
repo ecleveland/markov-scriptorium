@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { searchPrintings, type PrintingsResult } from '../api'
-import { PrintingChip } from '../components'
+import { Button, Notice, PageHeader, PrintingChip } from '../components'
 
 interface Props {
   name: string
@@ -32,33 +32,38 @@ export function PrintingPicker({ name, onPick, onCancel }: Props) {
 
   return (
     <section className="printing-picker">
-      <header className="printing-picker__header">
-        <h2>Choose a printing of “{name}”</h2>
-        <button type="button" onClick={onCancel}>
-          Change card
-        </button>
-      </header>
+      <PageHeader level={2} title={<>Choose a printing of “{name}”</>}>
+        <Button onClick={onCancel}>Change card</Button>
+      </PageHeader>
 
-      {failed && <p role="alert">The printings could not be loaded.</p>}
-      {!failed && result === null && <p>Consulting the catalog…</p>}
+      {failed && (
+        <Notice tone="danger" role="alert">
+          The printings could not be loaded.
+        </Notice>
+      )}
+      {!failed && result === null && <Notice>Consulting the catalog…</Notice>}
       {result !== null && result.printings.length === 0 && (
-        <p>No printings of this card reside in the catalog.</p>
+        <Notice>No printings of this card reside in the catalog.</Notice>
       )}
       {result !== null && result.truncated && (
-        <p className="printing-picker__truncated" role="status">
+        <Notice role="status">
           Showing the first {result.printings.length}; refine the name if a
           printing is missing.
-        </p>
+        </Notice>
       )}
       {result !== null && result.printings.length > 0 && (
         <ul
-          className="printing-picker__list"
+          className="listbox printing-picker__list"
           role="listbox"
           aria-label="Printings"
         >
           {result.printings.map((printing) => (
             <li key={printing.scryfall_id} role="option" aria-selected={false}>
-              <button type="button" onClick={() => onPick(printing)}>
+              <button
+                type="button"
+                className="listbox__option"
+                onClick={() => onPick(printing)}
+              >
                 <PrintingChip printing={printing} size="md" />
               </button>
             </li>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { autocompleteNames } from '../api'
+import { Field, Input, Notice } from '../components'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface Props {
@@ -58,28 +59,34 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
 
   return (
     <div className="card-search">
-      <label htmlFor="card-search-input">Card name</label>
-      <input
-        id="card-search-input"
-        ref={inputRef}
-        type="text"
-        autoComplete="off"
-        placeholder="Search the catalog…"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
+      <Field label="Card name">
+        <Input
+          ref={inputRef}
+          type="text"
+          autoComplete="off"
+          placeholder="Search the catalog…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </Field>
       {showResults && failed && (
-        <p role="alert">The catalog could not be reached.</p>
+        <Notice tone="danger" role="alert">
+          The catalog could not be reached.
+        </Notice>
       )}
       {showResults && names.length > 0 && (
         <ul
-          className="card-search__results"
+          className="listbox card-search__results"
           role="listbox"
           aria-label="Matching cards"
         >
           {names.map((name) => (
             <li key={name} role="option" aria-selected={false}>
-              <button type="button" onClick={() => choose(name)}>
+              <button
+                type="button"
+                className="listbox__option"
+                onClick={() => choose(name)}
+              >
                 {name}
               </button>
             </li>

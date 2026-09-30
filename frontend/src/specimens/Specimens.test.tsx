@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Specimens } from './Specimens'
 
@@ -31,5 +31,24 @@ describe('Specimens', () => {
     expect(screen.getByLabelText('Decklist')).toHaveClass('control')
     expect(document.querySelector('.printing-chip--sm')).not.toBeNull()
     expect(document.querySelector('.printing-chip--md')).not.toBeNull()
+  })
+
+  it('renders a page header, every notice tone, and a listbox', () => {
+    render(<Specimens />)
+    expect(document.querySelector('.page-header__eyebrow')).not.toBeNull()
+    for (const tone of ['muted', 'success', 'danger']) {
+      expect(
+        document.querySelector(`.notice--${tone}`),
+        `missing .notice--${tone}`,
+      ).not.toBeNull()
+    }
+    const listbox = screen.getByRole('listbox', { name: 'Specimen printings' })
+    expect(listbox).toHaveClass('listbox')
+    expect(listbox.querySelectorAll('.listbox__option')).toHaveLength(2)
+    // One option shows the selected state, so the gold inset rule is visible.
+    expect(within(listbox).getAllByRole('option')[1]).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   })
 })
