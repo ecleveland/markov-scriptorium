@@ -22,6 +22,9 @@
 .inscribe-form__preview {
   display: block;
   flex-shrink: 0;
+  /* The 240px plate shrinks to fit a phone instead of widening the page. */
+  max-width: 100%;
+  height: auto;
   border-radius: var(--radius-lg);
   box-shadow: var(--elevation-2);
 }
@@ -29,7 +32,8 @@
 .inscribe-form__fields {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* Two columns where they fit, one on a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: var(--space-4);
 }
 

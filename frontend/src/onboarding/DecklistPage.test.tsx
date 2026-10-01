@@ -129,6 +129,10 @@ describe('DecklistPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Review the Decklist' }),
     ).toBeInTheDocument()
+    // The live region mounts empty on the preview step so the summary that
+    // later fills it is announced.
+    const region = screen.getByRole('status')
+    expect(region).toBeEmptyDOMElement()
     expect(screen.getByText(/No printing of .*Black Lotus/)).toBeInTheDocument()
     // Some lines matched, so the empty state stays away.
     expect(screen.queryByText('Nothing matched')).not.toBeInTheDocument()
@@ -164,9 +168,12 @@ describe('DecklistPage', () => {
     )
 
     // Summary reports inscribed folios/copies and the one skipped (unmatched) line.
-    const summary = await screen.findByRole('status')
-    expect(summary).toHaveTextContent(/Inscribed 2 folios \(5 copies\)/)
-    expect(summary).toHaveTextContent(/1 line skipped/)
+    const summary = await screen.findByText(/Inscribed 2 folios \(5 copies\)/)
+    // The same node that sat empty on the preview step now carries it.
+    expect(summary.closest('[role="status"]')).toBe(region)
+    expect(summary.closest('[role="status"]')).toHaveTextContent(
+      /1 line skipped/,
+    )
   })
 
   it('lets the user re-pick an ambiguous row via "Change"', async () => {
@@ -223,7 +230,7 @@ describe('DecklistPage', () => {
       await screen.findByRole('button', { name: /Inscribe 0 folios/ }),
     ).toBeDisabled()
     expect(
-      screen.getByRole('listbox', { name: /Printings of Lightning Bolt/ }),
+      screen.getByRole('list', { name: /Printings of Lightning Bolt/ }),
     ).toBeInTheDocument()
   })
 
@@ -284,9 +291,10 @@ describe('DecklistPage', () => {
         },
       ]),
     )
-    const summary = await screen.findByRole('status')
-    expect(summary).toHaveTextContent(/Inscribed 1 folio \(1 copy\)/)
-    expect(summary).toHaveTextContent(/1 line skipped/)
+    const summary = await screen.findByText(/Inscribed 1 folio \(1 copy\)/)
+    expect(summary.closest('[role="status"]')).toHaveTextContent(
+      /1 line skipped/,
+    )
   })
 
   it('reports unreadable lines and blocks when nothing parses', async () => {

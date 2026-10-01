@@ -65,11 +65,13 @@ export function InscribePage() {
     <section className="inscribe">
       <PageHeader eyebrow="Inscription" title="Inscribe a Card" />
 
-      {name === null && lastSealed && (
-        <Sealed role="status" className="inscribe__sealed">
-          {describeEntry(lastSealed)}
-        </Sealed>
-      )}
+      {/* Mounted on every step, not only the search step: the flow leaves
+          search for the picker and form, and a live region that comes back
+          with its text already inside is often not read. The seal clears when
+          the next name is chosen, so this is empty outside the search step. */}
+      <div role="status">
+        {lastSealed && <Sealed>{describeEntry(lastSealed)}</Sealed>}
+      </div>
 
       {name === null && <CardSearch autoFocus onSelect={chooseName} />}
 

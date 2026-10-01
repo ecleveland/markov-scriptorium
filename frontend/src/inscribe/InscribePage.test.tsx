@@ -84,6 +84,11 @@ describe('InscribePage', () => {
 
     render(<InscribePage />)
 
+    // The live region is in the tree, empty, before there is anything to say,
+    // so a screen reader announces the seal when it arrives.
+    const region = screen.getByRole('status')
+    expect(region).toBeEmptyDOMElement()
+
     // 1. Search by name and pick the autocomplete suggestion.
     await user.type(screen.getByLabelText('Card name'), 'bolt')
     const suggestion = await screen.findByRole('button', {
@@ -126,6 +131,9 @@ describe('InscribePage', () => {
     const sealed = screen.getByRole('status')
     expect(sealed).toHaveTextContent('Sealed into the catalog')
     expect(sealed).toHaveTextContent('2× Lightning Bolt (LEA #161) · foil')
+    // The seal sits inside the region rather than being it.
+    expect(sealed).toBe(region)
+    expect(sealed).not.toHaveClass('sealed')
   })
 
   it('lifts the seal once the next card name is chosen', async () => {
@@ -161,7 +169,14 @@ describe('InscribePage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
     )
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Sealed into the catalog'),
+    ).not.toBeInTheDocument()
+    // The region stays mounted through the picker step, empty.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    // Back on the search step the region is empty again, not gone.
+    await user.click(await screen.findByRole('button', { name: 'Change card' }))
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('keeps the form and shows an error when the inscription fails', async () => {

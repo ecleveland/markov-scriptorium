@@ -212,13 +212,17 @@ export function CsvImportPage() {
     return (
       <section className="decklist">
         <PageHeader eyebrow="CSV import" title="Collection Inscribed" />
-        <Sealed role="status" className="decklist__summary">
-          Inscribed {summary.lots} {summary.lots === 1 ? 'folio' : 'folios'} (
-          {summary.copies} {summary.copies === 1 ? 'copy' : 'copies'}) into the
-          catalog.
-          {summary.skipped > 0 &&
-            ` ${summary.skipped} row${summary.skipped === 1 ? '' : 's'} skipped.`}
-        </Sealed>
+        {/* Second child of the section, as on the preview step, so React
+            keeps this node across the transition and the summary is read. */}
+        <div role="status">
+          <Sealed>
+            Inscribed {summary.lots} {summary.lots === 1 ? 'folio' : 'folios'} (
+            {summary.copies} {summary.copies === 1 ? 'copy' : 'copies'}) into
+            the catalog.
+            {summary.skipped > 0 &&
+              ` ${summary.skipped} row${summary.skipped === 1 ? '' : 's'} skipped.`}
+          </Sealed>
+        </div>
         <Button onClick={reset}>Import another CSV</Button>
       </section>
     )
@@ -230,6 +234,11 @@ export function CsvImportPage() {
         <PageHeader eyebrow="CSV import" title="Review the Import">
           <Button onClick={() => setStep('upload')}>Back to upload</Button>
         </PageHeader>
+
+        {/* Empty until the import lands. It sits where the summary step puts
+            its region, so the same live node is already in the tree when the
+            summary text arrives. */}
+        <div role="status" />
 
         <Notice className="decklist__counts">
           {detected && <>Detected {detected}. </>}

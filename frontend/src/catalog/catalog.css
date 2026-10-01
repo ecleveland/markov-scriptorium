@@ -15,6 +15,11 @@
 
 /* ---- The list ----------------------------------------------------------- */
 
+/* Six columns at phone width scroll inside the page instead of widening it. */
+.catalog__scroll {
+  overflow-x: auto;
+}
+
 .catalog__table {
   width: 100%;
   border-collapse: collapse;
@@ -125,7 +130,7 @@
   height: 1.75rem;
   padding: 0;
   line-height: 1;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--text-primary);
@@ -163,6 +168,7 @@
 
 .lot-detail__head {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-5);
   align-items: flex-start;
 }
@@ -203,7 +209,8 @@
 
 .lot-editor__fields {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Three columns on a wide screen, folding down to one on a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-4);
 }
 

@@ -59,6 +59,10 @@ describe('CatalogPage', () => {
     expect(screen.getByText('LP')).toBeInTheDocument()
     expect(screen.getByText('Red binder')).toBeInTheDocument()
     expect(screen.getByText('Showing 1 to 2 of 2 folios')).toBeInTheDocument()
+    // Six columns at phone width scroll inside this wrapper, not the page.
+    expect(screen.getByRole('table').parentElement).toHaveClass(
+      'catalog__scroll',
+    )
   })
 
   it('marks a lot with no location as unshelved rather than blank', async () => {
