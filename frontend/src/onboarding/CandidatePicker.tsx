@@ -33,7 +33,14 @@ export function CandidatePicker({
           <button
             type="button"
             className="listbox__option"
-            aria-pressed={printing.scryfall_id === selectedId}
+            // Both importers pass null and treat a click as a one-shot pick,
+            // so only announce a toggle when there is a selection to report.
+            // Otherwise every candidate reads as "toggle button, not pressed".
+            aria-pressed={
+              selectedId === null
+                ? undefined
+                : printing.scryfall_id === selectedId
+            }
             onClick={() => onPick(printing)}
           >
             <PrintingChip printing={printing} />

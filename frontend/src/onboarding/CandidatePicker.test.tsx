@@ -49,6 +49,23 @@ describe('CandidatePicker', () => {
     expect(onPick).toHaveBeenCalledWith(m10)
   })
 
+  it('leaves the candidates as plain buttons when nothing is selected', () => {
+    render(
+      <CandidatePicker
+        name="Lightning Bolt"
+        candidates={[
+          printing({ scryfall_id: 'a' }),
+          printing({ scryfall_id: 'b' }),
+        ]}
+        selectedId={null}
+        onPick={() => {}}
+      />,
+    )
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).not.toHaveAttribute('aria-pressed')
+    }
+  })
+
   it('marks the selected candidate', () => {
     render(
       <CandidatePicker

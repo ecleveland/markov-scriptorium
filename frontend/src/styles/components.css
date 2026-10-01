@@ -22,8 +22,8 @@
                     edge reads at 3:1 on the panel (WCAG 1.4.11)
    .btn--primary    filled oxblood, the one action on a screen
    .btn--ghost      borderless, for tertiary actions inline with text
-   .btn--danger     outlined oxblood-bright; hue is shared with primary, the
-                    outline is what says "destructive" (ADR 0014 §3)
+   .btn--danger     outlined rose; shares the oxblood family with primary,
+                    the outline is what says "destructive" (ADR 0014 §3)
 
    Each variant is fully described by the custom properties it sets. */
 

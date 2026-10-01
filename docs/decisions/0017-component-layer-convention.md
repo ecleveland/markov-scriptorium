@@ -91,11 +91,11 @@ does not count. Contract-tested across every sheet.
 | Listbox (classes only) | `.listbox`, `.listbox__option` | A labelled `<ul>` of option buttons with arrow-key focus movement from `useArrowKeyList` (`src/hooks`). No `listbox` or `option` roles: an option may not contain a button, and a list of buttons is what it is. `.listbox__option[aria-pressed='true']` draws the gold inset rule on the chosen row. |
 
 **Primary and danger share the oxblood hue; treatment tells them apart.**
-Primary is filled oxblood. Danger is outlined oxblood-bright. There is no
-filled danger button. The Catalog's confirm-removal button, currently a filled
-accent, becomes `primary` when VEG-424 adopts the layer. The quantity
-stepper's round icon buttons stay bespoke (`.qty-stepper__step`); they are not
-a `Button` variant.
+Primary is filled oxblood. Danger is outlined rose, the AA-contrast step of
+the oxblood family (VEG-427). There is no filled danger button. The Catalog's
+confirm-removal button, currently a filled accent, becomes `primary` when
+VEG-424 adopts the layer. The quantity stepper's round icon buttons stay
+bespoke (`.qty-stepper__step`); they are not a `Button` variant.
 
 **Tag tones carry the import-preview vocabulary.** A row that is ready is
 `success` (verdant), one that still needs a printing chosen is `warning`
