@@ -1,3 +1,11 @@
+/* #root is a flex container, so without this the app keeps a flex item's
+   default minimum width and grows to its widest child (the Catalog table at
+   phone width) instead of letting that child scroll inside the page. */
+.app {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .scriptorium {
   margin: auto;
   padding: var(--space-6);
@@ -80,9 +88,6 @@
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
   text-decoration: none;
-  transition:
-    color 120ms ease,
-    border-color 120ms ease;
 }
 .scriptorium-nav a:hover {
   color: var(--text-primary);
@@ -122,6 +127,16 @@
 }
 .status[data-state='error'] .status-dot {
   color: var(--danger);
+}
+
+/* The hover fade is motion, so it plays only for people who have not asked
+   the OS to reduce it (ADR 0017). */
+@media (prefers-reduced-motion: no-preference) {
+  .scriptorium-nav a {
+    transition:
+      color 120ms ease,
+      border-color 120ms ease;
+  }
 }
 
 /* Narrow widths: stack the brand above the nav/status row. */

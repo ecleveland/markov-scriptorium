@@ -113,3 +113,14 @@ migrated in the restyle ticket (VEG-424).
   rather than importing the full families up front.
 - `--surface-raised` is provided for elevated panels (modals/menus) the
   component layer will introduce.
+- 2026-10-01, VEG-427: three retunes after measuring the palette against WCAG
+  AA. `--danger` now points at a new raw `--rose` (#d9566b) instead of
+  `--oxblood-bright`, lifting danger text from 3.4:1 to 4.8:1 on the panel;
+  `--accent-hover` keeps oxblood-bright because it never carries text.
+  `--faint` moved from #6f665a to #8f8477, from 3.3:1 to 5.0:1. A new
+  `--line-strong` (#6b6376) and its alias `--border-strong` mark controls and
+  secondary buttons at 3.2:1, where `--line` gave 1.2:1 against the 3:1 that
+  criterion 1.4.11 asks for; dividers and panel edges keep `--line`.
+  `tokens.test.ts` now computes these ratios from the sheet, so a later retune
+  cannot regress them silently. `index.html` declares `color-scheme` and
+  `theme-color` so the first paint is dark too.
