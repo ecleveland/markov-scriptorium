@@ -66,9 +66,11 @@ describe('CardSearch', () => {
     ).not.toBeInTheDocument()
 
     answer([])
-    expect(
-      await screen.findByText('No card by that name in the catalog.'),
-    ).toBeInTheDocument()
+    // A live region, so a screen reader hears the verdict the way sighted
+    // users see it; the failure line beside it is an alert for the same reason.
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'No card by that name in the catalog.',
+    )
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 

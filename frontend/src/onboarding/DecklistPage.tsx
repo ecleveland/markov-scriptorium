@@ -241,8 +241,8 @@ export function DecklistPage() {
           <EmptyState title="Nothing matched">
             None of the {rows.length} {rows.length === 1 ? 'line' : 'lines'}{' '}
             matched a printing in the catalog. Check the spelling against the
-            card names, or wait for the catalog to finish refreshing and resolve
-            it again.
+            card names, or wait for the catalog to finish refreshing, then edit
+            the decklist and resolve it again.
           </EmptyState>
         )}
 

@@ -75,7 +75,7 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
         </Notice>
       )}
       {showResults && !failed && names.length === 0 && (
-        <Notice>No card by that name in the catalog.</Notice>
+        <Notice role="status">No card by that name in the catalog.</Notice>
       )}
       {showResults && names.length > 0 && (
         <ul

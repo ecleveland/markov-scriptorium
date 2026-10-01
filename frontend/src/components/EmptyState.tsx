@@ -8,8 +8,8 @@ export interface EmptyStateProps extends Omit<ComponentProps<'div'>, 'title'> {
 
 /**
  * What a view shows when it has nothing to list: an unpressed seal, a heading,
- * and a line that says where to go next. The seal is drawn without its wax so
- * it reads as a motif, not a confirmation. No role; the heading names it.
+ * and a line that says where to go next. The seal keeps its wax but loses the
+ * oxblood, so it reads as a motif, not a confirmation. No role; the heading names it.
  */
 export function EmptyState({
   title,
