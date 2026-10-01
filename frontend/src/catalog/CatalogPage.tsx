@@ -105,7 +105,14 @@ export function CatalogPage() {
         {total === 1 ? 'folio' : 'folios'}
       </Notice>
 
-      <div className="catalog__scroll">
+      {/* When the table overflows, a keyboard can only scroll this wrapper if
+          it takes focus, and anything focusable needs a name to announce. */}
+      <div
+        className="catalog__scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Catalog table"
+      >
         <table className="catalog__table">
           <caption className="visually-hidden">
             Owned cards, newest inscription first

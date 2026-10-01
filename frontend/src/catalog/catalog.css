@@ -65,8 +65,10 @@
   text-decoration: none;
 }
 
+/* Gold, like the other links on the page. Oxblood-bright is a fill colour,
+   not a text colour, at 3.4:1 on the ground. */
 .catalog__name:hover {
-  color: var(--accent-hover);
+  color: var(--accent-secondary);
 }
 
 .catalog__folio,
@@ -137,9 +139,11 @@
   cursor: pointer;
 }
 
+/* The border is the hover cue and the glyph stays bone. Oxblood-bright is a
+   fill colour, not a text colour, at 3.4:1. */
 .qty-stepper__step:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--accent-hover);
+  color: var(--text-primary);
 }
 
 .qty-stepper__step:disabled {

@@ -20,10 +20,14 @@
 /* ---- Button --------------------------------------------------------------
    .btn--secondary  the default, quiet, bordered with the strong line so the
                     edge reads at 3:1 on the panel (WCAG 1.4.11)
-   .btn--primary    filled oxblood, the one action on a screen
+   .btn--primary    filled oxblood, the one action on a screen; hover
+                    darkens the fill and rings it in gold, so the bone label
+                    keeps AA
    .btn--ghost      borderless, for tertiary actions inline with text
    .btn--danger     outlined rose; shares the oxblood family with primary,
-                    the outline is what says "destructive" (ADR 0014 §3)
+                    the outline is what says "destructive" (ADR 0014 §3);
+                    hover turns the label bone, since rose on the hover fill
+                    falls under AA, and the rose outline stays as the cue
 
    Each variant is fully described by the custom properties it sets. */
 
@@ -58,9 +62,9 @@
 
 .btn--primary {
   --btn-bg: var(--accent);
-  --btn-bg-hover: var(--accent-hover);
+  --btn-bg-hover: var(--accent-pressed);
   --btn-border: var(--accent);
-  --btn-border-hover: var(--accent-hover);
+  --btn-border-hover: var(--accent-secondary);
 }
 
 /* Transparent grounds take the translucent hover fill directly. */
@@ -83,6 +87,9 @@
   --btn-border-hover: var(--danger);
 
   color: var(--danger);
+}
+.btn--danger:hover:where(:not(:disabled)) {
+  color: var(--text-primary);
 }
 
 .btn:disabled {

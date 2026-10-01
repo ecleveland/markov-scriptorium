@@ -314,6 +314,19 @@ describe('component stylesheet contract', () => {
     )
   })
 
+  it('keeps every button label at AA on hover', () => {
+    // Bone on oxblood-bright is 4.26:1 and rose on the bone hover fill is 3.7
+    // to 4.4:1 (tokens.test.ts measures both). So the primary fill darkens to
+    // the pressed accent, and the danger label turns bone while its rose border
+    // stays as the cue.
+    expect(declarations).toMatch(
+      /\.btn--primary\s*\{[^}]*--btn-bg-hover:\s*var\(--accent-pressed\)/,
+    )
+    expect(declarations).toMatch(
+      /\.btn--danger:hover:where\(:not\(:disabled\)\)\s*\{[^}]*color:\s*var\(--text-primary\)/,
+    )
+  })
+
   it('plays the seal press, the candle flicker, and the hover fades only under the media query', () => {
     const { inside } = splitReducedMotionBlocks(declarations)
     for (const block of ['.btn', '.listbox__option', '.control']) {

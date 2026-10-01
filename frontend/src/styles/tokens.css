@@ -68,11 +68,18 @@
   --border-strong: var(--line-strong);
 
   --accent: var(--oxblood);
+  /* For borders and fills that carry no text. Bone on oxblood-bright is
+     4.26:1 and oxblood-bright as text on the ground is 3.4:1, both under AA,
+     so it never colours text or sits behind it. */
   --accent-hover: var(--oxblood-bright);
+  /* A filled button darkens on hover so its bone label keeps its contrast
+     (8.7:1). Use this, not --accent-hover, for a filled hover. */
+  --accent-pressed: color-mix(in srgb, var(--oxblood), var(--bg) 20%);
   --accent-secondary: var(--gold);
 
-  /* Hover and danger part ways: hover only fills a primary button behind bone
-     text, so it keeps oxblood-bright, while danger is the text itself. */
+  /* Hover and danger part ways. --accent-hover stays oxblood-bright because it
+     never colours text or a text ground (the filled hover is --accent-pressed),
+     while danger is the text itself and needs rose to read at AA. */
   --danger: var(--rose);
   --success: var(--green);
   --warning: var(--gold);

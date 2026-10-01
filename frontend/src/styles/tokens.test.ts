@@ -126,9 +126,11 @@ describe('design tokens contract', () => {
 })
 
 // WCAG 2.x contrast, computed from the hexes in tokens.css (VEG-427). Text
-// must reach AA (4.5:1, criterion 1.4.3) on both surfaces it sits on, and the
-// line that is a control's only boundary must reach 3:1 (criterion 1.4.11). A
-// retune that slips under either fails here instead of in someone's eyes.
+// must reach AA (4.5:1, criterion 1.4.3) on the grounds it sits on, and the
+// line that is a control's only boundary must reach 3:1 (criterion 1.4.11).
+// Covered here are the resting grounds, the hover fills composited onto the
+// grounds they sit over, and the pressed accent a primary button darkens to.
+// A ground outside that list is not checked.
 
 /** The hex a token resolves to, following one `var(--x)` hop if needed. */
 function hexOf(name: string): string {
@@ -141,10 +143,35 @@ function hexOf(name: string): string {
   return hex
 }
 
-/** Relative luminance of an sRGB hex, per WCAG 2.x. */
-function luminance(hex: string): number {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const channel = parseInt(hex.slice(i, i + 2), 16) / 255
+type Rgb = readonly [number, number, number]
+
+/** The 0 to 255 channels of a six-digit hex. */
+function rgbOf(hex: string): Rgb {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  return [r, g, b]
+}
+
+/**
+ * `color-mix(in srgb, a, b weightOfB)`: a channel-wise linear mix, which is
+ * also what a translucent fill composited over an opaque ground comes to.
+ */
+function mix(a: Rgb, b: Rgb, weightOfB: number): Rgb {
+  const [r, g, bl] = a.map((channel, i) => {
+    return channel * (1 - weightOfB) + b[i] * weightOfB
+  })
+  return [r, g, bl]
+}
+
+/** A token name or an already computed colour, as sRGB channels. */
+function rgb(colour: string | Rgb): Rgb {
+  return typeof colour === 'string' ? rgbOf(hexOf(colour)) : colour
+}
+
+/** Relative luminance of an sRGB colour, per WCAG 2.x. */
+function luminance(colour: string | Rgb): number {
+  const source = typeof colour === 'string' ? rgbOf(colour) : colour
+  const [r, g, b] = source.map((value) => {
+    const channel = value / 255
     return channel <= 0.04045
       ? channel / 12.92
       : ((channel + 0.055) / 1.055) ** 2.4
@@ -152,8 +179,8 @@ function luminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-function contrast(a: string, b: string): number {
-  const [light, dark] = [luminance(hexOf(a)), luminance(hexOf(b))].sort(
+function contrast(a: string | Rgb, b: string | Rgb): number {
+  const [light, dark] = [luminance(rgb(a)), luminance(rgb(b))].sort(
     (x, y) => y - x,
   )
   return (light + 0.05) / (dark + 0.05)
@@ -192,6 +219,48 @@ describe('contrast', () => {
       expect(contrast('--line-strong', ground)).toBeGreaterThanOrEqual(3)
     },
   )
+
+  // A filled primary button darkens on hover, so its bone label keeps AA.
+  it('mixes the pressed accent from oxblood toward the ground', () => {
+    expect(valueOf('--accent-pressed')).toContain('var(--oxblood)')
+    expect(valueOf('--accent-pressed')).toContain('var(--bg) 20%')
+  })
+
+  it('reads the primary button label at AA on its hover fill', () => {
+    const accentPressed = mix(rgb('--oxblood'), rgb('--bg'), 0.2)
+    expect(contrast('--text', accentPressed)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  // The translucent bone hover step, composited onto the grounds a button or a
+  // listbox row sits on. --surface-hover lands on the page ground or the
+  // panel, and --surface-raised-hover is the same mix written out.
+  const hoverGrounds = {
+    groundHover: mix(rgb('--bg'), rgb('--text'), 0.08),
+    surfaceHover: mix(rgb('--panel'), rgb('--text'), 0.08),
+    raisedHover: mix(rgb('--surface-raised'), rgb('--text'), 0.08),
+  }
+  // --faint and --green are left out. They measure 3.9 to 4.6:1 on these
+  // fills, and neither is rendered on a hover fill today: green is notice and
+  // tag text, and a tag carries its own raised fill. The pass is tracked.
+  // --rose is left out for the same reason, because the danger button turns
+  // its label bone on hover (components.css).
+  const hoverText = ['--text', '--muted', '--gold']
+  const hoverPairs = hoverText.flatMap((fg) =>
+    Object.keys(hoverGrounds).map((ground) => [fg, ground] as const),
+  )
+
+  it.each(hoverPairs)('%s on %s reads at AA as text', (fg, ground) => {
+    const fill = hoverGrounds[ground as keyof typeof hoverGrounds]
+    expect(contrast(fg, fill)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('reads the card-name hover (gold) at AA on the ground', () => {
+    expect(contrast('--accent-secondary', '--bg')).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('reads the stepper hover (bone) at AA on the panel', () => {
+    expect(contrast('--text-primary', '--surface')).toBeGreaterThanOrEqual(4.5)
+  })
 })
 
 // ADR 0014: the app is dark-only by design. index.css tells the browser so,

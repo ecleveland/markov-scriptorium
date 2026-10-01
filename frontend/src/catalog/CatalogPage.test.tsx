@@ -65,6 +65,15 @@ describe('CatalogPage', () => {
     )
   })
 
+  it('lets a keyboard reach the scrolling table by a named region', async () => {
+    listMock.mockResolvedValue(page([lot()]))
+    renderCatalog()
+
+    const region = await screen.findByRole('region', { name: 'Catalog table' })
+    expect(region).toHaveClass('catalog__scroll')
+    expect(region.tabIndex).toBe(0)
+  })
+
   it('marks a lot with no location as unshelved rather than blank', async () => {
     listMock.mockResolvedValue(page([lot({ location: null })]))
     renderCatalog()

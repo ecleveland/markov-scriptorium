@@ -88,7 +88,7 @@ does not count. Contract-tested across every sheet.
 | `Sealed` | `.sealed`, `__seal`, `__text`, `__title`, `__body` | The confirmation moment: the seal pressed beside the message. `title` defaults to "Sealed into the catalog". No role of its own; callers pass `role="status"`. The seal plays `seal-press` once. |
 | `EmptyState` | `.empty-state`, `__seal`, `__title`, `__body` | An unpressed seal, an `h2` title, and a muted body whose links are gold. No role. |
 | `Consulting` | `.consulting`, `__candle`, `__text` | The loading line: a muted `Notice` with a flickering candle, defaulting to "Consulting the catalog…". No role by default. It takes no `as`, since the candle row is a flex box an inline span cannot be, and its text sits in one `__text` span. |
-| Listbox (classes only) | `.listbox`, `.listbox__option` | A labelled `<ul>` of option buttons with arrow-key focus movement from `useArrowKeyList` (`src/hooks`). No `listbox` or `option` roles: an option may not contain a button, and a list of buttons is what it is. `.listbox__option[aria-pressed='true']` draws the gold inset rule on the chosen row. |
+| Listbox (classes only) | `.listbox`, `.listbox__option` | A labelled `<ul>` of option buttons with arrow-key focus movement from `useArrowKeyList` (`src/hooks`). No `listbox` or `option` roles. An option may not contain a button, and a list of buttons is what it is. `.listbox__option[aria-pressed='true']` draws the gold inset rule on the chosen row. |
 
 **Primary and danger share the oxblood hue; treatment tells them apart.**
 Primary is filled oxblood. Danger is outlined rose, the AA-contrast step of

@@ -123,4 +123,7 @@ migrated in the restyle ticket (VEG-424).
   criterion 1.4.11 asks for; dividers and panel edges keep `--line`.
   `tokens.test.ts` now computes these ratios from the sheet, so a later retune
   cannot regress them silently. `index.html` declares `color-scheme` and
-  `theme-color` so the first paint is dark too.
+  `theme-color` so the first paint is dark too. Hover states are covered as
+  well. The primary button darkens to a new `--accent-pressed` on hover, the
+  danger button's label turns bone, and oxblood-bright is kept for borders and
+  fills that carry no text.
