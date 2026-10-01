@@ -132,6 +132,8 @@ describe('CsvImportPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/Detected manabox/)).toBeInTheDocument()
     expect(screen.getByText(/No printing of .*Black Lotus/)).toBeInTheDocument()
+    // One row matched, so the empty state stays away.
+    expect(screen.queryByText('Nothing matched')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Inscribe 1 folio/ }))
 
@@ -320,5 +322,32 @@ describe('CsvImportPage', () => {
     })
     expect(within(problems).getByText(/Row 1:/)).toBeInTheDocument()
     expect(resolveMock).not.toHaveBeenCalled()
+  })
+
+  it('shows an empty state when no row matched a printing', async () => {
+    parseMock.mockResolvedValue(
+      parsed([csvRow({ row_number: 1, name: 'Blak Lotus', scryfall_id: 'x' })]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Blak Lotus', 1),
+          status: 'unmatched',
+          match: null,
+          candidates: [],
+        },
+      ],
+      summary: { matched: 0, ambiguous: 0, unmatched: 1 },
+    })
+
+    await resolveText('Name,Quantity\nBlak Lotus,1')
+
+    expect(
+      await screen.findByRole('heading', { name: 'Nothing matched' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/None of the 1 row matched/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Inscribe 0 folios/ }),
+    ).toBeDisabled()
   })
 })

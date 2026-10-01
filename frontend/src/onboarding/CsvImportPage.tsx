@@ -13,10 +13,12 @@ import {
 } from '../api'
 import {
   Button,
+  EmptyState,
   Field,
   Notice,
   PageHeader,
   Panel,
+  Sealed,
   Select,
   Tag,
   Textarea,
@@ -87,6 +89,9 @@ export function CsvImportPage() {
     (row) => row.status === 'ambiguous' && !row.chosen,
   ).length
   const unmatchedCount = rows.filter((row) => row.status === 'unmatched').length
+  // Every row resolved and none found a printing: say so once, above the list.
+  const nothingMatched =
+    rows.length > 0 && readyRows.length === 0 && unresolvedCount === 0
 
   async function handleFile(file: File | undefined) {
     if (!file) return
@@ -207,13 +212,13 @@ export function CsvImportPage() {
     return (
       <section className="decklist">
         <PageHeader eyebrow="CSV import" title="Collection Inscribed" />
-        <Notice tone="success" role="status" className="decklist__summary">
+        <Sealed role="status" className="decklist__summary">
           Inscribed {summary.lots} {summary.lots === 1 ? 'folio' : 'folios'} (
           {summary.copies} {summary.copies === 1 ? 'copy' : 'copies'}) into the
           catalog.
           {summary.skipped > 0 &&
             ` ${summary.skipped} row${summary.skipped === 1 ? '' : 's'} skipped.`}
-        </Notice>
+        </Sealed>
         <Button onClick={reset}>Import another CSV</Button>
       </section>
     )
@@ -232,6 +237,15 @@ export function CsvImportPage() {
           {unmatchedCount} unmatched
           {problems.length > 0 && ` · ${problems.length} unreadable`}
         </Notice>
+
+        {nothingMatched && (
+          <EmptyState title="Nothing matched">
+            None of the {rows.length} {rows.length === 1 ? 'row' : 'rows'}{' '}
+            matched a printing in the catalog. Check the spelling against the
+            card names, or wait for the catalog to finish refreshing and resolve
+            it again.
+          </EmptyState>
+        )}
 
         <ol className="decklist__rows">
           {rows.map((row, index) => (

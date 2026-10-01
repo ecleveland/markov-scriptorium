@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CardSearch } from './CardSearch'
@@ -46,6 +46,30 @@ describe('CardSearch', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /could not be reached/i,
     )
+  })
+
+  it('says so when no card name matches, but only once the lookup answers', async () => {
+    const user = userEvent.setup()
+    let answer: (names: string[]) => void = () => {}
+    autocompleteMock.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        answer = resolve
+      }),
+    )
+
+    render(<CardSearch onSelect={vi.fn()} />)
+    await user.type(screen.getByLabelText('Card name'), 'zzz')
+    // Past the debounce, the lookup is still out: no verdict yet.
+    await waitFor(() => expect(autocompleteMock).toHaveBeenCalled())
+    expect(
+      screen.queryByText('No card by that name in the catalog.'),
+    ).not.toBeInTheDocument()
+
+    answer([])
+    expect(
+      await screen.findByText('No card by that name in the catalog.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   it('does not query for a blank input', async () => {

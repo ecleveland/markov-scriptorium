@@ -122,6 +122,46 @@ describe('InscribePage', () => {
       name: 'Inscribed this session',
     })
     expect(within(session).getByText(/2× Lightning Bolt/)).toBeInTheDocument()
+    // The seal presses above the search box, naming the folio just inscribed.
+    const sealed = screen.getByRole('status')
+    expect(sealed).toHaveTextContent('Sealed into the catalog')
+    expect(sealed).toHaveTextContent('2× Lightning Bolt (LEA #161) · foil')
+  })
+
+  it('lifts the seal once the next card name is chosen', async () => {
+    const user = userEvent.setup()
+    autocompleteMock.mockResolvedValue(['Lightning Bolt'])
+    searchMock.mockResolvedValue({
+      printings: [
+        printing({
+          scryfall_id: 'lea-bolt',
+          set_name: 'Limited Edition Alpha',
+        }),
+      ],
+      truncated: false,
+    })
+    inscribeMock.mockResolvedValue(lot({ id: 3, quantity: 1 }))
+
+    render(<InscribePage />)
+    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.click(
+      await screen.findByRole('button', { name: 'Lightning Bolt' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: /Limited Edition Alpha/ }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Inscribe' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Sealed into the catalog',
+    )
+
+    // Typing alone keeps the seal; choosing the next name lifts it.
+    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: 'Lightning Bolt' }),
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('keeps the form and shows an error when the inscription fails', async () => {

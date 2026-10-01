@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CardPrinting, InventoryLot } from '../api'
-import { PageHeader, Panel } from '../components'
+import { PageHeader, Panel, Sealed } from '../components'
 import { CardSearch } from './CardSearch'
 import { InscribeForm } from './InscribeForm'
 import { PrintingPicker } from './PrintingPicker'
@@ -16,6 +16,14 @@ interface SessionEntry {
 }
 
 /**
+ * One inscription as a line of text. The session list and the seal both use
+ * it, so the confirmation always reads the same as the entry it adds.
+ */
+function describeEntry(entry: SessionEntry): string {
+  return `${entry.quantity}× ${entry.name} (${entry.setCode.toUpperCase()} #${entry.collectorNumber}) · ${entry.finish}`
+}
+
+/**
  * The Inscribe flow: search a name → pick a printing → set acquisition details
  * → inscribe. After each inscription the flow returns to the search box (which
  * regains focus) so several cards can be added in a row without leaving the
@@ -25,6 +33,9 @@ export function InscribePage() {
   const [name, setName] = useState<string | null>(null)
   const [printing, setPrinting] = useState<CardPrinting | null>(null)
   const [session, setSession] = useState<SessionEntry[]>([])
+  // The inscription the seal confirms. It stays while the user types the next
+  // name and lifts once they choose one, so it never outlives the moment.
+  const [lastSealed, setLastSealed] = useState<SessionEntry | null>(null)
 
   function backToSearch() {
     setName(null)
@@ -32,25 +43,35 @@ export function InscribePage() {
   }
 
   function handleInscribed(lot: InventoryLot) {
-    setSession((prev) => [
-      {
-        id: lot.id,
-        name: lot.card.name,
-        setCode: lot.card.set_code,
-        collectorNumber: lot.card.collector_number,
-        quantity: lot.quantity,
-        finish: lot.finish,
-      },
-      ...prev,
-    ])
+    const entry: SessionEntry = {
+      id: lot.id,
+      name: lot.card.name,
+      setCode: lot.card.set_code,
+      collectorNumber: lot.card.collector_number,
+      quantity: lot.quantity,
+      finish: lot.finish,
+    }
+    setSession((prev) => [entry, ...prev])
+    setLastSealed(entry)
     backToSearch()
+  }
+
+  function chooseName(chosen: string) {
+    setLastSealed(null)
+    setName(chosen)
   }
 
   return (
     <section className="inscribe">
       <PageHeader eyebrow="Inscription" title="Inscribe a Card" />
 
-      {name === null && <CardSearch autoFocus onSelect={setName} />}
+      {name === null && lastSealed && (
+        <Sealed role="status" className="inscribe__sealed">
+          {describeEntry(lastSealed)}
+        </Sealed>
+      )}
+
+      {name === null && <CardSearch autoFocus onSelect={chooseName} />}
 
       {name !== null && printing === null && (
         <PrintingPicker
@@ -79,10 +100,7 @@ export function InscribePage() {
           <h2>Inscribed this session</h2>
           <ul>
             {session.map((entry) => (
-              <li key={entry.id}>
-                {entry.quantity}× {entry.name} ({entry.setCode.toUpperCase()} #
-                {entry.collectorNumber}) · {entry.finish}
-              </li>
+              <li key={entry.id}>{describeEntry(entry)}</li>
             ))}
           </ul>
         </Panel>
