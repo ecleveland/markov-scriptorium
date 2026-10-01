@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Specimens } from './Specimens'
 
@@ -42,14 +42,12 @@ describe('Specimens', () => {
         `missing .notice--${tone}`,
       ).not.toBeNull()
     }
-    const listbox = screen.getByRole('listbox', { name: 'Specimen printings' })
+    const listbox = screen.getByRole('list', { name: 'Specimen printings' })
     expect(listbox).toHaveClass('listbox')
-    expect(listbox.querySelectorAll('.listbox__option')).toHaveLength(2)
-    // One option shows the selected state, so the gold inset rule is visible.
-    expect(within(listbox).getAllByRole('option')[1]).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
+    const options = listbox.querySelectorAll('.listbox__option')
+    expect(options).toHaveLength(2)
+    // One option shows the pressed state, so the gold inset rule is visible.
+    expect(options[1]).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('renders the seal, a sealed confirmation, an empty state, and the candle', () => {

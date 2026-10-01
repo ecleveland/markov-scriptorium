@@ -49,6 +49,23 @@ describe('CandidatePicker', () => {
     expect(onPick).toHaveBeenCalledWith(m10)
   })
 
+  it('leaves the candidates as plain buttons when nothing is selected', () => {
+    render(
+      <CandidatePicker
+        name="Lightning Bolt"
+        candidates={[
+          printing({ scryfall_id: 'a' }),
+          printing({ scryfall_id: 'b' }),
+        ]}
+        selectedId={null}
+        onPick={() => {}}
+      />,
+    )
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).not.toHaveAttribute('aria-pressed')
+    }
+  })
+
   it('marks the selected candidate', () => {
     render(
       <CandidatePicker
@@ -61,9 +78,32 @@ describe('CandidatePicker', () => {
         onPick={() => {}}
       />,
     )
-    const options = screen.getAllByRole('option')
-    expect(options[0]).toHaveAttribute('aria-selected', 'false')
-    expect(options[1]).toHaveAttribute('aria-selected', 'true')
+    const buttons = screen.getAllByRole('button')
+    expect(buttons[0]).toHaveAttribute('aria-pressed', 'false')
+    expect(buttons[1]).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('moves focus between candidates with the arrow keys', async () => {
+    const user = userEvent.setup()
+    render(
+      <CandidatePicker
+        name="Lightning Bolt"
+        candidates={[
+          printing({ scryfall_id: 'a' }),
+          printing({ scryfall_id: 'b' }),
+        ]}
+        selectedId={null}
+        onPick={() => {}}
+      />,
+    )
+    const [first, second] = screen.getAllByRole('button')
+    first.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(second).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(first).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(second).toHaveFocus()
   })
 
   it('shows card art as decoration, leaving the option named by its printing', () => {

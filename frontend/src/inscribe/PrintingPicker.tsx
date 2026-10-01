@@ -7,6 +7,7 @@ import {
   PageHeader,
   PrintingChip,
 } from '../components'
+import { useArrowKeyList } from '../hooks/useArrowKeyList'
 
 interface Props {
   name: string
@@ -21,6 +22,7 @@ interface Props {
 export function PrintingPicker({ name, onPick, onCancel }: Props) {
   const [result, setResult] = useState<PrintingsResult | null>(null)
   const [failed, setFailed] = useState(false)
+  const arrowKeys = useArrowKeyList()
 
   // The parent gives this component a `key={name}`, so each card name gets a
   // fresh mount (result === null → loading) rather than a synchronous reset.
@@ -60,11 +62,11 @@ export function PrintingPicker({ name, onPick, onCancel }: Props) {
       {result !== null && result.printings.length > 0 && (
         <ul
           className="listbox printing-picker__list"
-          role="listbox"
           aria-label="Printings"
+          {...arrowKeys}
         >
           {result.printings.map((printing) => (
-            <li key={printing.scryfall_id} role="option" aria-selected={false}>
+            <li key={printing.scryfall_id}>
               <button
                 type="button"
                 className="listbox__option"

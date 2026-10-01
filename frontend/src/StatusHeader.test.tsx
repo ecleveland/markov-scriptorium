@@ -22,6 +22,16 @@ describe('StatusHeader', () => {
     expect(brand).toHaveAttribute('href', '/catalog')
   })
 
+  it('names the brand link with a comma, which screen readers pause on', () => {
+    // Some engines read an em dash aloud as "dash".
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    renderHeader()
+
+    expect(
+      screen.getByRole('link', { name: 'The Markov Scriptorium, home' }),
+    ).toBeInTheDocument()
+  })
+
   it('renders the primary nav with the collection and onboarding links', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
     renderHeader()

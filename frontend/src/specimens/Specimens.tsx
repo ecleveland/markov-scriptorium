@@ -14,6 +14,7 @@ import {
   Tag,
   Textarea,
 } from '../components'
+import { useArrowKeyList } from '../hooks/useArrowKeyList'
 import './specimens.css'
 
 const BOLT = {
@@ -41,6 +42,7 @@ const SOL_RING = {
  * in development only (see App.tsx); never linked from the nav.
  */
 export function Specimens() {
+  const arrowKeys = useArrowKeyList()
   return (
     <section className="specimens">
       <h1>Specimens</h1>
@@ -119,14 +121,18 @@ export function Specimens() {
       <Consulting />
 
       <h2>Listbox</h2>
-      <ul className="listbox" role="listbox" aria-label="Specimen printings">
-        <li role="option" aria-selected={false}>
-          <button type="button" className="listbox__option">
+      <ul className="listbox" aria-label="Specimen printings" {...arrowKeys}>
+        <li>
+          <button
+            type="button"
+            className="listbox__option"
+            aria-pressed={false}
+          >
             <PrintingChip printing={BOLT} />
           </button>
         </li>
-        <li role="option" aria-selected>
-          <button type="button" className="listbox__option">
+        <li>
+          <button type="button" className="listbox__option" aria-pressed>
             <PrintingChip printing={SOL_RING} />
           </button>
         </li>

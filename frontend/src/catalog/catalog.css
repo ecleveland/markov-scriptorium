@@ -15,6 +15,11 @@
 
 /* ---- The list ----------------------------------------------------------- */
 
+/* Six columns at phone width scroll inside the page instead of widening it. */
+.catalog__scroll {
+  overflow-x: auto;
+}
+
 .catalog__table {
   width: 100%;
   border-collapse: collapse;
@@ -60,8 +65,10 @@
   text-decoration: none;
 }
 
+/* Gold, like the other links on the page. Oxblood-bright is a fill colour,
+   not a text colour, at 3.4:1 on the ground. */
 .catalog__name:hover {
-  color: var(--accent-hover);
+  color: var(--accent-secondary);
 }
 
 .catalog__folio,
@@ -125,16 +132,18 @@
   height: 1.75rem;
   padding: 0;
   line-height: 1;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--text-primary);
   cursor: pointer;
 }
 
+/* The border is the hover cue and the glyph stays bone. Oxblood-bright is a
+   fill colour, not a text colour, at 3.4:1. */
 .qty-stepper__step:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--accent-hover);
+  color: var(--text-primary);
 }
 
 .qty-stepper__step:disabled {
@@ -163,6 +172,7 @@
 
 .lot-detail__head {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-5);
   align-items: flex-start;
 }
@@ -203,7 +213,8 @@
 
 .lot-editor__fields {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Three columns on a wide screen, folding down to one on a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-4);
 }
 

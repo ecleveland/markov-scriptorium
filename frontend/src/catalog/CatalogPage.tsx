@@ -105,28 +105,37 @@ export function CatalogPage() {
         {total === 1 ? 'folio' : 'folios'}
       </Notice>
 
-      <table className="catalog__table">
-        <caption className="visually-hidden">
-          Owned cards, newest inscription first
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">
-              <span className="visually-hidden">Art</span>
-            </th>
-            <th scope="col">Card</th>
-            <th scope="col">Finish</th>
-            <th scope="col">Condition</th>
-            <th scope="col">Volume</th>
-            <th scope="col">Copies</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((lot) => (
-            <LotRow key={lot.id} lot={lot} />
-          ))}
-        </tbody>
-      </table>
+      {/* When the table overflows, a keyboard can only scroll this wrapper if
+          it takes focus, and anything focusable needs a name to announce. */}
+      <div
+        className="catalog__scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Catalog table"
+      >
+        <table className="catalog__table">
+          <caption className="visually-hidden">
+            Owned cards, newest inscription first
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">
+                <span className="visually-hidden">Art</span>
+              </th>
+              <th scope="col">Card</th>
+              <th scope="col">Finish</th>
+              <th scope="col">Condition</th>
+              <th scope="col">Volume</th>
+              <th scope="col">Copies</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((lot) => (
+              <LotRow key={lot.id} lot={lot} />
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <nav className="catalog__pager" aria-label="Catalog pages">
         <Button disabled={page <= 1} onClick={() => goToPage(page - 1)}>

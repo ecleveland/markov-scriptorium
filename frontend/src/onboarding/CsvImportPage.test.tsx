@@ -130,6 +130,10 @@ describe('CsvImportPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Review the Import' }),
     ).toBeInTheDocument()
+    // The live region mounts empty on the preview step so the summary that
+    // later fills it is announced.
+    const region = screen.getByRole('status')
+    expect(region).toBeEmptyDOMElement()
     expect(screen.getByText(/Detected manabox/)).toBeInTheDocument()
     expect(screen.getByText(/No printing of .*Black Lotus/)).toBeInTheDocument()
     // One row matched, so the empty state stays away.
@@ -149,9 +153,12 @@ describe('CsvImportPage', () => {
         },
       ]),
     )
-    const summary = await screen.findByRole('status')
-    expect(summary).toHaveTextContent(/Inscribed 1 folio \(1 copy\)/)
-    expect(summary).toHaveTextContent(/1 row skipped/)
+    const summary = await screen.findByText(/Inscribed 1 folio \(1 copy\)/)
+    // The same node that sat empty on the preview step now carries it.
+    expect(summary.closest('[role="status"]')).toBe(region)
+    expect(summary.closest('[role="status"]')).toHaveTextContent(
+      /1 row skipped/,
+    )
   })
 
   it('surfaces an unrecognized-format error and re-parses after a manual pick', async () => {

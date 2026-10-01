@@ -186,12 +186,15 @@ function splitReducedMotionBlocks(css: string): {
   inside: string
   outside: string
 } {
-  const opener = /@media[^{]*prefers-reduced-motion\s*:\s*no-preference[^{]*\{/g
+  // No comma anywhere in the prelude: `@media screen, (prefers-reduced-motion:
+  // no-preference)` is a media query list, and its first query matches with
+  // reduced motion on, so its contents are not opt-in.
+  const opener =
+    /@media[^{,]*prefers-reduced-motion\s*:\s*no-preference[^{,]*\{/g
   let inside = ''
   let outside = ''
   let cursor = 0
   for (let match = opener.exec(css); match; match = opener.exec(css)) {
-    if (match.index < cursor) continue // nested inside a block already taken
     outside += css.slice(cursor, match.index)
     let depth = 1
     let i = match.index + match[0].length
@@ -221,6 +224,16 @@ describe('reduced-motion block splitter', () => {
     expect(outside).toContain('.a { animation: x 1s; }')
     expect(outside).toContain('.c {')
     expect(outside).not.toContain('.b')
+  })
+
+  it('counts a media query list with another query as outside', () => {
+    const { inside, outside } = splitReducedMotionBlocks(`
+      @media screen, (prefers-reduced-motion: no-preference) {
+        .b { animation: y 1s; }
+      }
+    `)
+    expect(inside).toBe('')
+    expect(outside).toContain('.b { animation: y 1s; }')
   })
 })
 
@@ -258,17 +271,15 @@ describe('stylesheet contract (every sheet)', () => {
     expect(css).not.toMatch(/font-family\s*:(?!\s*var\()/)
   })
 
-  // Keyframed motion plays only for people who have not asked the OS to
-  // reduce it, so the default is still. The 120ms colour transitions on hover
-  // are left alone on purpose: this covers keyframed motion only, and VEG-427
-  // may widen it.
-  it.each(sheets)(
-    '$name keeps keyframed motion opt-in by media query',
-    ({ css }) => {
-      const { outside } = splitReducedMotionBlocks(css)
-      expect(outside).not.toMatch(/\banimation(-name)?\s*:/)
-    },
-  )
+  // Motion plays only for people who have not asked the OS to reduce it, so
+  // the default is still. Since VEG-427 that covers the 120ms hover
+  // transitions as well as keyframed animation.
+  it.each(sheets)('$name keeps motion opt-in by media query', ({ css }) => {
+    const { outside } = splitReducedMotionBlocks(css)
+    expect(outside).not.toMatch(
+      /\b(animation(-name)?|transition(-property|-duration)?)\s*:/,
+    )
+  })
 })
 
 describe('component stylesheet contract', () => {
@@ -303,8 +314,26 @@ describe('component stylesheet contract', () => {
     )
   })
 
-  it('plays the seal press and the candle flicker only under the media query', () => {
+  it('keeps every button label at AA on hover', () => {
+    // Bone on oxblood-bright is 4.26:1 and rose on the bone hover fill is 3.7
+    // to 4.4:1 (tokens.test.ts measures both). So the primary fill darkens to
+    // the pressed accent, and the danger label turns bone while its rose border
+    // stays as the cue.
+    expect(declarations).toMatch(
+      /\.btn--primary\s*\{[^}]*--btn-bg-hover:\s*var\(--accent-pressed\)/,
+    )
+    expect(declarations).toMatch(
+      /\.btn--danger:hover:where\(:not\(:disabled\)\)\s*\{[^}]*color:\s*var\(--text-primary\)/,
+    )
+  })
+
+  it('plays the seal press, the candle flicker, and the hover fades only under the media query', () => {
     const { inside } = splitReducedMotionBlocks(declarations)
+    for (const block of ['.btn', '.listbox__option', '.control']) {
+      expect(inside, `${block} transition`).toMatch(
+        new RegExp(`\\${block}\\s*\\{[^}]*transition:`),
+      )
+    }
     expect(inside).toMatch(/\.sealed__seal\s*\{[^}]*animation:\s*seal-press\b/)
     expect(inside).toMatch(
       /\.consulting__candle\s*\{[^}]*animation:\s*candle-flicker\b/,

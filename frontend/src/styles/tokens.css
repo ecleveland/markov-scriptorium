@@ -22,10 +22,17 @@
   --bg: #0e0c10;
   --panel: #16131b;
   --line: #2a2531;
+  /* The boundary of a control or a button, where the line is the only thing
+     marking the element: 3.2:1 on the panel, 3.4:1 on the ground (WCAG 1.4.11
+     wants 3:1). Dividers and panel edges keep the quieter --line. */
+  --line-strong: #6b6376;
 
   /* Oxblood — the house identity */
   --oxblood: #8f1d2b;
   --oxblood-bright: #c0394e;
+  /* The danger colour, lifted from oxblood-bright until it reads at AA on the
+     panel (4.8:1). Danger is text on a button, a tag, or a notice. */
+  --rose: #d9566b;
 
   /* Antique gold — numerals and secondary accent */
   --gold: #b3925b;
@@ -33,10 +40,11 @@
   /* Verdant — matched in chroma to the gold, an antique moss */
   --green: #6f8f5a;
 
-  /* Bone text ramp */
+  /* Bone text ramp, brightest to quietest. Every step reads at AA on the panel
+     and the raised surface; tokens.test.ts computes the ratios. */
   --text: #ece5d8;
   --muted: #a39a8b;
-  --faint: #6f665a;
+  --faint: #8f8477;
 
   /* ---- 2. Semantic aliases ---------------------------------------------- */
 
@@ -56,12 +64,23 @@
     var(--text) 8%
   );
   --border: var(--line);
+  /* For a control or a button whose border is its only edge. */
+  --border-strong: var(--line-strong);
 
   --accent: var(--oxblood);
+  /* For borders and fills that carry no text. Bone on oxblood-bright is
+     4.26:1 and oxblood-bright as text on the ground is 3.4:1, both under AA,
+     so it never colours text or sits behind it. */
   --accent-hover: var(--oxblood-bright);
+  /* A filled button darkens on hover so its bone label keeps its contrast
+     (8.7:1). Use this, not --accent-hover, for a filled hover. */
+  --accent-pressed: color-mix(in srgb, var(--oxblood), var(--bg) 20%);
   --accent-secondary: var(--gold);
 
-  --danger: var(--oxblood-bright);
+  /* Hover and danger part ways. --accent-hover stays oxblood-bright because it
+     never colours text or a text ground (the filled hover is --accent-pressed),
+     while danger is the text itself and needs rose to read at AA. */
+  --danger: var(--rose);
   --success: var(--green);
   --warning: var(--gold);
 

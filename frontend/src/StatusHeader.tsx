@@ -44,7 +44,7 @@ export function StatusHeader() {
       <NavLink
         to="/catalog"
         className="brand"
-        aria-label="The Markov Scriptorium — home"
+        aria-label="The Markov Scriptorium, home"
       >
         <Seal className="brand-seal" />
         <span className="brand-title">

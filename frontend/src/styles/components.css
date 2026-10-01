@@ -18,18 +18,23 @@
  */
 
 /* ---- Button --------------------------------------------------------------
-   .btn--secondary  the default, quiet and bordered
-   .btn--primary    filled oxblood, the one action on a screen
+   .btn--secondary  the default, quiet, bordered with the strong line so the
+                    edge reads at 3:1 on the panel (WCAG 1.4.11)
+   .btn--primary    filled oxblood, the one action on a screen; hover
+                    darkens the fill and rings it in gold, so the bone label
+                    keeps AA
    .btn--ghost      borderless, for tertiary actions inline with text
-   .btn--danger     outlined oxblood-bright; hue is shared with primary, the
-                    outline is what says "destructive" (ADR 0014 §3)
+   .btn--danger     outlined rose; shares the oxblood family with primary,
+                    the outline is what says "destructive" (ADR 0014 §3);
+                    hover turns the label bone, since rose on the hover fill
+                    falls under AA, and the rose outline stays as the cue
 
    Each variant is fully described by the custom properties it sets. */
 
 .btn {
   --btn-bg: var(--surface-raised);
   --btn-bg-hover: var(--surface-raised-hover);
-  --btn-border: var(--border);
+  --btn-border: var(--border-strong);
   --btn-border-hover: var(--text-faint);
 
   display: inline-flex;
@@ -48,10 +53,6 @@
   line-height: var(--leading-snug);
   white-space: nowrap;
   cursor: pointer;
-  transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
 }
 
 .btn:hover:where(:not(:disabled)) {
@@ -61,9 +62,9 @@
 
 .btn--primary {
   --btn-bg: var(--accent);
-  --btn-bg-hover: var(--accent-hover);
+  --btn-bg-hover: var(--accent-pressed);
   --btn-border: var(--accent);
-  --btn-border-hover: var(--accent-hover);
+  --btn-border-hover: var(--accent-secondary);
 }
 
 /* Transparent grounds take the translucent hover fill directly. */
@@ -86,6 +87,9 @@
   --btn-border-hover: var(--danger);
 
   color: var(--danger);
+}
+.btn--danger:hover:where(:not(:disabled)) {
+  color: var(--text-primary);
 }
 
 .btn:disabled {
@@ -184,6 +188,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.consulting__text {
+  min-inline-size: 0;
 }
 
 .consulting__candle {
@@ -328,10 +336,24 @@
 }
 
 /* ---- Motion --------------------------------------------------------------
-   Keyframed motion plays only for people who have not asked the OS to reduce
-   it, so the default is still. components.test.ts holds every sheet to this. */
+   Motion plays only for people who have not asked the OS to reduce it, so the
+   default is still: the keyframed seal and candle, and the 120ms hover fades.
+   With reduced motion on, a hover snaps. components.test.ts holds every sheet
+   to this. */
 
 @media (prefers-reduced-motion: no-preference) {
+  .btn {
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+  .listbox__option {
+    transition: background-color 120ms ease;
+  }
+  .control {
+    transition: border-color 120ms ease;
+  }
   .sealed__seal {
     animation: seal-press 360ms ease-out both;
   }
@@ -341,9 +363,11 @@
 }
 
 /* ---- Listbox -------------------------------------------------------------
-   Classes only, no component: the three pickers each own their own markup and
-   ARIA, and share nothing but the look. The option is a button filling its
-   row; the selected row is marked with a gold inset rule. */
+   Classes only, no component, and the name is the look, not the ARIA role.
+   The three pickers are labelled lists of buttons with arrow-key focus
+   movement from useArrowKeyList, which finds the buttons by .listbox__option.
+   Each option is a button filling its row; the pressed one carries the gold
+   inset rule. */
 
 .listbox {
   list-style: none;
@@ -378,14 +402,13 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 120ms ease;
 }
 
 .listbox__option:hover:where(:not(:disabled)) {
   background-color: var(--surface-hover);
 }
 
-.listbox [aria-selected='true'] > .listbox__option {
+.listbox__option[aria-pressed='true'] {
   background-color: var(--surface-hover);
   box-shadow: inset 3px 0 0 var(--accent-secondary);
 }
@@ -470,13 +493,12 @@
   box-sizing: border-box;
   width: 100%;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text-primary);
   font: inherit;
   line-height: var(--leading-snug);
-  transition: border-color 120ms ease;
 }
 
 .control::placeholder {
