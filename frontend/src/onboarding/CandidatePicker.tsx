@@ -1,5 +1,6 @@
 import type { CardPrinting } from '../api'
 import { PrintingChip } from '../components'
+import { useArrowKeyList } from '../hooks/useArrowKeyList'
 
 interface Props {
   name: string
@@ -20,21 +21,19 @@ export function CandidatePicker({
   selectedId,
   onPick,
 }: Props) {
+  const arrowKeys = useArrowKeyList()
   return (
     <ul
       className="listbox candidate-picker"
-      role="listbox"
       aria-label={`Printings of ${name}`}
+      {...arrowKeys}
     >
       {candidates.map((printing) => (
-        <li
-          key={printing.scryfall_id}
-          role="option"
-          aria-selected={printing.scryfall_id === selectedId}
-        >
+        <li key={printing.scryfall_id}>
           <button
             type="button"
             className="listbox__option"
+            aria-pressed={printing.scryfall_id === selectedId}
             onClick={() => onPick(printing)}
           >
             <PrintingChip printing={printing} />

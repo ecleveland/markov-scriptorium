@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { autocompleteNames } from '../api'
 import { Field, Input, Notice } from '../components'
+import { useArrowKeyList } from '../hooks/useArrowKeyList'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface Props {
@@ -23,6 +24,7 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
   const [resultsQuery, setResultsQuery] = useState('')
   const debounced = useDebouncedValue(query.trim(), 200)
   const inputRef = useRef<HTMLInputElement>(null)
+  const arrowKeys = useArrowKeyList()
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus()
@@ -80,11 +82,11 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
       {showResults && names.length > 0 && (
         <ul
           className="listbox card-search__results"
-          role="listbox"
           aria-label="Matching cards"
+          {...arrowKeys}
         >
           {names.map((name) => (
-            <li key={name} role="option" aria-selected={false}>
+            <li key={name}>
               <button
                 type="button"
                 className="listbox__option"

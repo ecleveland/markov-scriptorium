@@ -71,7 +71,25 @@ describe('CardSearch', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'No card by that name in the catalog.',
     )
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  it('moves between suggestions with the arrow keys and picks one with Enter', async () => {
+    const user = userEvent.setup()
+    autocompleteMock.mockResolvedValue(['Lightning Bolt', 'Lightning Helix'])
+    const onSelect = vi.fn()
+
+    render(<CardSearch onSelect={onSelect} />)
+    await user.type(screen.getByLabelText('Card name'), 'light')
+    const first = await screen.findByRole('button', { name: 'Lightning Bolt' })
+    first.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(
+      screen.getByRole('button', { name: 'Lightning Helix' }),
+    ).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledWith('Lightning Helix')
   })
 
   it('does not query for a blank input', async () => {
