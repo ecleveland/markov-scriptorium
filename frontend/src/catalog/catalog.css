@@ -13,10 +13,6 @@
   text-align: left;
 }
 
-.catalog__empty a {
-  color: var(--accent-secondary);
-}
-
 /* ---- The list ----------------------------------------------------------- */
 
 .catalog__table {
@@ -155,7 +151,6 @@
 
 .qty-stepper__error {
   font-size: var(--text-xs);
-  color: var(--danger);
 }
 
 /* ---- Detail view -------------------------------------------------------- */
@@ -221,17 +216,6 @@
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-4);
-}
-
-.lot-editor__saved {
-  font-size: var(--text-sm);
-  color: var(--success);
-}
-
-.lot-editor__error,
-.lot-remove__error {
-  font-size: var(--text-sm);
-  color: var(--danger);
 }
 
 /* ---- Ownership summary -------------------------------------------------- */

@@ -24,6 +24,10 @@ test('inscribes a card through the full search → pick → inscribe flow', asyn
   ).toBeVisible()
   await page.getByRole('button', { name: 'Inscribe' }).click()
 
+  // Found by text, not by role: the header's status chip is a status too.
+  await expect(page.getByText('Sealed into the catalog')).toBeVisible()
+  await expect(page.locator('.sealed')).toContainText('Sol Ring')
+
   // 4. The session log records the inscription and the flow returns to search.
   const session = page.getByRole('complementary', {
     name: 'Inscribed this session',

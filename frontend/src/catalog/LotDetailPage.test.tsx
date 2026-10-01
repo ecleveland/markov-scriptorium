@@ -167,9 +167,9 @@ describe('LotDetailPage', () => {
     await user.click(screen.getByRole('button', { name: 'Amend' }))
 
     expect(updateMock).not.toHaveBeenCalled()
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'A folio holds at least one copy.',
-    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('A folio holds at least one copy.')
+    expect(alert).toHaveClass('notice--danger')
   })
 
   it('refuses a zero quantity, which the schema would reject anyway', async () => {

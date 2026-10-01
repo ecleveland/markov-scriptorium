@@ -63,6 +63,13 @@ coloured button sets the properties on its own class rather than fighting the
 hover rule, and `background-color` stays a transitioned property so every
 variant fades the same way. Contract-tested.
 
+**Motion is opt-in by media query.** Keyframed `animation` declarations live
+only inside `@media (prefers-reduced-motion: no-preference)`, so a page is
+still by default and moves only for people who have not asked the OS to
+reduce motion. The `@keyframes` blocks themselves can sit anywhere. The 120ms
+colour transitions on hover are exempt for now. Contract-tested across every
+sheet.
+
 ### Vocabulary
 
 | Component | Classes | Notes |
@@ -74,7 +81,11 @@ variant fades the same way. Contract-tested.
 | `Input`, `Select`, `Textarea` | `.control` | Native controls with the class added. |
 | `PrintingChip` | `.printing-chip`, `--sm` (default) / `--md`, `__thumb`, `__text` | Art plus "Set Name (SET) · #num" via `describePrinting()` from `printing.ts`. |
 | `PageHeader` | `.page-header`, `__eyebrow`, `__title`, `__actions` | The block a page opens with. `level` picks `h1` (default) or `h2`; children become the actions beside the title. Heading type comes from `index.css` and the gold `h1` from `App.css`. |
-| `Notice` | `.notice`, `.notice--muted` (default) / `--success` / `--danger` | A `<p>` for one line about the page's state. No ARIA role of its own; a caller that needs the line announced passes `role="alert"` or `role="status"`. |
+| `Notice` | `.notice`, `.notice--muted` (default) / `--success` / `--danger`, `.notice--inline` | A `<p>` for one line about the page's state. No ARIA role of its own; a caller that needs the line announced passes `role="alert"` or `role="status"`. `as="span"` renders it inline (adds `.notice--inline`) for a button row or a table cell. |
+| `Seal` | `.seal`, `__wax`, `__ring`, `__mark` | The house crest as an `aria-hidden` SVG with no role. The consumer sets its size. The header's brand mark renders it; the button's small `btn__seal` glyph is separate. |
+| `Sealed` | `.sealed`, `__seal`, `__text`, `__title`, `__body` | The confirmation moment: the seal pressed beside the message. `title` defaults to "Sealed into the catalog". No role of its own; callers pass `role="status"`. The seal plays `seal-press` once. |
+| `EmptyState` | `.empty-state`, `__seal`, `__title`, `__body` | An unpressed seal, an `h2` title, and a muted body whose links are gold. No role. |
+| `Consulting` | `.consulting`, `__candle` | The loading line: a muted `Notice` with a flickering candle, defaulting to "Consulting the catalog…". No role by default. |
 | Listbox (classes only) | `.listbox`, `.listbox__option` | No component: the three pickers own their own markup and ARIA and share only the look. `.listbox [aria-selected='true'] > .listbox__option` draws the gold inset rule on the chosen row. |
 
 **Primary and danger share the oxblood hue; treatment tells them apart.**
@@ -150,3 +161,6 @@ accessibility pass (VEG-427) needs one page where every state is visible.
 - `CardThumb` and its `.card-thumb` rules are already token-only and
   presentational; move them from `catalog/` into `components/` when the next
   consumer outside the Catalog appears.
+- VEG-426 added `Seal`, `Sealed`, `EmptyState`, and `Consulting`, and gave
+  `Notice` its `as` prop. VEG-427 may fold the colour transitions into the
+  motion rule.

@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { StatusHeader } from './StatusHeader'
+import { Consulting } from './components'
 import { CatalogPage } from './catalog/CatalogPage'
 import { LotDetailPage } from './catalog/LotDetailPage'
 import { InscribePage } from './inscribe/InscribePage'
@@ -32,7 +33,9 @@ function App() {
             <Route
               path="/specimens"
               element={
-                <Suspense fallback={<p>Laying out the specimens…</p>}>
+                <Suspense
+                  fallback={<Consulting>Laying out the specimens…</Consulting>}
+                >
                   <Specimens />
                 </Suspense>
               }

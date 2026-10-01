@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { searchPrintings, type PrintingsResult } from '../api'
-import { Button, Notice, PageHeader, PrintingChip } from '../components'
+import {
+  Button,
+  Consulting,
+  Notice,
+  PageHeader,
+  PrintingChip,
+} from '../components'
 
 interface Props {
   name: string
@@ -41,7 +47,7 @@ export function PrintingPicker({ name, onPick, onCancel }: Props) {
           The printings could not be loaded.
         </Notice>
       )}
-      {!failed && result === null && <Notice>Consulting the catalog…</Notice>}
+      {!failed && result === null && <Consulting />}
       {result !== null && result.printings.length === 0 && (
         <Notice>No printings of this card reside in the catalog.</Notice>
       )}

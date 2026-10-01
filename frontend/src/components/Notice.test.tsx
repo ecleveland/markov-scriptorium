@@ -39,4 +39,20 @@ describe('Notice', () => {
       'decklist__counts',
     )
   })
+
+  it('renders as an inline span when asked', () => {
+    render(
+      <Notice as="span" tone="danger" role="alert">
+        not saved
+      </Notice>,
+    )
+    const notice = screen.getByRole('alert')
+    expect(notice.tagName).toBe('SPAN')
+    expect(notice).toHaveClass('notice', 'notice--danger', 'notice--inline')
+  })
+
+  it('is not inline as a paragraph', () => {
+    render(<Notice>A line.</Notice>)
+    expect(screen.getByText('A line.')).not.toHaveClass('notice--inline')
+  })
 })

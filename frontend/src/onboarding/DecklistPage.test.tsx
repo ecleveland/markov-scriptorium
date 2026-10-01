@@ -130,6 +130,8 @@ describe('DecklistPage', () => {
       await screen.findByRole('heading', { name: 'Review the Decklist' }),
     ).toBeInTheDocument()
     expect(screen.getByText(/No printing of .*Black Lotus/)).toBeInTheDocument()
+    // Some lines matched, so the empty state stays away.
+    expect(screen.queryByText('Nothing matched')).not.toBeInTheDocument()
 
     // One match is ready; the ambiguous Bolt is not yet — so 1 ready.
     const inscribeButton = screen.getByRole('button', {
@@ -345,5 +347,55 @@ describe('DecklistPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Review the Decklist' }),
     ).toBeInTheDocument()
+  })
+
+  it('shows an empty state when no line matched a printing', async () => {
+    parseMock.mockResolvedValue(
+      parsed([
+        {
+          line_number: 1,
+          name: 'Blak Lotus',
+          quantity: 1,
+          set_code: null,
+          collector_number: null,
+        },
+        {
+          line_number: 2,
+          name: 'Sol Rang',
+          quantity: 1,
+          set_code: null,
+          collector_number: null,
+        },
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Blak Lotus', 1),
+          status: 'unmatched',
+          match: null,
+          candidates: [],
+        },
+        {
+          input: inputOf('Sol Rang', 1),
+          status: 'unmatched',
+          match: null,
+          candidates: [],
+        },
+      ],
+      summary: { matched: 0, ambiguous: 0, unmatched: 2 },
+    })
+
+    await resolveText('Blak Lotus\nSol Rang')
+
+    expect(
+      await screen.findByRole('heading', { name: 'Nothing matched' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/None of the 2 lines matched/)).toBeInTheDocument()
+    // Each row still lists, and there is nothing to inscribe.
+    expect(screen.getByText(/No printing of .*Sol Rang/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Inscribe 0 folios/ }),
+    ).toBeDisabled()
   })
 })

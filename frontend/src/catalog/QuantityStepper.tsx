@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { updateLot, type InventoryLot } from '../api'
+import { Notice } from '../components'
 import { inventoryKeys } from './queryKeys'
 
 /**
@@ -41,9 +42,14 @@ export function QuantityStepper({ lot }: { lot: InventoryLot }) {
         +
       </button>
       {adjust.isError && (
-        <span className="qty-stepper__error" role="alert">
+        <Notice
+          as="span"
+          tone="danger"
+          role="alert"
+          className="qty-stepper__error"
+        >
           not saved
-        </span>
+        </Notice>
       )}
     </span>
   )

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { CATALOG_PAGE_SIZE, listInventory } from '../api'
-import { Button, Notice } from '../components'
+import { Button, Consulting, EmptyState, Notice } from '../components'
 import { LotRow } from './LotRow'
 import { inventoryKeys } from './queryKeys'
 import './catalog.css'
@@ -48,7 +48,7 @@ export function CatalogPage() {
     return (
       <section className="catalog">
         <h1>The Catalog</h1>
-        <Notice>Consulting the catalog…</Notice>
+        <Consulting />
       </section>
     )
   }
@@ -86,12 +86,11 @@ export function CatalogPage() {
     return (
       <section className="catalog">
         <h1>The Catalog</h1>
-        <Notice className="catalog__empty">
-          Nothing inscribed yet. Add a card through{' '}
-          <Link to="/inscribe">Inscribe</Link>, or bring a whole collection in
-          from a <Link to="/import/decklist">decklist</Link> or a{' '}
-          <Link to="/import/csv">CSV export</Link>.
-        </Notice>
+        <EmptyState title="Nothing inscribed yet">
+          Add a card through <Link to="/inscribe">Inscribe</Link>, or bring a
+          whole collection in from a <Link to="/import/decklist">decklist</Link>{' '}
+          or a <Link to="/import/csv">CSV export</Link>.
+        </EmptyState>
       </section>
     )
   }

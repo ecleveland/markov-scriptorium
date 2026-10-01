@@ -74,6 +74,9 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
           The catalog could not be reached.
         </Notice>
       )}
+      {showResults && !failed && names.length === 0 && (
+        <Notice role="status">No card by that name in the catalog.</Notice>
+      )}
       {showResults && names.length > 0 && (
         <ul
           className="listbox card-search__results"

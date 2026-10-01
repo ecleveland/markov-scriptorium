@@ -11,7 +11,15 @@ import {
   type InventoryLot,
   type LotPatch,
 } from '../api'
-import { Button, Field, Input, Notice, Select, Textarea } from '../components'
+import {
+  Button,
+  Consulting,
+  Field,
+  Input,
+  Notice,
+  Select,
+  Textarea,
+} from '../components'
 import { CardThumb } from './CardThumb'
 import { OwnershipSummary } from './OwnershipSummary'
 import { readQuantity } from './quantity'
@@ -115,19 +123,19 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
           {save.isPending ? 'Amending…' : 'Amend'}
         </Button>
         {copies === null && (
-          <span className="lot-editor__error" role="alert">
+          <Notice as="span" tone="danger" role="alert">
             A folio holds at least one copy. Remove it below to let it go.
-          </span>
+          </Notice>
         )}
         {save.isSuccess && (
-          <span className="lot-editor__saved" role="status">
+          <Notice as="span" tone="success" role="status">
             Amended.
-          </span>
+          </Notice>
         )}
         {save.isError && (
-          <span className="lot-editor__error" role="alert">
+          <Notice as="span" tone="danger" role="alert">
             {save.error.message}
-          </span>
+          </Notice>
         )}
       </div>
     </form>
@@ -185,9 +193,9 @@ function RemoveLot({ lot, backTo }: { lot: InventoryLot; backTo: string }) {
         Keep it
       </Button>
       {remove.isError && (
-        <span className="lot-remove__error" role="alert">
+        <Notice as="span" tone="danger" role="alert">
           {remove.error.message}
-        </span>
+        </Notice>
       )}
     </div>
   )
@@ -220,7 +228,7 @@ export function LotDetailPage() {
   if (query.isPending) {
     return (
       <section className="lot-detail">
-        <Notice>Retrieving the folio…</Notice>
+        <Consulting>Retrieving the folio…</Consulting>
       </section>
     )
   }

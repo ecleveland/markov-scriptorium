@@ -53,22 +53,6 @@
   flex-shrink: 0;
   filter: drop-shadow(var(--elevation-1));
 }
-.brand-seal-wax {
-  fill: var(--oxblood);
-}
-.brand-seal-ring {
-  fill: none;
-  stroke: var(--gold);
-  stroke-width: 1.25;
-  opacity: 0.85;
-}
-.brand-seal-mark {
-  fill: var(--gold);
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 700;
-  text-anchor: middle;
-}
 
 .brand-title {
   font-family: var(--font-display);

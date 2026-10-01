@@ -68,6 +68,9 @@ describe('QuantityStepper', () => {
         name: 'Increase quantity of Lightning Bolt',
       }),
     )
-    expect(await screen.findByRole('alert')).toHaveTextContent('not saved')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('not saved')
+    // The layer's Notice carries the danger colour now, not a page-local rule.
+    expect(alert).toHaveClass('notice--danger')
   })
 })

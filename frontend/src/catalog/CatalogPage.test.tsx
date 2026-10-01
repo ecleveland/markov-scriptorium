@@ -72,8 +72,9 @@ describe('CatalogPage', () => {
     renderCatalog()
 
     expect(
-      await screen.findByRole('link', { name: 'Inscribe' }),
+      await screen.findByRole('heading', { name: 'Nothing inscribed yet' }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Inscribe' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'decklist' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'CSV export' })).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
