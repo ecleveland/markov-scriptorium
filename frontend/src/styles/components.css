@@ -171,6 +171,174 @@
   color: var(--text-muted);
 }
 
+/* as="span": the line sits inside a button row or a table cell. */
+.notice--inline {
+  display: inline;
+  margin: 0;
+}
+
+/* ---- Consulting ----------------------------------------------------------
+   The loading line: a muted notice with a gold candle before the text. */
+
+.consulting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.consulting__candle {
+  width: 0.5em;
+  height: 0.5em;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--accent-secondary);
+  box-shadow: 0 0 6px var(--accent-secondary);
+}
+
+@keyframes candle-flicker {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- Seal ----------------------------------------------------------------
+   The house crest in oxblood wax. The consumer sets width and height. */
+
+.seal {
+  display: block;
+}
+.seal__wax {
+  fill: var(--oxblood);
+}
+.seal__ring {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 1.25;
+  opacity: 0.85;
+}
+.seal__mark {
+  fill: var(--gold);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+/* ---- Sealed --------------------------------------------------------------
+   The confirmation moment: the seal pressed beside the message, reserved for
+   a write that landed (ADR 0014 keeps ornament for high-emotion beats). */
+
+.sealed {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  margin: var(--space-4) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elevation-1);
+}
+
+.sealed__seal {
+  width: 3.5rem;
+  height: 3.5rem;
+  flex-shrink: 0;
+  filter: drop-shadow(var(--elevation-2));
+}
+
+.sealed__title {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-secondary);
+}
+
+.sealed__body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+.sealed__body > p {
+  margin: 0;
+}
+
+@keyframes seal-press {
+  from {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---- Empty state ---------------------------------------------------------
+   A view with nothing to list. The seal is drawn unpressed, without the
+   oxblood, so it reads as a motif rather than a confirmation. The heading
+   font comes from index.css. */
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  margin: var(--space-4) 0;
+}
+
+.empty-state__seal {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto var(--space-4);
+}
+.empty-state__seal .seal__wax {
+  fill: var(--surface-raised);
+}
+.empty-state__seal .seal__ring {
+  opacity: 0.6;
+}
+.empty-state__seal .seal__mark {
+  fill: var(--text-faint);
+}
+
+.empty-state__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.empty-state__body {
+  max-width: 36rem;
+  margin: 0 auto;
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+.empty-state__body a {
+  color: var(--accent-secondary);
+}
+.empty-state__body > p {
+  margin: 0;
+}
+
+/* ---- Motion --------------------------------------------------------------
+   Keyframed motion plays only for people who have not asked the OS to reduce
+   it, so the default is still. components.test.ts holds every sheet to this. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .sealed__seal {
+    animation: seal-press 360ms ease-out both;
+  }
+  .consulting__candle {
+    animation: candle-flicker 1.6s ease-in-out infinite;
+  }
+}
+
 /* ---- Listbox -------------------------------------------------------------
    Classes only, no component: the three pickers each own their own markup and
    ARIA, and share nothing but the look. The option is a button filling its

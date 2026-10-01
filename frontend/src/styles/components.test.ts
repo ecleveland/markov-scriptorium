@@ -177,6 +177,53 @@ if (!componentSheet) {
 }
 const declarations = componentSheet.css
 
+/**
+ * Split a sheet into the text inside `@media (prefers-reduced-motion:
+ * no-preference)` blocks and the text outside them, by matching braces from
+ * each such block's opening brace to its close.
+ */
+function splitReducedMotionBlocks(css: string): {
+  inside: string
+  outside: string
+} {
+  const opener = /@media[^{]*prefers-reduced-motion\s*:\s*no-preference[^{]*\{/g
+  let inside = ''
+  let outside = ''
+  let cursor = 0
+  for (let match = opener.exec(css); match; match = opener.exec(css)) {
+    if (match.index < cursor) continue // nested inside a block already taken
+    outside += css.slice(cursor, match.index)
+    let depth = 1
+    let i = match.index + match[0].length
+    while (i < css.length && depth > 0) {
+      if (css[i] === '{') depth++
+      else if (css[i] === '}') depth--
+      i++
+    }
+    inside += css.slice(match.index + match[0].length, i - 1)
+    cursor = i
+    opener.lastIndex = i
+  }
+  outside += css.slice(cursor)
+  return { inside, outside }
+}
+
+describe('reduced-motion block splitter', () => {
+  it('separates the media block from the rest of the sheet', () => {
+    const { inside, outside } = splitReducedMotionBlocks(`
+      .a { animation: x 1s; }
+      @media (prefers-reduced-motion: no-preference) {
+        .b { animation: y 1s; }
+      }
+      .c { color: var(--text); }
+    `)
+    expect(inside).toContain('.b { animation: y 1s; }')
+    expect(outside).toContain('.a { animation: x 1s; }')
+    expect(outside).toContain('.c {')
+    expect(outside).not.toContain('.b')
+  })
+})
+
 describe('stylesheet contract (every sheet)', () => {
   it('finds the component sheet and every page sheet', () => {
     expect(sheets.map((sheet) => sheet.name)).toEqual(
@@ -210,6 +257,18 @@ describe('stylesheet contract (every sheet)', () => {
   it.each(sheets)('$name uses no raw font family names', ({ css }) => {
     expect(css).not.toMatch(/font-family\s*:(?!\s*var\()/)
   })
+
+  // Keyframed motion plays only for people who have not asked the OS to
+  // reduce it, so the default is still. The 120ms colour transitions on hover
+  // are left alone on purpose: this covers keyframed motion only, and VEG-427
+  // may widen it.
+  it.each(sheets)(
+    '$name keeps keyframed motion opt-in by media query',
+    ({ css }) => {
+      const { outside } = splitReducedMotionBlocks(css)
+      expect(outside).not.toMatch(/\banimation(-name)?\s*:/)
+    },
+  )
 })
 
 describe('component stylesheet contract', () => {
@@ -244,6 +303,16 @@ describe('component stylesheet contract', () => {
     )
   })
 
+  it('plays the seal press and the candle flicker only under the media query', () => {
+    const { inside } = splitReducedMotionBlocks(declarations)
+    expect(inside).toMatch(/\.sealed__seal\s*\{[^}]*animation:\s*seal-press\b/)
+    expect(inside).toMatch(
+      /\.consulting__candle\s*\{[^}]*animation:\s*candle-flicker\b/,
+    )
+    expect(declarations).toMatch(/@keyframes seal-press\s*\{/)
+    expect(declarations).toMatch(/@keyframes candle-flicker\s*\{/)
+  })
+
   it('declares the block class for every component', () => {
     for (const block of [
       '.btn',
@@ -255,6 +324,11 @@ describe('component stylesheet contract', () => {
       '.page-header',
       '.notice',
       '.listbox',
+      '.seal',
+      '.sealed',
+      '.empty-state',
+      '.consulting',
+      '.notice--inline',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
     }

@@ -1,11 +1,15 @@
 import {
   Button,
+  Consulting,
+  EmptyState,
   Field,
   Input,
   Notice,
   PageHeader,
   Panel,
   PrintingChip,
+  Seal,
+  Sealed,
   Select,
   Tag,
   Textarea,
@@ -98,6 +102,21 @@ export function Specimens() {
       <Notice tone="danger">The catalog could not be reached.</Notice>
       <Notice tone="success">Inscribed 2 folios (5 copies).</Notice>
       <Notice>Consulting the catalog…</Notice>
+
+      <h2>Seal</h2>
+      <Seal className="specimens__seal" />
+
+      <h2>Sealed</h2>
+      <Sealed>Inscribed 2 folios (5 copies) into the catalog.</Sealed>
+
+      <h2>Empty state</h2>
+      <EmptyState title="Nothing inscribed yet">
+        Inscribe a card, or bring in a decklist or a CSV, and it will be
+        catalogued here.
+      </EmptyState>
+
+      <h2>Consulting</h2>
+      <Consulting />
 
       <h2>Listbox</h2>
       <ul className="listbox" role="listbox" aria-label="Specimen printings">

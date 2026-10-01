@@ -16,3 +16,8 @@
 .specimens .field + .field {
   margin-top: var(--space-3);
 }
+
+.specimens__seal {
+  width: 2.25rem;
+  height: 2.25rem;
+}

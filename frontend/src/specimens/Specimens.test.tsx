@@ -51,4 +51,19 @@ describe('Specimens', () => {
       'true',
     )
   })
+
+  it('renders the seal, a sealed confirmation, an empty state, and the candle', () => {
+    render(<Specimens />)
+    for (const selector of [
+      '.seal',
+      '.sealed',
+      '.empty-state',
+      '.consulting__candle',
+    ]) {
+      expect(
+        document.querySelector(selector),
+        `missing ${selector}`,
+      ).not.toBeNull()
+    }
+  })
 })
