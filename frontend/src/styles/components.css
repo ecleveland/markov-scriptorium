@@ -230,7 +230,8 @@
 
 /* ---- Sealed --------------------------------------------------------------
    The confirmation moment: the seal pressed beside the message, reserved for
-   a write that landed (ADR 0014 keeps ornament for high-emotion beats). */
+   a write that landed. ADR 0014 grafts identity accents onto an otherwise
+   restrained ground, so this is one of the few places ornament belongs. */
 
 .sealed {
   display: flex;
