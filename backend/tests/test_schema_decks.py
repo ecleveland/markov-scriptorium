@@ -1,7 +1,7 @@
 """Tests for the Tome schema (migration 0006, VEG-222).
 
-These assert the shape of the ``decks`` and ``deck_cards`` tables: a Tome row
-with its format, status, and hybrid ``claims_cards`` flag, plus one slot row
+These assert the shape of the ``decks`` and ``deck_cards`` tables. A Tome is a
+row with its format, status, and hybrid ``claims_cards`` flag, plus one slot row
 per (deck, printing, finish, board) with a quantity.
 
 Design choices the tests pin down (see ADR 0018):
@@ -17,7 +17,7 @@ Design choices the tests pin down (see ADR 0018):
 * **Hybrid model, default reserved.** ``claims_cards`` is 1 unless the user
   marks the Tome as a reference-only brew.
 * **Slots CASCADE with their deck and RESTRICT against the catalog**, the same
-  protection inventory has (ADR 0009): a Scryfall refresh must not empty a Tome.
+  protection inventory has (ADR 0009). A Scryfall refresh must not empty a Tome.
 * **No triggers.** The migration runner rejects ``BEGIN``, so ``updated_at`` and
   over-reservation are application logic. The schema only supplies defaults.
 
@@ -31,6 +31,7 @@ import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -146,7 +147,7 @@ def test_deck_cards_table_has_expected_columns(catalog: sqlite3.Connection) -> N
     with closing(catalog) as conn:
         expected = {"id", "deck_id", "scryfall_id", "finish", "board", "quantity"}
         assert expected <= _columns(conn, "deck_cards")
-        # Surrogate slot key: VEG-223's :card_id route param is this id.
+        # Surrogate slot key. VEG-223's :card_id route param is this id.
         assert _pk_columns(conn, "deck_cards") == ["id"]
 
 
@@ -305,7 +306,7 @@ def test_deleting_deck_cascades_to_slots_not_inventory(catalog: sqlite3.Connecti
 
 
 def test_deleting_slotted_card_is_blocked(catalog: sqlite3.Connection) -> None:
-    """RESTRICT: a catalog delete cannot empty a Tome."""
+    """RESTRICT means a catalog delete cannot empty a Tome."""
     with closing(catalog) as conn:
         _insert_card(conn, "card-8", "Rhystic Study")
         deck = _insert_deck(conn)
@@ -330,10 +331,10 @@ def test_deck_cards_foreign_key_actions(catalog: sqlite3.Connection) -> None:
         fks = {f[2]: f for f in conn.execute("PRAGMA foreign_key_list(deck_cards)")}
         to_decks, to_cards = fks["decks"], fks["cards"]
         assert (to_decks[3], to_decks[4]) == ("deck_id", "id")
-        assert to_decks[6] == "CASCADE"  # on_delete: slots die with their Tome
+        assert to_decks[6] == "CASCADE"  # on delete, slots die with their Tome
         assert (to_cards[3], to_cards[4]) == ("scryfall_id", "scryfall_id")
-        assert to_cards[5] == "CASCADE"  # on_update: a re-keyed printing carries its slots
-        assert to_cards[6] == "RESTRICT"  # on_delete: a slotted card cannot be deleted
+        assert to_cards[5] == "CASCADE"  # on update, a re-keyed printing carries its slots
+        assert to_cards[6] == "RESTRICT"  # on delete, a slotted card cannot be deleted
 
 
 # --- Slots ------------------------------------------------------------------
@@ -417,18 +418,46 @@ ORDER BY s.board, c.cmc, c.name
 """
 
 
-def _breakdown(conn: sqlite3.Connection, deck: int) -> dict[tuple[str, str], tuple[int, int]]:
-    """Map (scryfall_id, board) to (have, needed) for one Tome."""
+class Line(NamedTuple):
+    """One breakdown row, minus the identifying columns."""
+
+    owned: int
+    available: int
+    have: int
+    needed: int
+
+
+def _breakdown(conn: sqlite3.Connection, deck: int) -> dict[tuple[str, str, str], Line]:
+    """Map (scryfall_id, finish, board) to its breakdown line for one Tome.
+
+    Also checks that the query returns exactly one row per non-maybeboard slot,
+    so a join that fans out (or a slot that goes missing) fails here.
+    """
     rows = conn.execute(_BREAKDOWN_SQL, {"deck": deck}).fetchall()
-    return {(r["scryfall_id"], r["board"]): (r["have"], r["needed"]) for r in rows}
+    slot_count = conn.execute(
+        "SELECT COUNT(*) FROM deck_cards WHERE deck_id = ? AND board <> 'maybeboard'", (deck,)
+    ).fetchone()[0]
+    assert len(rows) == slot_count
+    result = {
+        (r["scryfall_id"], r["finish"], r["board"]): Line(
+            r["owned"], r["available"], r["have"], r["needed"]
+        )
+        for r in rows
+    }
+    assert len(result) == len(rows)
+    return result
+
+
+def _own(conn: sqlite3.Connection, sid: str, quantity: int, **lot: object) -> None:
+    """Inscribe one inventory lot of ``sid``."""
+    _insert_inventory(conn, sid, quantity=quantity, **lot)
 
 
 def test_breakdown_query_owned_vs_needed(catalog: sqlite3.Connection) -> None:
     """Pin the reference breakdown SQL. VEG-223 lifts ``_BREAKDOWN_SQL`` as its reference.
 
-    Cases: owned, partly owned, unowned, the same folio in two boards, a folio
-    claimed by another claiming Tome, a referenced (``claims_cards = 0``) Tome
-    releasing its claim, and a maybeboard row that neither claims nor consumes.
+    Each case below is built so that one plausible mistake in the SQL changes
+    its expected line. The comment above each case names the mistake.
     """
     with closing(catalog) as conn:
         for sid, name in [
@@ -439,45 +468,113 @@ def test_breakdown_query_owned_vs_needed(catalog: sqlite3.Connection) -> None:
             ("contested", "Swords to Plowshares"),
             ("released", "Brainstorm"),
             ("maybe", "Counterspell"),
+            ("foil-only", "Mana Crypt"),
+            ("rival-foil", "Dark Ritual"),
+            ("both-finishes", "Brainstone"),
+            ("ladder", "Edgar Markov"),
+            ("lots", "Bloodghast"),
+            ("starved", "Demonic Tutor"),
+            ("overclaimed", "Rhystic Study"),
         ]:
             _insert_card(conn, sid, name)
 
-        _insert_inventory(conn, "owned", quantity=1)
-        _insert_inventory(conn, "partial", quantity=2)
-        _insert_inventory(conn, "split", quantity=3)
-        _insert_inventory(conn, "contested", quantity=4)
-        _insert_inventory(conn, "released", quantity=4)
-        _insert_inventory(conn, "maybe", quantity=1)
-
         tome = _insert_deck(conn, "Tome under test")
         rival = _insert_deck(conn, "Sleeved rival", claims_cards=1)
+        second_rival = _insert_deck(conn, "Second sleeved rival", claims_cards=1)
         brew = _insert_deck(conn, "Brew folder", claims_cards=0)
         dreamer = _insert_deck(conn, "Dreamer", claims_cards=1)
 
+        # Owned, partly owned, and unowned.
+        _own(conn, "owned", 1)
         _insert_slot(conn, tome, "owned", quantity=1)
+        _own(conn, "partial", 2)
         _insert_slot(conn, tome, "partial", quantity=4)
         _insert_slot(conn, tome, "unowned", quantity=1)
-        # Main gets the lower id, so it is allocated first.
+
+        # The same folio in two boards is not counted twice. Main outranks
+        # sideboard, so main is served first.
+        _own(conn, "split", 3)
         _insert_slot(conn, tome, "split", board="main", quantity=2)
         _insert_slot(conn, tome, "split", board="sideboard", quantity=2)
+
+        # Another claiming Tome takes its share first.
+        _own(conn, "contested", 4)
         _insert_slot(conn, tome, "contested", quantity=4)
+        _insert_slot(conn, rival, "contested", quantity=3)
+
+        # A referenced (claims_cards = 0) Tome claims nothing.
+        _own(conn, "released", 4)
         _insert_slot(conn, tome, "released", quantity=4)
+        _insert_slot(conn, brew, "released", quantity=4)
+
+        # Maybeboard rows, this Tome's or another claiming Tome's, take nothing.
+        _own(conn, "maybe", 1)
         _insert_slot(conn, tome, "maybe", quantity=1)
         _insert_slot(conn, tome, "maybe", board="maybeboard", quantity=1)
-
-        _insert_slot(conn, rival, "contested", quantity=3)
-        _insert_slot(conn, brew, "released", quantity=4)
-        # Another claiming Tome's maybeboard does not take the only copy.
         _insert_slot(conn, dreamer, "maybe", board="maybeboard", quantity=1)
 
+        # Owned join must match finish. A foil copy does not fill a nonfoil slot.
+        _own(conn, "foil-only", 1, finish="foil")
+        _insert_slot(conn, tome, "foil-only", finish="nonfoil", quantity=1)
+
+        # claimed_elsewhere join must match finish. A rival's foil claim leaves
+        # the nonfoil copies alone.
+        _own(conn, "rival-foil", 2, finish="nonfoil")
+        _own(conn, "rival-foil", 1, finish="foil")
+        _insert_slot(conn, tome, "rival-foil", finish="nonfoil", quantity=2)
+        _insert_slot(conn, rival, "rival-foil", finish="foil", quantity=1)
+
+        # The allocation window must partition by finish. Each finish has its
+        # own single copy, so neither slot waits on the other.
+        _own(conn, "both-finishes", 1, finish="nonfoil")
+        _own(conn, "both-finishes", 1, finish="foil")
+        _insert_slot(conn, tome, "both-finishes", finish="nonfoil", quantity=1)
+        _insert_slot(conn, tome, "both-finishes", finish="foil", quantity=1)
+
+        # Board rank, not slot id, decides who is served. The sideboard slot
+        # gets the lowest id, yet commander and main take the two copies.
+        _own(conn, "ladder", 2)
+        _insert_slot(conn, tome, "ladder", board="sideboard", quantity=2)
+        _insert_slot(conn, tome, "ladder", board="main", quantity=1)
+        _insert_slot(conn, tome, "ladder", board="commander", quantity=1)
+
+        # Owned sums lots across condition.
+        _own(conn, "lots", 1, condition="NM")
+        _own(conn, "lots", 2, condition="LP")
+        _insert_slot(conn, tome, "lots", quantity=3)
+
+        # claimed_elsewhere sums across claiming Tomes. Either rival alone
+        # would leave two copies, both together leave none.
+        _own(conn, "starved", 4)
+        _insert_slot(conn, tome, "starved", quantity=1)
+        _insert_slot(conn, rival, "starved", quantity=2)
+        _insert_slot(conn, second_rival, "starved", quantity=2)
+
+        # Available clamps at 0 when other Tomes claim more than is owned.
+        _own(conn, "overclaimed", 1)
+        _insert_slot(conn, tome, "overclaimed", quantity=1)
+        _insert_slot(conn, rival, "overclaimed", quantity=3)
+
         assert _breakdown(conn, tome) == {
-            ("owned", "main"): (1, 0),
-            ("partial", "main"): (2, 2),
-            ("unowned", "main"): (0, 1),
-            ("split", "main"): (2, 0),
-            ("split", "sideboard"): (1, 1),
-            ("contested", "main"): (1, 3),
-            ("released", "main"): (4, 0),
-            # The Tome's own maybeboard row is absent and consumed nothing.
-            ("maybe", "main"): (1, 0),
+            ("owned", "nonfoil", "main"): Line(owned=1, available=1, have=1, needed=0),
+            ("partial", "nonfoil", "main"): Line(owned=2, available=2, have=2, needed=2),
+            ("unowned", "nonfoil", "main"): Line(owned=0, available=0, have=0, needed=1),
+            ("split", "nonfoil", "main"): Line(owned=3, available=3, have=2, needed=0),
+            ("split", "nonfoil", "sideboard"): Line(owned=3, available=3, have=1, needed=1),
+            ("contested", "nonfoil", "main"): Line(owned=4, available=1, have=1, needed=3),
+            ("released", "nonfoil", "main"): Line(owned=4, available=4, have=4, needed=0),
+            # The Tome's own maybeboard row is excluded from the result. The
+            # board order already ranks maybeboard with the sideboard, after
+            # main, so this case cannot also show that it would consume nothing.
+            ("maybe", "nonfoil", "main"): Line(owned=1, available=1, have=1, needed=0),
+            ("foil-only", "nonfoil", "main"): Line(owned=0, available=0, have=0, needed=1),
+            ("rival-foil", "nonfoil", "main"): Line(owned=2, available=2, have=2, needed=0),
+            ("both-finishes", "nonfoil", "main"): Line(owned=1, available=1, have=1, needed=0),
+            ("both-finishes", "foil", "main"): Line(owned=1, available=1, have=1, needed=0),
+            ("ladder", "nonfoil", "commander"): Line(owned=2, available=2, have=1, needed=0),
+            ("ladder", "nonfoil", "main"): Line(owned=2, available=2, have=1, needed=0),
+            ("ladder", "nonfoil", "sideboard"): Line(owned=2, available=2, have=0, needed=2),
+            ("lots", "nonfoil", "main"): Line(owned=3, available=3, have=3, needed=0),
+            ("starved", "nonfoil", "main"): Line(owned=4, available=0, have=0, needed=1),
+            ("overclaimed", "nonfoil", "main"): Line(owned=1, available=0, have=0, needed=1),
         }

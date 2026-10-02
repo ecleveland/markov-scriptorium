@@ -2,7 +2,7 @@
 --
 -- A Tome is one `decks` row plus one `deck_cards` row per SLOT. A slot is
 -- (deck x printing x finish x board) with a quantity. It references a printing
--- in the catalog, never an inventory lot: a Tome says what it wants, inventory
+-- in the catalog, never an inventory lot. A Tome says what it wants, inventory
 -- says what is owned, and "owned vs needed" is a join between the two. A card
 -- the user does not own is an ordinary slot with no matching inventory.
 --
@@ -15,15 +15,15 @@
 -- Commander and companion are boards, not deck columns, so they reserve and
 -- break down like any other sleeved card. They hold one copy per row, and
 -- partners are two rows with different printings. Maybeboard rows never claim
--- cards: every reservation and breakdown query excludes board = 'maybeboard'.
+-- cards. Every reservation and breakdown query excludes board = 'maybeboard'.
 --
--- claims_cards is the hybrid flag (PROJECT Key Decision 5): 1 means the Tome
+-- claims_cards is the hybrid flag (PROJECT Key Decision 5). 1 means the Tome
 -- reserves its cards (sleeved), 0 means it only references them (a brew
 -- folder). Default 1. Reservation is computed at read time, never stored.
 --
--- deck_cards -> decks CASCADEs: slots belong to their Tome, and deleting a
+-- deck_cards -> decks CASCADEs. Slots belong to their Tome, and deleting a
 -- Tome releases its reservations without touching inventory. deck_cards ->
--- cards RESTRICTs, mirroring inventory (ADR 0009): a Scryfall refresh or a
+-- cards RESTRICTs, mirroring inventory (ADR 0009). A Scryfall refresh or a
 -- stray card delete must not empty a Tome.
 --
 -- format is free text holding a lowercase Scryfall `legalities` key
@@ -32,7 +32,7 @@
 -- by rebuilding the table. status is a CHECK because its four values are ours
 -- and stable. changelog is plain text the user writes, like notes.
 --
--- No triggers: the migration runner rejects transaction keywords, and a
+-- No triggers. The migration runner rejects transaction keywords, and a
 -- trigger body needs one. So updated_at only gets a default here, and every
 -- write path in the app sets it. Over-reservation is also app logic (VEG-224).
 

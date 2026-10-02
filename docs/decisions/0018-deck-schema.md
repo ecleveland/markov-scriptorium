@@ -11,7 +11,7 @@ ADR and migration numbers are separate sequences, so this is ADR 0018 and
 migration 0006.
 
 This ADR resolves the reserved-versus-referenced question that PROJECT.md and
-CLAUDE.md left open. The answer is hybrid, default reserved: each deck has a
+CLAUDE.md left open. The answer is hybrid, default reserved. Each deck has a
 `claims_cards` flag, 1 unless the user turns it off.
 
 [VEG-222]: https://linear.app/vega-apps/issue/VEG-222
@@ -26,7 +26,8 @@ Two tables. **`decks`** has one row per Tome:
 
 - **`id`**: surrogate `INTEGER PRIMARY KEY`.
 - **`name`**: `NOT NULL CHECK (trim(name) <> '')`. The create form needs a
-  non-blank name anyway, and one CHECK covers every write path.
+  non-blank name anyway. SQLite's `trim()` strips only spaces, so the API trims
+  all whitespace before the CHECK sees the value.
 - **`format`**: nullable free text. By convention it holds a lowercase Scryfall
   `legalities` key (`commander`, `modern`, `predh`) or `cube` or `brew`, so a
   legality check is `json_extract(c.legalities, '$.' || d.format)`. The app
@@ -101,57 +102,59 @@ trigger would do is application code.
 
 ## Alternatives Considered
 
-A design panel produced three candidates (minimal, match-patterns, cleanest) and
-a critic compared them. The shape above is the patterns proposal with grafts
-from the other two. The rejected parts:
-
-- **`any_printing` flag on slots** (cleanest): a slot like "4 Lightning Bolt,
-  any printing" that any owned printing satisfies. Rejected because availability
-  becomes order-dependent. A pinned slot in one deck and an any-printing slot in
-  another can both claim the same physical copy, and which one wins depends on
-  which the allocator visits first. VEG-224's "available vs total" then has no
-  answer until an allocator runs over every claiming deck. Under printing-only
-  slots it is a plain subtraction. Adding the flag later is an additive
-  `ADD COLUMN`. The expensive part is the allocator, and no M4 ticket asks for it.
-- **`finish = 'any'`** (cleanest): the same order-dependence one dimension
-  smaller. One foil copy, deck A wants it in any finish, deck B wants it foil:
-  whoever is counted first gets it. The cost of rejecting it is that a foil copy
-  shows as needed for a nonfoil slot until the user flips the slot's finish.
-- **Composite primary key** on `(deck_id, scryfall_id, finish, board)`
-  (minimal): a Scryfall id does not identify a slot, so [VEG-223]'s routes would
-  need finish and board as query parameters on every PATCH and DELETE. A
+- **An `any_printing` flag on slots.** A slot like "4 Lightning Bolt, any
+  printing" would be satisfied by any owned printing. Rejected because
+  availability becomes order-dependent. A pinned slot in one deck and an
+  any-printing slot in another can both claim the same physical copy, and which
+  one wins depends on which the allocator visits first. [VEG-224]'s "available
+  vs total" then has no answer until an allocator runs over every claiming deck.
+  Under printing-only slots it is a plain subtraction. Adding the flag later is
+  an additive `ADD COLUMN`. The expensive part is the allocator, and no M4
+  ticket asks for it.
+- **`finish = 'any'`.** Rejected for the same order-dependence, one dimension
+  smaller. With one foil copy, deck A wanting it in any finish, and deck B
+  wanting it foil, whoever is counted first gets it. The cost is that a foil
+  copy shows as needed for a nonfoil slot until the user flips the slot's
+  finish.
+- **A composite primary key on `(deck_id, scryfall_id, finish, board)`.**
+  Rejected because a Scryfall id does not identify a slot, so [VEG-223]'s routes
+  would need finish and board as query parameters on every PATCH and DELETE. A
   composite key on a rowid table builds a separate unique index anyway, so the
   surrogate costs nothing.
-- **Commander columns on `decks`**: a second FK and a second code path for
-  reservation and breakdown, and no room for partners.
-- **Changelog as a JSON array** (patterns) or **two change-log tables of signed
-  deltas** (cleanest): nothing in [VEG-223] through VEG-226 generates entries,
-  and the editor treats the changelog as a text field. The tables would force
-  every slot write to write history rows too, and a RESTRICT FK from history to
-  `cards` would pin old printings against the catalog forever. If an
+- **Commander columns on `decks`.** Rejected because they need a second FK and a
+  second code path for reservation and breakdown, and leave no room for
+  partners.
+- **The changelog as a JSON array, or as two change-log tables of signed
+  deltas.** Rejected because nothing in [VEG-223] through VEG-226 generates
+  entries, and the editor treats the changelog as a text field. The tables
+  would force every slot write to write history rows too, and a RESTRICT FK from
+  history to `cards` would pin old printings against the catalog forever. If an
   auto-generated diff log is wanted later, a `deck_changes` table is additive.
-- **A CHECK on `format`** (cleanest): Scryfall adds legality keys (`timeless`
-  and `predh` arrived recently), and changing a CHECK in SQLite means rebuilding
-  the table, which here is the parent of `deck_cards`. The proposed list also
-  dropped `brew`, which PROJECT.md names.
-- **`command` as the board name** (cleanest): PROJECT.md and the editor ticket
-  say "commander". Only Oathbreaker's signature spell would be mislabelled, and
-  no ticket asks for Oathbreaker.
-- **No maybeboard, no `updated_at`** (critic): the critic argued that a second
-  Tome with claims off covers a maybe pile, and that a timestamp nobody sorts by
-  is upkeep. The user chose both. Adding a board value later means rebuilding
-  `deck_cards`, and adding `updated_at` later would leave old decks NULL.
+- **A CHECK on `format`.** Rejected because Scryfall adds legality keys
+  (`timeless` and `predh` arrived recently), and changing a CHECK in SQLite
+  means rebuilding the table, which here is the parent of `deck_cards`.
+- **`command` as the board name.** Rejected because PROJECT.md and the editor
+  ticket say "commander". Only Oathbreaker's signature spell would be
+  mislabelled, and no ticket asks for Oathbreaker.
+- **No maybeboard, with a second Tome that has claims off holding the maybe
+  pile instead.** Rejected. Adding a board value later means rebuilding
+  `deck_cards`, so the maybeboard ships now.
+- **No `updated_at`.** Rejected. Adding the column later would leave every
+  existing deck NULL.
 
 ---
 
 ## Consequences
 
-- Over-reservation is checked at write time in application code ([VEG-224]):
-  the claimed sum plus the new quantity is compared to owned inside the write
+- Over-reservation is checked at write time in application code ([VEG-224]).
+  The claimed sum plus the new quantity is compared to owned inside the write
   transaction, returning 409 when it would exceed. Selling a lot, or turning
   `claims_cards` on for a deck, can still leave a deck over-claimed. That is
   allowed and shows as needed, because refusing it would block the user from
   recording what is true.
+- A deck with `claims_cards = 0` still sees other decks' claims subtracted from
+  its available count, because availability is a property of the collection,
+  not of the asking deck.
 - Every reservation, availability, and breakdown query must exclude
   `board = 'maybeboard'`. Forgetting the filter makes a maybe card claim a copy.
 - `updated_at` is only as fresh as the code that writes it. Every deck and slot
@@ -159,8 +162,9 @@ from the other two. The rejected parts:
 - The timestamp format is pinned to whole seconds in UTC with a `Z` suffix,
   the shape the column defaults produce. Application writes must produce the
   same shape (set it in SQL with `strftime('%Y-%m-%dT%H:%M:%SZ','now')`, or
-  format a `datetime` to match), not Python's `isoformat()` with microseconds
-  and `+00:00` as `refresh.py` does. Two shapes in one column sort wrongly as
+  format a `datetime` to match), not Python's `isoformat()` output, which
+  differs in shape. `refresh.py` stores `datetime.now(UTC).isoformat()`, which
+  carries microseconds and `+00:00`. Two shapes in one column sort wrongly as
   strings, since `.` sorts before `Z` within the same second.
 - [VEG-223]'s `:card_id` is the slot's `deck_cards.id`, not a Scryfall id.
 - The bulk importer's `DELETE FROM cards` already fails against inventory's

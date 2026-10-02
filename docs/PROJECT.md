@@ -50,7 +50,7 @@ When a card is in a deck, what does that *mean* for the inventory count?
 - **Referenced model** — inventory stays whole; decks just point at cards. Best for digital or proxy-heavy play.
 - **Hybrid** — each deck has a flag for whether it "claims" its cards. Most flexible, more complex.
 
-**Leaning toward:** hybrid, defaulting to reserved. The reality is sleeved decks claim cards, brew folders don't.
+**Decided:** hybrid, defaulting to reserved ([ADR 0018](decisions/0018-deck-schema.md)). Each deck has a `claims_cards` flag, on unless the user turns it off. Sleeved decks claim their cards, brew folders don't. Reservation is computed at read time, never stored.
 
 ---
 
@@ -130,7 +130,7 @@ See `docs/decisions/0001-foundational-architecture.md` for full reasoning.
 2. **Per-printing granularity:** confirmed yes
 3. **Storage:** SQLite (local file, no server process)
 4. **UI surface:** Local web app (browser-based, localhost), with a Tauri desktop shell + Python sidecar as the long-term distribution target — build localhost-first (see `docs/decisions/0002-desktop-shell-tauri-sidecar.md`)
-5. **Card-deck model:** Hybrid — per-deck flag, default reserved
+5. **Card-deck model:** Hybrid — per-deck flag, default reserved (see `docs/decisions/0018-deck-schema.md`)
 6. **Hosting:** Purely local (Tailscale for optional remote access later)
 7. **Auth:** Single-user, no auth
 
