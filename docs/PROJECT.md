@@ -130,7 +130,7 @@ See `docs/decisions/0001-foundational-architecture.md` for full reasoning.
 2. **Per-printing granularity:** confirmed yes
 3. **Storage:** SQLite (local file, no server process)
 4. **UI surface:** Local web app (browser-based, localhost), with a Tauri desktop shell + Python sidecar as the long-term distribution target — build localhost-first (see `docs/decisions/0002-desktop-shell-tauri-sidecar.md`)
-5. **Card-deck model:** Hybrid — per-deck flag, default reserved (see `docs/decisions/0018-deck-schema.md`)
+5. **Card-deck model:** Hybrid, with a per-deck flag that defaults to reserved (see `docs/decisions/0018-deck-schema.md`)
 6. **Hosting:** Purely local (Tailscale for optional remote access later)
 7. **Auth:** Single-user, no auth
 

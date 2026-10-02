@@ -75,7 +75,13 @@ the user does not own is an ordinary slot with no matching inventory.
 `(scryfall_id, finish)`, summed across condition, language, and location. A copy
 owned in a different printing or finish shows as needed. The breakdown attaches
 the `owned_across_printings` rollup to each needed slot as a swap hint, and a
-PATCH on the slot's `scryfall_id` or `finish` makes the swap.
+PATCH on the slot's `scryfall_id` or `finish` makes the swap. When the swap
+lands on a tuple the deck already holds, the UNIQUE constraint refuses it, so
+[VEG-223] must either merge the quantities into the existing slot or answer
+409. The same applies to adding a commander or companion that is already
+slotted. The singleton CHECK rejects the quantity upsert, and the API must
+turn that into a 409, not a 500. Exactly one commander per deck, and the
+legality of a commander, are application validation.
 
 **Commander and companion are boards, not deck columns.** They reserve and break
 down like any other sleeved card. Partners and backgrounds are two `commander`
