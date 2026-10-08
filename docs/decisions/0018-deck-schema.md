@@ -174,6 +174,11 @@ trigger would do is application code.
   carries microseconds and `+00:00`. Two shapes in one column sort wrongly as
   strings, since `.` sorts before `Z` within the same second.
 - [VEG-223]'s `:card_id` is the slot's `deck_cards.id`, not a Scryfall id.
+- [VEG-223] chose 409 over merge for a slot PATCH that lands on a tuple the
+  Tome already holds. The response names the existing slot id. A 409 keeps the
+  write idempotent and leaves the merge to the editor, which can delete one
+  slot and raise the other's quantity. The same choice covers adding a
+  commander or companion that is already slotted, in any finish.
 - The bulk importer's old `DELETE FROM cards` failed against inventory's
   RESTRICT once one lot existed, and deck slots inherited the failure. [VEG-575]
   fixed it. The importer now upserts cards and its sweep never deletes a
