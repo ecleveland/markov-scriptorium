@@ -52,7 +52,8 @@ Not yet chosen. When discussing or recommending options, optimize for:
 
 - A card is identified by its **printing**, not its name. Same name across two sets = two records.
 - Foil and non-foil are tracked separately even within the same printing.
-- The reserved-vs-referenced question for cards-in-decks is unresolved (see PROJECT.md). Do not implement either side without confirming first.
+- Cards in decks follow the hybrid model (ADR 0018). Each deck has `claims_cards`, default reserved. Reservation is computed at read time, never stored.
+- Migrations cannot contain triggers, because the migration runner rejects any `BEGIN` token. Logic a trigger would hold (timestamps, over-reservation checks) lives in application code.
 
 ## Testing
 
