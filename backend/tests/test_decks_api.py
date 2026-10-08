@@ -10,12 +10,12 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
 
-from scriptorium import db
+from scriptorium import db, decks
 from scriptorium.main import app
 from scriptorium.migrations import apply_migrations
 
@@ -372,3 +372,32 @@ def test_breakdown_returns_lines_and_totals() -> None:
 
 def test_breakdown_unknown_deck_is_404() -> None:
     assert client.get("/decks/999/breakdown").status_code == 404
+
+
+# --- IntegrityError fallbacks ------------------------------------------------
+
+
+def test_integrity_error_fallbacks_never_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A database refusal answers 409 while the Tome exists and 404 once it is gone."""
+
+    def boom(*args: object, **kwargs: object) -> NoReturn:
+        raise sqlite3.IntegrityError("boom")
+
+    deck = _create()
+    slot = _add(deck["id"])
+    monkeypatch.setattr(decks, "add_slot", boom)
+    monkeypatch.setattr(decks, "update_slot", boom)
+    cards_url = f"/decks/{deck['id']}/cards"
+    slot_url = f"{cards_url}/{slot['id']}"
+
+    resp = client.post(cards_url, json={"scryfall_id": "bolt-1"})
+    assert resp.status_code == 409
+    assert "refused" in resp.json()["detail"]
+    resp = client.patch(slot_url, json={"quantity": 2})
+    assert resp.status_code == 409
+    assert "refused" in resp.json()["detail"]
+
+    assert client.delete(f"/decks/{deck['id']}").status_code == 204
+
+    assert client.post(cards_url, json={"scryfall_id": "bolt-1"}).status_code == 404
+    assert client.patch(slot_url, json={"quantity": 2}).status_code == 404

@@ -485,6 +485,33 @@ def test_update_slot_bumps_updated_at(catalog_conn: sqlite3.Connection) -> None:
     _assert_touched(catalog_conn, deck_id)
 
 
+def test_empty_updates_leave_updated_at_alone(catalog_conn: sqlite3.Connection) -> None:
+    """An empty deck or slot patch changes nothing, so it must not move the stamp."""
+    deck_id = _deck(catalog_conn)
+    slot = _slot(catalog_conn, deck_id, "bolt-1")
+    _make_stale(catalog_conn, deck_id)
+    decks.update_deck(catalog_conn, deck_id, {})
+    decks.update_slot(catalog_conn, deck_id, slot["id"], {})
+    stamp = catalog_conn.execute(
+        "SELECT updated_at FROM decks WHERE id = ?", (deck_id,)
+    ).fetchone()[0]
+    assert stamp == _PAST
+
+
+def test_failed_slot_update_leaves_updated_at_alone(catalog_conn: sqlite3.Connection) -> None:
+    """A slot update the foreign key refuses rolls back the stamp bump with it."""
+    deck_id = _deck(catalog_conn)
+    slot = _slot(catalog_conn, deck_id, "bolt-1")
+    _make_stale(catalog_conn, deck_id)
+    with pytest.raises(sqlite3.IntegrityError):
+        decks.update_slot(catalog_conn, deck_id, slot["id"], {"scryfall_id": "no-such-card"})
+    stamp = catalog_conn.execute(
+        "SELECT updated_at FROM decks WHERE id = ?", (deck_id,)
+    ).fetchone()[0]
+    assert stamp == _PAST
+    assert not catalog_conn.in_transaction
+
+
 # --- delete slot ------------------------------------------------------------
 
 
@@ -720,6 +747,48 @@ def test_breakdown_attaches_swap_hint_only_to_needed_lines(
     assert hint == inventory.owned_across_printings(catalog_conn, "bolt-1")
     assert hint["total_quantity"] == 3
     assert [p["scryfall_id"] for p in hint["printings"]] == ["bolt-2"]
+
+
+def test_breakdown_non_claiming_tome_still_sees_rival_claims(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A Tome that holds no claim of its own is still squeezed by claiming rivals."""
+    tome = _deck(catalog_conn, "Brew folder", claims_cards=False)
+    rival = _deck(catalog_conn, "Sleeved rival")
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=4)
+    _slot(catalog_conn, tome, "bolt-1", quantity=4)
+    _slot(catalog_conn, rival, "bolt-1", quantity=3)
+
+    line = _breakdown(catalog_conn, tome)["lines"][0]
+
+    assert (line["owned"], line["available"], line["have"], line["needed"]) == (4, 1, 1, 3)
+
+
+def test_breakdown_unowned_card_gets_empty_swap_hint(catalog_conn: sqlite3.Connection) -> None:
+    deck_id = _deck(catalog_conn)
+    _slot(catalog_conn, deck_id, "bolt-1")
+
+    hint = _breakdown(catalog_conn, deck_id)["lines"][0]["swap_hint"]
+
+    assert isinstance(hint, dict)
+    assert hint["total_quantity"] == 0
+    assert hint["printings"] == []
+
+
+def test_breakdown_swap_hint_attaches_per_line_not_per_printing(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    deck_id = _deck(catalog_conn)
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=3)
+    _slot(catalog_conn, deck_id, "bolt-1", board="main", quantity=2)
+    _slot(catalog_conn, deck_id, "bolt-1", board="sideboard", quantity=2)
+
+    lines = {ln["board"]: ln for ln in _breakdown(catalog_conn, deck_id)["lines"]}
+
+    assert lines["main"]["needed"] == 0
+    assert lines["main"]["swap_hint"] is None
+    assert lines["sideboard"]["needed"] == 1
+    assert isinstance(lines["sideboard"]["swap_hint"], dict)
 
 
 def test_breakdown_empty_deck(catalog_conn: sqlite3.Connection) -> None:
