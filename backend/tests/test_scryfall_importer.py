@@ -532,6 +532,64 @@ def test_rollback_drops_temp_table(catalog: sqlite3.Connection, tmp_path: Path) 
     assert _count(catalog, "cards") == 1
 
 
+def test_kept_printing_keeps_its_faces(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """A kept printing keeps its faces, because the sweep leaves the whole row alone."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_DFC_CARD, _MINIMAL_CARD]))
+    _add_inventory_lot(catalog, "dfc-1")
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    faces = catalog.execute("SELECT COUNT(*) FROM card_faces WHERE scryfall_id = 'dfc-1'")
+    assert faces.fetchone()[0] == 2
+    assert result.kept == 1
+
+
+def test_vanished_slotted_printing_is_kept(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """A printing slotted into a Tome survives leaving the export."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    _add_deck_slot(catalog, "edgar-1")
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1", "minimal-1"}
+    assert _count(catalog, "deck_cards") == 1
+    assert result.kept == 1
+    assert result.retired == 0
+
+
+def test_sweep_counts_retired_and_kept_together(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """One sweep reports both the printing it deleted and the one it kept."""
+    import_bulk_file(
+        catalog,
+        _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD, _TOKEN_CARD]),
+    )
+    _add_inventory_lot(catalog, "edgar-1")
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1", "minimal-1"}
+    assert result.retired == 1
+    assert result.kept == 1
+
+
+def test_set_null_reference_guards_the_printing(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A SET NULL reference guards the printing too, so the sweep never nulls a user row."""
+    catalog.execute(
+        "CREATE TABLE scratch_set_null (id INTEGER PRIMARY KEY, "
+        "scryfall_id TEXT REFERENCES cards(scryfall_id) ON DELETE SET NULL)"
+    )
+    catalog.commit()
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    catalog.execute("INSERT INTO scratch_set_null (scryfall_id) VALUES ('edgar-1')")
+    catalog.commit()
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert "edgar-1" in ids
+    row = catalog.execute("SELECT scryfall_id FROM scratch_set_null").fetchone()
+    assert row["scryfall_id"] == "edgar-1"
+    assert result.kept == 1
+
+
 # --- input handling --------------------------------------------------------
 
 
