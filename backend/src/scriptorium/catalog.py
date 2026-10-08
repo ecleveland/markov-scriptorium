@@ -38,9 +38,9 @@ _JSON_FACE_COLUMNS = ("colors", "image_uris")
 def rebuild_name_index(conn: sqlite3.Connection) -> None:
     """Repopulate the ``cards_fts`` index from the current ``cards`` rows.
 
-    Called by the bulk importer after a full-replace load; external-content FTS5
-    keeps no copy of the data, so it must be told to rebuild when ``cards``
-    changes wholesale.
+    Called by the bulk importer after each refresh; external-content FTS5 keeps
+    no copy of the data, so it must be told to rebuild when the importer
+    upserts and sweeps ``cards``.
     """
     conn.execute("INSERT INTO cards_fts(cards_fts) VALUES('rebuild')")
 

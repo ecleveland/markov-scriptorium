@@ -17,6 +17,7 @@ CLAUDE.md left open. The answer is hybrid, default reserved. Each deck has a
 [VEG-222]: https://linear.app/vega-apps/issue/VEG-222
 [VEG-223]: https://linear.app/vega-apps/issue/VEG-223
 [VEG-224]: https://linear.app/vega-apps/issue/VEG-224
+[VEG-575]: https://linear.app/vega-apps/issue/VEG-575
 
 ---
 
@@ -173,11 +174,11 @@ trigger would do is application code.
   carries microseconds and `+00:00`. Two shapes in one column sort wrongly as
   strings, since `.` sorts before `Z` within the same second.
 - [VEG-223]'s `:card_id` is the slot's `deck_cards.id`, not a Scryfall id.
-- The bulk importer's `DELETE FROM cards` already fails against inventory's
-  RESTRICT once one lot exists, and deck slots inherit the failure. The importer
-  must upsert cards and delete only printings that left the export before
-  [VEG-223] ships. A separate bug ticket owns that fix and the correction to
-  ADR 0009's sentence about the refresh.
+- The bulk importer's old `DELETE FROM cards` failed against inventory's
+  RESTRICT once one lot existed, and deck slots inherited the failure. [VEG-575]
+  fixed it: the importer now upserts cards and its sweep never deletes a
+  printing that a lot or a slot references
+  ([0019](0019-importer-upsert-and-sweep.md)).
 - `status` stores `in_progress` with an underscore, where PROJECT.md's prose
   says "in-progress". The API returns it as an enum value and the frontend maps
   it to a TypeScript union, so it stays identifier-safe. The UI shows its own

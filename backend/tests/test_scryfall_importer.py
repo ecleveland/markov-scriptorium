@@ -1,14 +1,16 @@
 """Tests for the Scryfall bulk importer (VEG-213).
 
-The importer stream-parses a bulk JSON array and full-replaces the cards /
-card_faces tables. Tests build a tiny gzipped bulk file (a stand-in for the
-~110k-card export) and load it into a freshly-migrated tmp catalog — no network.
+The importer stream-parses a bulk JSON array, upserts the cards table, replaces
+each card's faces, and sweeps printings that left the export (VEG-575). Tests
+build a tiny gzipped bulk file (a stand-in for the ~110k-card export) and load
+it into a freshly-migrated tmp catalog — no network.
 """
 
 from __future__ import annotations
 
 import gzip
 import json
+import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import closing
@@ -229,12 +231,12 @@ def test_import_rebuilds_name_search_index(catalog: sqlite3.Connection, tmp_path
 
 
 def test_reimport_refreshes_search_index(catalog: sqlite3.Connection, tmp_path: Path) -> None:
-    """A second full-replace import leaves no stale entries in the FTS index.
+    """A re-import leaves no stale entries in the FTS index.
 
-    First import puts Edgar at rowid 1; the replace drops both and re-inserts only
-    Plains, which reuses rowid 1. Without a rebuild the FTS index would still hold
-    Edgar's trigrams at rowid 1, so an 'edgar' query would FTS-match rowid 1 and
-    join to the *Plains* row — a stale hit. The rebuild must prevent that.
+    The second export drops Edgar, so the sweep deletes his row. The external
+    content FTS table keeps no copy of its own, so without a rebuild it would
+    still hold Edgar's trigrams and an 'edgar' query could return a stale hit or
+    a row that no longer exists. The rebuild must prevent that.
     """
     from scriptorium import catalog as catalog_reads
 
@@ -403,6 +405,133 @@ def test_import_rolls_back_on_malformed_card(catalog: sqlite3.Connection, tmp_pa
     assert ids == {"edgar-1"}
 
 
+# --- referenced printings survive a refresh (VEG-575) ----------------------
+
+
+def _add_inventory_lot(conn: sqlite3.Connection, scryfall_id: str) -> None:
+    conn.execute("INSERT INTO inventory (scryfall_id) VALUES (?)", (scryfall_id,))
+    conn.commit()
+
+
+def _add_deck_slot(conn: sqlite3.Connection, scryfall_id: str) -> None:
+    deck_id = conn.execute("INSERT INTO decks (name) VALUES ('Blood Tome')").lastrowid
+    conn.execute(
+        "INSERT INTO deck_cards (deck_id, scryfall_id) VALUES (?, ?)", (deck_id, scryfall_id)
+    )
+    conn.commit()
+
+
+def _price(conn: sqlite3.Connection, scryfall_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT price_usd FROM cards WHERE scryfall_id = ?", (scryfall_id,)
+    ).fetchone()
+    return None if row is None else row["price_usd"]
+
+
+def test_reimport_with_inventory_row_succeeds(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """An owned lot no longer blocks the refresh, and the printing still updates."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD]))
+    _add_inventory_lot(catalog, "edgar-1")
+    repriced = {**_NORMAL_CARD, "prices": {"usd": "99.99"}}
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [repriced]))
+    assert result.cards == 1
+    assert _count(catalog, "inventory") == 1
+    assert _price(catalog, "edgar-1") == "99.99"
+
+
+def test_reimport_with_deck_slot_succeeds(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """A Tome slot no longer blocks the refresh, and the printing still updates."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD]))
+    _add_deck_slot(catalog, "edgar-1")
+    repriced = {**_NORMAL_CARD, "prices": {"usd": "99.99"}}
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [repriced]))
+    assert result.cards == 1
+    assert _count(catalog, "deck_cards") == 1
+    assert _price(catalog, "edgar-1") == "99.99"
+
+
+def test_vanished_unreferenced_printing_is_deleted(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"minimal-1"}
+    assert result.retired == 1
+    assert result.kept == 0
+
+
+def test_vanished_referenced_printing_is_kept_and_logged(
+    catalog: sqlite3.Connection, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A printing that left the export but is owned stays put and gets a warning."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    _add_inventory_lot(catalog, "edgar-1")
+    with caplog.at_level(logging.WARNING, logger="scriptorium"):
+        result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1", "minimal-1"}
+    assert result.kept == 1
+    assert result.retired == 0
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert (
+        "Scryfall bulk import kept 1 printing(s) missing from the export "
+        "because inventory or a Tome still references them"
+    ) in warnings
+
+
+def test_vanished_printing_with_no_action_reference_is_kept(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A reference with no ON DELETE clause (NO ACTION) guards a printing too."""
+    catalog.execute("CREATE TABLE scratch_refs (scryfall_id TEXT REFERENCES cards(scryfall_id))")
+    catalog.commit()
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    catalog.execute("INSERT INTO scratch_refs (scryfall_id) VALUES ('edgar-1')")
+    catalog.commit()
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1", "minimal-1"}
+    assert result.kept == 1
+    assert result.retired == 0
+
+
+def test_reimport_replaces_faces_when_count_shrinks(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_DFC_CARD]))
+    one_face = {**_DFC_CARD, "card_faces": _DFC_CARD["card_faces"][:1]}
+    import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [one_face]))
+    faces = catalog.execute(
+        "SELECT name FROM card_faces WHERE scryfall_id = 'dfc-1' ORDER BY face_index"
+    ).fetchall()
+    assert [f["name"] for f in faces] == ["Delver of Secrets"]
+
+
+def test_reimport_drops_faces_when_layout_loses_them(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A card that comes back with no faces keeps none of its old ones."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_DFC_CARD]))
+    no_faces = {k: v for k, v in _DFC_CARD.items() if k != "card_faces"}
+    import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [no_faces]))
+    assert _count(catalog, "card_faces") == 0
+
+
+def test_rollback_drops_temp_table(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """After a failed import, the next import on the same connection succeeds."""
+    dupe = _write_bulk(tmp_path / "dupe.json.gz", [_NORMAL_CARD, dict(_NORMAL_CARD)])
+    with pytest.raises(BulkImportError):
+        import_bulk_file(catalog, dupe)
+    leftover = catalog.execute(
+        "SELECT name FROM sqlite_temp_master WHERE name = 'bulk_seen'"
+    ).fetchall()
+    assert leftover == []
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "ok.json.gz", [_NORMAL_CARD]))
+    assert result.cards == 1
+    assert _count(catalog, "cards") == 1
+
+
 # --- input handling --------------------------------------------------------
 
 
@@ -479,7 +608,7 @@ def test_import_duplicate_id_raises_bulk_import_error(
 
 
 def test_import_atomic_under_autocommit_connection(tmp_path: Path) -> None:
-    """The full-replace stays atomic even on an autocommit=True connection.
+    """The refresh stays atomic even on an autocommit=True connection.
 
     Guards the importer's own-the-transaction design: if it relied on the
     connection's isolation mode instead, a mid-import failure here would leave
