@@ -19,7 +19,7 @@ import logging
 import sqlite3
 import zlib
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, cast
@@ -258,12 +258,11 @@ def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:
         # still rolls back this destructive operation before propagating.
         logger.error("Scryfall bulk import failed; rolling back", exc_info=True)
         conn.execute("ROLLBACK")
-        # A temp table created inside the transaction rolls back with it, so
-        # this is usually a no-op; IF EXISTS keeps it from raising.
-        conn.execute("DROP TABLE IF EXISTS temp.bulk_seen")
         raise
 
-    conn.execute("DROP TABLE IF EXISTS temp.bulk_seen")
+    # The import is already committed; a failed temp-table cleanup must not report it as failed.
+    with suppress(sqlite3.Error):
+        conn.execute("DROP TABLE IF EXISTS temp.bulk_seen")
     logger.info(
         "Scryfall bulk import complete: %d cards, %d faces, %d retired, %d kept",
         cards,
@@ -320,10 +319,10 @@ def _sweep(conn: sqlite3.Connection) -> tuple[int, int]:
     # Table and column names come from the schema via _guarding_references, not
     # user input, so f-string interpolation is safe here.
     guards = "".join(
-        f' AND scryfall_id NOT IN (SELECT "{col}" FROM "{table}")'
+        f' AND NOT EXISTS (SELECT 1 FROM "{table}" WHERE "{col}" = cards.scryfall_id)'
         for table, col in _guarding_references(conn)
     )
-    vanished = "scryfall_id NOT IN (SELECT scryfall_id FROM bulk_seen)"
+    vanished = "NOT EXISTS (SELECT 1 FROM bulk_seen WHERE scryfall_id = cards.scryfall_id)"
     total = int(conn.execute(f"SELECT COUNT(*) FROM cards WHERE {vanished}").fetchone()[0])
     # Delete faces explicitly so the sweep stays correct on a connection that
     # has foreign key enforcement (and so the CASCADE) turned off.
@@ -336,7 +335,7 @@ def _sweep(conn: sqlite3.Connection) -> tuple[int, int]:
     if kept:
         logger.warning(
             "Scryfall bulk import kept %d printing(s) missing from the export "
-            "because inventory or a Tome still references them",
+            "because other rows still reference them",
             kept,
         )
     return retired, kept

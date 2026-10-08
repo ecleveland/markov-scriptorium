@@ -476,7 +476,7 @@ def test_vanished_referenced_printing_is_kept_and_logged(
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert (
         "Scryfall bulk import kept 1 printing(s) missing from the export "
-        "because inventory or a Tome still references them"
+        "because other rows still reference them"
     ) in warnings
 
 
@@ -494,6 +494,25 @@ def test_vanished_printing_with_no_action_reference_is_kept(
     assert ids == {"edgar-1", "minimal-1"}
     assert result.kept == 1
     assert result.retired == 0
+
+
+def test_null_in_guarding_column_does_not_block_the_sweep(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A NULL in a referencing column guards nothing and must not stop the sweep."""
+    catalog.execute(
+        "CREATE TABLE scratch_nullable "
+        "(id INTEGER PRIMARY KEY, scryfall_id TEXT REFERENCES cards(scryfall_id))"
+    )
+    catalog.commit()
+    import_bulk_file(catalog, _write_bulk(tmp_path / "a.json.gz", [_NORMAL_CARD, _MINIMAL_CARD]))
+    catalog.execute("INSERT INTO scratch_nullable (scryfall_id) VALUES (NULL)")
+    catalog.commit()
+    result = import_bulk_file(catalog, _write_bulk(tmp_path / "b.json.gz", [_MINIMAL_CARD]))
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"minimal-1"}
+    assert result.retired == 1
+    assert result.kept == 0
 
 
 def test_reimport_replaces_faces_when_count_shrinks(

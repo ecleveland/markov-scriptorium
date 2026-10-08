@@ -176,7 +176,7 @@ trigger would do is application code.
 - [VEG-223]'s `:card_id` is the slot's `deck_cards.id`, not a Scryfall id.
 - The bulk importer's old `DELETE FROM cards` failed against inventory's
   RESTRICT once one lot existed, and deck slots inherited the failure. [VEG-575]
-  fixed it: the importer now upserts cards and its sweep never deletes a
+  fixed it. The importer now upserts cards and its sweep never deletes a
   printing that a lot or a slot references
   ([0019](0019-importer-upsert-and-sweep.md)).
 - `status` stores `in_progress` with an underscore, where PROJECT.md's prose

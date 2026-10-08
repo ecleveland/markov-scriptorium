@@ -45,7 +45,7 @@ folio twice preserves a distinct cost basis for value tracking. Total owned of a
 folio is `SUM(quantity)` grouped by the printing/finish/condition/language tuple.
 
 **FK restricts, not cascades.** `ON DELETE RESTRICT` (with `ON UPDATE CASCADE`)
-— the deliberate opposite of `card_faces`' `ON DELETE CASCADE`. Every bulk
+is the deliberate opposite of `card_faces`' `ON DELETE CASCADE`. Every bulk
 Scryfall refresh rewrites the card catalog; owned inventory must never be
 deleted out from under the user by that churn or a stray card delete. A printing
 that has owned copies cannot be deleted until those copies are removed first.
