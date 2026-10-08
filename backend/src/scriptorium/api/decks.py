@@ -111,13 +111,19 @@ class DeckUpdate(BaseModel):
     _not_null = field_validator("status", "claims_cards")(_reject_null)
 
 
+# The most copies one slot may hold. No real Tome comes close. The bound also
+# keeps the add-to-quantity upsert from ever overflowing SQLite's integer, and
+# a value past that integer would otherwise raise OverflowError, a 500.
+MAX_SLOT_QUANTITY = 1000
+
+
 class SlotCreate(BaseModel):
     """Body for adding copies of a printing to a Tome (POST /decks/{deck_id}/cards)."""
 
-    scryfall_id: str = Field(min_length=1)
+    scryfall_id: str
     finish: Finish = "nonfoil"
     board: Board = "main"
-    quantity: int = Field(default=1, gt=0)
+    quantity: int = Field(default=1, gt=0, le=MAX_SLOT_QUANTITY)
 
     _scryfall_id = field_validator("scryfall_id")(_clean_scryfall_id)
 
@@ -130,8 +136,8 @@ class SlotUpdate(BaseModel):
     be sent as ``null``.
     """
 
-    quantity: int | None = Field(default=None, gt=0)
-    scryfall_id: str | None = Field(default=None, min_length=1)
+    quantity: int | None = Field(default=None, gt=0, le=MAX_SLOT_QUANTITY)
+    scryfall_id: str | None = None
     finish: Finish | None = None
     board: Board | None = None
 
@@ -223,14 +229,13 @@ def tome_breakdown(deck_id: int) -> dict[str, Any]:
 def add_card(deck_id: int, payload: SlotCreate) -> dict[str, Any]:
     """Add copies of a printing to a Tome; an existing slot's quantity grows."""
     with closing(connect()) as conn:
-        if not printing_exists(conn, payload.scryfall_id):
-            raise _not_in_catalog(payload.scryfall_id)
         try:
             slot = decks.add_slot(conn, deck_id, **payload.model_dump())
         except decks.SlotConflictError as exc:
             raise _conflict(str(exc)) from exc
         except sqlite3.IntegrityError as exc:
-            # The Tome or the printing vanished after the checks above, or a
+            # Usually the printing is not in the catalog and the foreign key
+            # refused it. The Tome may also have vanished mid-request, or a
             # CHECK the data layer did not foresee fired. Report the missing
             # row if there is one, else a conflict.
             if not decks.deck_exists(conn, deck_id):
@@ -251,16 +256,17 @@ def amend_card(deck_id: int, slot_id: int, payload: SlotUpdate) -> dict[str, Any
     with closing(connect()) as conn:
         if not decks.deck_exists(conn, deck_id):
             raise _deck_not_found(deck_id)
-        if new_printing is not None and not printing_exists(conn, new_printing):
-            raise _not_in_catalog(new_printing)
         try:
             slot = decks.update_slot(conn, deck_id, slot_id, updates)
         except decks.SlotConflictError as exc:
             raise _conflict(str(exc)) from exc
         except sqlite3.IntegrityError as exc:
-            # Same fallback as add_card: name the missing row if there is one.
+            # Same fallback as add_card: name the missing row if there is one,
+            # checking the Tome, then the slot, then the printing.
             if not decks.deck_exists(conn, deck_id):
                 raise _deck_not_found(deck_id) from exc
+            if decks.get_slot(conn, deck_id, slot_id) is None:
+                raise _slot_not_found(deck_id, slot_id) from exc
             if new_printing is not None and not printing_exists(conn, new_printing):
                 raise _not_in_catalog(new_printing) from exc
             raise _conflict("The Tome refused this change.") from exc

@@ -348,6 +348,19 @@ def test_add_slot_partner_commanders_are_two_slots(catalog_conn: sqlite3.Connect
     assert [c["board"] for c in deck["cards"]] == ["commander", "commander"]
 
 
+@pytest.mark.parametrize("board", ["commander", "companion"])
+def test_add_slot_singleton_in_another_finish_raises(
+    catalog_conn: sqlite3.Connection, board: str
+) -> None:
+    """One commander per card: a foil copy can't join the nonfoil one on the board."""
+    deck_id = _deck(catalog_conn)
+    first = _slot(catalog_conn, deck_id, "edgar-1", board=board)
+    with pytest.raises(decks.SlotConflictError) as excinfo:
+        decks.add_slot(catalog_conn, deck_id, scryfall_id="edgar-1", finish="foil", board=board)
+    assert excinfo.value.existing_slot_id == first["id"]
+    assert catalog_conn.execute("SELECT COUNT(*) FROM deck_cards").fetchone()[0] == 1
+
+
 def test_add_slot_missing_deck_returns_none(catalog_conn: sqlite3.Connection) -> None:
     assert decks.add_slot(catalog_conn, 999, scryfall_id="bolt-1") is None
 
@@ -452,6 +465,31 @@ def test_update_slot_moving_a_playset_to_commander_raises(
     slot = _slot(catalog_conn, deck_id, "bolt-1", quantity=4)
     with pytest.raises(decks.SlotConflictError):
         decks.update_slot(catalog_conn, deck_id, slot["id"], {"board": "commander"})
+
+
+def test_update_slot_onto_singleton_held_in_another_finish_raises(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    deck_id = _deck(catalog_conn)
+    commander = _slot(catalog_conn, deck_id, "edgar-1", board="commander")
+    spare = _slot(catalog_conn, deck_id, "edgar-1", finish="foil", board="sideboard")
+    with pytest.raises(decks.SlotConflictError) as excinfo:
+        decks.update_slot(catalog_conn, deck_id, spare["id"], {"board": "commander"})
+    assert excinfo.value.existing_slot_id == commander["id"]
+    board = catalog_conn.execute(
+        "SELECT board FROM deck_cards WHERE id = ?", (spare["id"],)
+    ).fetchone()[0]
+    assert board == "sideboard"
+
+
+def test_update_slot_commander_can_change_its_own_finish(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    deck_id = _deck(catalog_conn)
+    commander = _slot(catalog_conn, deck_id, "edgar-1", board="commander")
+    updated = decks.update_slot(catalog_conn, deck_id, commander["id"], {"finish": "foil"})
+    assert updated is not None
+    assert (updated["finish"], updated["board"]) == ("foil", "commander")
 
 
 def test_update_slot_under_wrong_deck_returns_none(catalog_conn: sqlite3.Connection) -> None:

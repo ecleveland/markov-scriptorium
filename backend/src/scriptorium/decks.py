@@ -327,6 +327,40 @@ def delete_deck(conn: sqlite3.Connection, deck_id: int) -> bool:
 # --- slots ------------------------------------------------------------------
 
 
+def _check_singleton(
+    conn: sqlite3.Connection,
+    deck_id: int,
+    scryfall_id: str,
+    board: str,
+    quantity: int,
+    *,
+    except_slot_id: int | None = None,
+) -> None:
+    """Raise :class:`SlotConflictError` if a slot would break the one-copy rule.
+
+    Commander and companion hold one copy of a card. The lookup ignores finish,
+    so a foil copy can't join a nonfoil one on the same board. Different
+    printings can share the board, which is how partners work.
+    ``except_slot_id`` is the slot being amended, so it never conflicts with
+    itself.
+    """
+    if board not in SINGLETON_BOARDS:
+        return
+    if quantity > 1:
+        raise SlotConflictError(f"A {board} slot holds exactly one copy, not {quantity}.")
+    row = conn.execute(
+        "SELECT id FROM deck_cards WHERE deck_id = ? AND scryfall_id = ? AND board = ? "
+        "AND id IS NOT ? ORDER BY id LIMIT 1",
+        (deck_id, scryfall_id, board, except_slot_id),
+    ).fetchone()
+    if row is not None:
+        existing = int(row[0])
+        raise SlotConflictError(
+            f"This card is already the Tome's {board} (slot {existing}).",
+            existing_slot_id=existing,
+        )
+
+
 def add_slot(
     conn: sqlite3.Connection,
     deck_id: int,
@@ -340,23 +374,15 @@ def add_slot(
 
     Adding to a tuple the Tome already holds raises that slot's quantity, so
     the returned slot may be an existing one. On a singleton board (commander,
-    companion) a second copy raises :class:`SlotConflictError` instead.
+    companion) a second copy of the card, in any finish, raises
+    :class:`SlotConflictError` instead.
 
-    The caller confirms the printing exists first (see
-    :func:`scriptorium.inventory.printing_exists`). If it vanished since, the
-    foreign key raises :class:`sqlite3.IntegrityError` and nothing is written.
+    A printing missing from the catalog makes the foreign key raise
+    :class:`sqlite3.IntegrityError`, after a rollback, and nothing is written.
     """
     if not deck_exists(conn, deck_id):
         return None
-    if board in SINGLETON_BOARDS:
-        if quantity > 1:
-            raise SlotConflictError(f"A {board} slot holds exactly one copy, not {quantity}.")
-        existing = _slot_id_for(conn, deck_id, scryfall_id, finish, board)
-        if existing is not None:
-            raise SlotConflictError(
-                f"This card is already the Tome's {board} (slot {existing}).",
-                existing_slot_id=existing,
-            )
+    _check_singleton(conn, deck_id, scryfall_id, board, quantity)
     try:
         row = conn.execute(
             "INSERT INTO deck_cards (deck_id, scryfall_id, finish, board, quantity) "
@@ -397,10 +423,14 @@ def update_slot(
         return get_slot(conn, deck_id, slot_id)
 
     target = {**dict(current), **fields}
-    if target["board"] in SINGLETON_BOARDS and target["quantity"] > 1:
-        raise SlotConflictError(
-            f"A {target['board']} slot holds exactly one copy, not {target['quantity']}."
-        )
+    _check_singleton(
+        conn,
+        deck_id,
+        target["scryfall_id"],
+        target["board"],
+        target["quantity"],
+        except_slot_id=slot_id,
+    )
     existing = _slot_id_for(conn, deck_id, target["scryfall_id"], target["finish"], target["board"])
     if existing is not None and existing != slot_id:
         raise SlotConflictError(

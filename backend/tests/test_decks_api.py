@@ -268,6 +268,35 @@ def test_add_slot_commander_quantity_above_one_is_409() -> None:
     assert resp.status_code == 409
 
 
+def test_add_slot_same_commander_in_another_finish_is_409() -> None:
+    deck = _create()
+    first = _add(deck["id"], scryfall_id="edgar-1", board="commander")
+    resp = client.post(
+        f"/decks/{deck['id']}/cards",
+        json={"scryfall_id": "edgar-1", "board": "commander", "finish": "foil"},
+    )
+    assert resp.status_code == 409
+    assert str(first["id"]) in resp.json()["detail"]
+
+
+_TOO_BIG = 9223372036854775808  # one past SQLite's largest integer
+
+
+def test_add_slot_quantity_overflow_is_422() -> None:
+    deck = _create()
+    resp = client.post(
+        f"/decks/{deck['id']}/cards", json={"scryfall_id": "bolt-1", "quantity": _TOO_BIG}
+    )
+    assert resp.status_code == 422
+
+
+def test_update_slot_quantity_overflow_is_422() -> None:
+    deck = _create()
+    slot = _add(deck["id"])
+    resp = client.patch(f"/decks/{deck['id']}/cards/{slot['id']}", json={"quantity": _TOO_BIG})
+    assert resp.status_code == 422
+
+
 # --- PATCH /decks/{id}/cards/{slot_id} ---------------------------------------
 
 
@@ -315,6 +344,13 @@ def test_update_slot_unknown_slot_or_wrong_deck_is_404() -> None:
     resp = client.patch(f"/decks/{other['id']}/cards/{slot['id']}", json={"quantity": 2})
     assert resp.status_code == 404
     assert client.patch(f"/decks/999/cards/{slot['id']}", json={"quantity": 2}).status_code == 404
+
+
+def test_update_missing_slot_with_unknown_printing_is_the_slot_404() -> None:
+    deck = _create()
+    resp = client.patch(f"/decks/{deck['id']}/cards/999", json={"scryfall_id": "no-such-card"})
+    assert resp.status_code == 404
+    assert "slot" in resp.json()["detail"]
 
 
 @pytest.mark.parametrize(
