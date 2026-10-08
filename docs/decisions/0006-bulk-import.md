@@ -1,6 +1,7 @@
 # 0006 — Scryfall Bulk Import Strategy
 
-**Status:** accepted (2026-06-15)
+**Status:** accepted (2026-06-15). The "Full replace" bullet is superseded by
+[0019](0019-importer-upsert-and-sweep.md), which upserts and sweeps instead.
 
 Resolves [VEG-213]. Decides how the downloaded Scryfall bulk export
 ([VEG-212]) is parsed and loaded into the `cards` / `card_faces` tables

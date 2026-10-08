@@ -164,7 +164,8 @@ def refresh_catalog(
     Fetches the cheap bulk-data listing and compares its version to what we last
     imported: if unchanged (and not ``force``), records the check and returns
     without the heavy download/import. Otherwise downloads the export and
-    full-replaces the catalog, then records the new version.
+    refreshes the catalog (upsert plus guarded sweep, ADR 0019), then records
+    the new version.
 
     Propagates :class:`~scriptorium.scryfall.bulk.ScryfallBulkError` and
     :class:`~scriptorium.scryfall.importer.BulkImportError` on failure; the

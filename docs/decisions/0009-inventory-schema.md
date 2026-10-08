@@ -13,6 +13,7 @@ separate sequences — this is ADR 0009, migration 0005).
 
 [VEG-217]: https://linear.app/vega-apps/issue/VEG-217
 [VEG-279]: https://linear.app/vega-apps/issue/VEG-279
+[VEG-575]: https://linear.app/vega-apps/issue/VEG-575
 
 ---
 
@@ -44,8 +45,8 @@ folio twice preserves a distinct cost basis for value tracking. Total owned of a
 folio is `SUM(quantity)` grouped by the printing/finish/condition/language tuple.
 
 **FK restricts, not cascades.** `ON DELETE RESTRICT` (with `ON UPDATE CASCADE`)
-— the deliberate opposite of `card_faces`' `ON DELETE CASCADE`. The card catalog is
-full-replaced on every bulk Scryfall refresh; owned inventory must never be
+is the deliberate opposite of `card_faces`' `ON DELETE CASCADE`. Every bulk
+Scryfall refresh rewrites the card catalog; owned inventory must never be
 deleted out from under the user by that churn or a stray card delete. A printing
 that has owned copies cannot be deleted until those copies are removed first.
 
@@ -86,8 +87,10 @@ language here.
 - "How many do I own?" is a `SUM(quantity)` grouped query, not a single-row
   read. UI/API code (the Inscribe flow, search) owns that rollup.
 - A printing with inventory can't be deleted until its rows are cleared; sync
-  code that prunes the catalog must account for the RESTRICT (in practice the
-  bulk refresh replaces rows it still has, so live printings are unaffected).
+  code that prunes the catalog must account for the RESTRICT. The bulk refresh
+  upserts printings in place, and its sweep skips any printing that inventory
+  references, so owned printings survive even after they leave the export
+  ([0019](0019-importer-upsert-and-sweep.md), [VEG-575]).
 - [VEG-279] will add a `volumes` table and migrate `location` from text to an
   FK; until then, free-text location values can drift (the motivation for that
   ticket).
