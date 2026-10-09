@@ -166,4 +166,14 @@ describe('BreakdownPage', () => {
       await screen.findByRole('heading', { name: 'No such Tome' }),
     ).toBeInTheDocument()
   })
+
+  it('explains a breakdown that could not be read', async () => {
+    deckMock.mockResolvedValue({ ...deck({ id: 4 }), cards: [] })
+    breakdownMock.mockRejectedValue(new ApiError('The archive is on fire', 500))
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The breakdown could not be read.',
+    )
+  })
 })

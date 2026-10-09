@@ -35,6 +35,15 @@ function renderPage() {
 afterEach(() => vi.clearAllMocks())
 
 describe('TomesPage', () => {
+  it('explains a list that could not be read', async () => {
+    listMock.mockRejectedValue(new ApiError('The archive is on fire', 500))
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The Tomes could not be read.',
+    )
+  })
+
   it('lists each Tome with its format, status, claim, and copy count', async () => {
     listMock.mockResolvedValue([
       deck({

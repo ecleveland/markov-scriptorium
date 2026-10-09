@@ -85,6 +85,15 @@ describe('sortSlots', () => {
     ])
   })
 
+  it('orders slots with an unknown mana value by name', () => {
+    const zeta = slot({ id: 7, card: { name: 'Zeta', cmc: null } })
+    const alpha = slot({ id: 8, card: { name: 'Alpha', cmc: null } })
+    expect(sortSlots([zeta, alpha], 'cmc').map((s) => s.card.name)).toEqual([
+      'Alpha',
+      'Zeta',
+    ])
+  })
+
   it('does not reorder its input', () => {
     const input = [ring, bolt]
     sortSlots(input, 'type')

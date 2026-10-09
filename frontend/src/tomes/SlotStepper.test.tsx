@@ -13,6 +13,7 @@ vi.mock('../api', async (importOriginal) => {
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, getDeck, updateSlot, type DeckWithCards } from '../api'
 import { deck } from '../test/fixtures'
+import { inventoryKeys } from '../catalog/queryKeys'
 import { tomeKeys } from './queryKeys'
 
 const updateMock = vi.mocked(updateSlot)
@@ -27,6 +28,12 @@ function WithTome() {
   })
   if (!query.isSuccess) return null
   return <SlotStepper slot={query.data.cards[0]} />
+}
+
+/** A live read of the Catalog, so a test can see whether it was refetched. */
+function InventoryProbe({ read }: { read: () => Promise<unknown> }) {
+  useQuery({ queryKey: inventoryKeys.all, queryFn: read })
+  return null
 }
 
 describe('SlotStepper', () => {
@@ -126,5 +133,30 @@ describe('SlotStepper', () => {
     finishRefetch(tome(3))
     await waitFor(() => expect(increase).toBeEnabled())
     expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it("refetches the Catalog's reservations after a step", async () => {
+    const user = userEvent.setup()
+    const record = slot({ id: 9, deck_id: 4, quantity: 2 })
+    vi.mocked(getDeck).mockResolvedValue({
+      ...deck({ id: 4 }),
+      cards: [record],
+    })
+    updateMock.mockResolvedValue({ ...record, quantity: 3 })
+    const readInventory = vi.fn().mockResolvedValue([])
+    renderWithQuery(
+      <>
+        <WithTome />
+        <InventoryProbe read={readInventory} />
+      </>,
+    )
+
+    const increase = await screen.findByRole('button', {
+      name: 'Increase quantity of Lightning Bolt',
+    })
+    await waitFor(() => expect(readInventory).toHaveBeenCalledTimes(1))
+    await user.click(increase)
+
+    await waitFor(() => expect(readInventory).toHaveBeenCalledTimes(2))
   })
 })

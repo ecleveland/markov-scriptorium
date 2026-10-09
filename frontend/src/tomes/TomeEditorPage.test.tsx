@@ -1,8 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useQuery } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DeckSlot, DeckWithCards } from '../api'
+import { inventoryKeys } from '../catalog/queryKeys'
 import { deck, printing, slot } from '../test/fixtures'
 import { renderWithQuery } from '../test/queryWrapper'
 import { TomeEditorPage } from './TomeEditorPage'
@@ -96,7 +98,16 @@ function LocationProbe() {
   return <p data-testid="location">{pathname + search}</p>
 }
 
-function renderEditor(path = '/tomes/4') {
+/** A live read of the Catalog, so a test can see whether it was refetched. */
+function InventoryProbe({ read }: { read: () => Promise<unknown> }) {
+  useQuery({ queryKey: inventoryKeys.all, queryFn: read })
+  return null
+}
+
+function renderEditor(
+  path = '/tomes/4',
+  readInventory?: () => Promise<unknown>,
+) {
   return renderWithQuery(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
@@ -107,6 +118,7 @@ function renderEditor(path = '/tomes/4') {
             <>
               <TomeEditorPage />
               <LocationProbe />
+              {readInventory && <InventoryProbe read={readInventory} />}
             </>
           }
         />
@@ -363,6 +375,100 @@ describe('TomeEditorPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'No such Tome' }),
     ).toBeInTheDocument()
+  })
+
+  it('stays on the editor when unbinding is refused', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(tome([]))
+    deleteMock.mockRejectedValue(new ApiError('The scriptorium refused', 500))
+    renderEditor()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Unbind this Tome' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Confirm unbinding' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The scriptorium refused',
+    )
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Edgar Markov' }),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/tomes\/4$/)
+  })
+
+  it('explains a Tome that could not be read', async () => {
+    getMock.mockRejectedValue(new ApiError('The archive is on fire', 500))
+    renderEditor()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The Tome could not be read.',
+    )
+  })
+
+  it('refuses a blank name on amend', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(tome([]))
+    renderEditor()
+
+    await user.click(await screen.findByText('Amend the Tome'))
+    await user.clear(screen.getByLabelText('Name'))
+    await user.click(screen.getByRole('button', { name: 'Amend' }))
+
+    expect(await screen.findByText('A Tome needs a name.')).toBeInTheDocument()
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the reason when removing a slot is refused', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(tome([bolt]))
+    deleteSlotMock.mockRejectedValue(new ApiError('The slot is sealed.', 500))
+    renderEditor()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Remove Lightning Bolt' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The slot is sealed.',
+    )
+  })
+
+  it('says there is no such Tome for an id that is not a number', async () => {
+    renderEditor('/tomes/abc')
+    expect(
+      await screen.findByRole('heading', { name: 'No such Tome' }),
+    ).toBeInTheDocument()
+    expect(getMock).not.toHaveBeenCalled()
+  })
+
+  it("refetches the Catalog's reservations after a claims change", async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(tome([]))
+    updateMock.mockResolvedValue(tome([], { claims_cards: false }))
+    const readInventory = vi.fn().mockResolvedValue([])
+    renderEditor('/tomes/4', readInventory)
+
+    const toggle = await screen.findByRole('checkbox', {
+      name: 'This Tome claims its cards',
+    })
+    await waitFor(() => expect(readInventory).toHaveBeenCalledTimes(1))
+    await user.click(toggle)
+
+    await screen.findByText('Saved.')
+    expect(readInventory).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the Catalog alone after a status-only change', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(tome([]))
+    updateMock.mockResolvedValue(tome([], { status: 'active' }))
+    const readInventory = vi.fn().mockResolvedValue([])
+    renderEditor('/tomes/4', readInventory)
+
+    await waitFor(() => expect(readInventory).toHaveBeenCalledTimes(1))
+    await user.selectOptions(await screen.findByLabelText('Status'), 'active')
+
+    await screen.findByText('Saved.')
+    expect(readInventory).toHaveBeenCalledTimes(1)
   })
 })
 
