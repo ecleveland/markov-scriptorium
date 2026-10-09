@@ -78,41 +78,62 @@ export class ApiError extends Error {
   readonly status: number
   /** The backend's `detail` (FastAPI error body), when present. */
   readonly detail?: string
+  /** The parsed `detail` when the backend sent an object, such as a 409 that
+   *  names the Tomes holding the copies. */
+  readonly detailObject?: unknown
 
-  constructor(message: string, status: number, detail?: string) {
+  constructor(
+    message: string,
+    status: number,
+    detail?: string,
+    detailObject?: unknown,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.detailObject = detailObject
   }
 }
 
+interface ErrorBody {
+  /** A sentence to show, when the body carried one. */
+  text?: string
+  /** The raw `detail` when it was an object. */
+  object?: unknown
+}
+
 /** Pull FastAPI's `{ detail }` off an error response, tolerant of any body. */
-async function errorDetail(res: Response): Promise<string | undefined> {
+async function errorDetail(res: Response): Promise<ErrorBody> {
   try {
     const body = (await res.json()) as { detail?: unknown }
-    if (typeof body.detail === 'string') return body.detail
+    if (typeof body.detail === 'string') return { text: body.detail }
     // Structured details (e.g. the bulk-inscribe 422 `{message, unknown}`) carry
-    // a human sentence in `message` — surface that, not the raw JSON blob.
+    // a human sentence in `message`. Surface that, not the raw JSON blob.
     if (body.detail != null && typeof body.detail === 'object') {
       const message = (body.detail as { message?: unknown }).message
-      if (typeof message === 'string') return message
+      return {
+        text:
+          typeof message === 'string' ? message : JSON.stringify(body.detail),
+        object: body.detail,
+      }
     }
-    if (body.detail != null) return JSON.stringify(body.detail)
+    if (body.detail != null) return { text: JSON.stringify(body.detail) }
   } catch {
     // Non-JSON body; the status code alone will have to do.
   }
-  return undefined
+  return {}
 }
 
 async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
-    const detail = await errorDetail(res)
+    const { text, object } = await errorDetail(res)
     throw new ApiError(
-      detail ?? `Request to ${path} failed (${res.status})`,
+      text ?? `Request to ${path} failed (${res.status})`,
       res.status,
-      detail,
+      text,
+      object,
     )
   }
   return res
@@ -452,4 +473,202 @@ export async function ownedForPrinting(
   return request<OwnedForPrinting>(
     `/inventory/card/${encodeURIComponent(scryfallId)}`,
   )
+}
+
+// --- Tomes (VEG-223, VEG-224, VEG-225) -------------------------------------
+
+export const DECK_STATUSES = [
+  'in_progress',
+  'active',
+  'playtest',
+  'shelved',
+] as const
+export type DeckStatus = (typeof DECK_STATUSES)[number]
+
+/** Boards in the order the backend ranks them (commander first). */
+export const BOARDS = [
+  'commander',
+  'companion',
+  'main',
+  'sideboard',
+  'maybeboard',
+] as const
+export type Board = (typeof BOARDS)[number]
+
+/** A Tome as the API returns it. */
+export interface Deck {
+  id: number
+  name: string
+  format: string | null
+  status: DeckStatus
+  claims_cards: boolean
+  notes: string | null
+  changelog: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** One entry of GET /decks: the Tome plus its copy count, maybeboard excluded. */
+export interface DeckListEntry extends Deck {
+  card_count: number
+}
+
+/** The card display object on a slot or breakdown line. */
+export interface SlotCard {
+  name: string
+  set_code: string
+  set_name: string
+  collector_number: string
+  rarity: string
+  image_uris: Record<string, string> | null
+  type_line: string | null
+  mana_cost: string | null
+  cmc: number | null
+}
+
+/** One (printing, finish, board) row of a Tome with its copy count. */
+export interface DeckSlot {
+  id: number
+  deck_id: number
+  scryfall_id: string
+  finish: Finish
+  board: Board
+  quantity: number
+  card: SlotCard
+}
+
+/** GET /decks/{id}: the Tome and every slot in it. */
+export interface DeckWithCards extends Deck {
+  cards: DeckSlot[]
+}
+
+export interface DeckCreate {
+  name: string
+  format?: string | null
+  status?: DeckStatus
+  claims_cards?: boolean
+  notes?: string | null
+  changelog?: string | null
+}
+
+/** PATCH /decks/{id}. Omitted keys stay; null clears format, notes, changelog. */
+export type DeckPatch = Partial<DeckCreate>
+
+export interface SlotCreate {
+  scryfall_id: string
+  finish?: Finish
+  board?: Board
+  quantity?: number
+}
+
+export type SlotPatch = Partial<SlotCreate>
+
+/** One slot's owned versus needed. `swap_hint` is set only when needed > 0. */
+export interface BreakdownLine {
+  id: number
+  board: Board
+  scryfall_id: string
+  finish: Finish
+  quantity: number
+  owned: number
+  available: number
+  have: number
+  needed: number
+  card: SlotCard
+  swap_hint: AcrossPrintings | null
+}
+
+export interface Breakdown {
+  deck_id: number
+  lines: BreakdownLine[]
+  totals: { cards: number; have: number; needed: number }
+}
+
+/** A claiming Tome that already holds copies a write wanted. */
+export interface ReservationHolder {
+  deck_id: number
+  name: string
+  quantity: number
+}
+
+/** The 409 `detail` when a claim would take copies other Tomes hold. */
+export interface ReservationConflict {
+  message: string
+  holders: ReservationHolder[]
+}
+
+/**
+ * The Tomes in the way when `err` is a reservation 409, else null. No screen
+ * reads it yet, because the 409 message already names the holders. It is kept
+ * for the Tome editor, for when a control wants to link to the holding Tomes.
+ */
+export function reservationHolders(err: unknown): ReservationHolder[] | null {
+  if (!(err instanceof ApiError)) return null
+  const detail = err.detailObject
+  if (detail == null || typeof detail !== 'object') return null
+  const holders = (detail as { holders?: unknown }).holders
+  return Array.isArray(holders) ? (holders as ReservationHolder[]) : null
+}
+
+function jsonBody(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }
+}
+
+/** Every Tome, newest first. */
+export async function listDecks(): Promise<DeckListEntry[]> {
+  return request<DeckListEntry[]>('/decks')
+}
+
+/** One Tome with its slots, ordered by board then card name. */
+export async function getDeck(deckId: number): Promise<DeckWithCards> {
+  return request<DeckWithCards>(`/decks/${deckId}`)
+}
+
+export async function createDeck(body: DeckCreate): Promise<Deck> {
+  return request<Deck>('/decks', jsonBody('POST', body))
+}
+
+export async function updateDeck(
+  deckId: number,
+  patch: DeckPatch,
+): Promise<Deck> {
+  return request<Deck>(`/decks/${deckId}`, jsonBody('PATCH', patch))
+}
+
+export async function deleteDeck(deckId: number): Promise<void> {
+  return requestVoid(`/decks/${deckId}`, { method: 'DELETE' })
+}
+
+/** Add copies to a Tome. A slot already holding the tuple grows instead. */
+export async function addSlot(
+  deckId: number,
+  body: SlotCreate,
+): Promise<DeckSlot> {
+  return request<DeckSlot>(`/decks/${deckId}/cards`, jsonBody('POST', body))
+}
+
+export async function updateSlot(
+  deckId: number,
+  slotId: number,
+  patch: SlotPatch,
+): Promise<DeckSlot> {
+  return request<DeckSlot>(
+    `/decks/${deckId}/cards/${slotId}`,
+    jsonBody('PATCH', patch),
+  )
+}
+
+export async function deleteSlot(
+  deckId: number,
+  slotId: number,
+): Promise<void> {
+  return requestVoid(`/decks/${deckId}/cards/${slotId}`, { method: 'DELETE' })
+}
+
+export async function getBreakdown(deckId: number): Promise<Breakdown> {
+  return request<Breakdown>(`/decks/${deckId}/breakdown`)
 }

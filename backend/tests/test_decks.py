@@ -290,6 +290,22 @@ def test_add_slot_inserts_enriched_slot(catalog_conn: sqlite3.Connection) -> Non
     assert slot["card"]["name"] == "Lightning Bolt"
 
 
+def test_slot_card_carries_type_line_mana_cost_and_cmc(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(
+        catalog_conn,
+        "ghoul-1",
+        "Vampire Ghoul",
+        type_line="Creature — Vampire",
+        mana_cost="{2}{B}",
+        cmc=3.0,
+    )
+    deck_id = _deck(catalog_conn)
+    slot = _slot(catalog_conn, deck_id, "ghoul-1")
+    assert slot["card"]["type_line"] == "Creature — Vampire"
+    assert slot["card"]["mana_cost"] == "{2}{B}"
+    assert slot["card"]["cmc"] == 3.0
+
+
 def test_add_slot_defaults_to_one_nonfoil_main(catalog_conn: sqlite3.Connection) -> None:
     deck_id = _deck(catalog_conn)
     slot = _slot(catalog_conn, deck_id, "bolt-1")
@@ -1003,6 +1019,25 @@ def test_breakdown_line_shape_order_and_totals(catalog_conn: sqlite3.Connection)
     }
     assert commander["card"]["image_uris"] == {"normal": "https://img/edgar.jpg"}
     assert result["totals"] == {"cards": 7, "have": 4, "needed": 3}
+
+
+def test_breakdown_line_card_carries_type_line_mana_cost_and_cmc(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(
+        catalog_conn,
+        "ghoul-1",
+        "Vampire Ghoul",
+        type_line="Creature — Vampire",
+        mana_cost="{2}{B}",
+        cmc=3.0,
+    )
+    deck_id = _deck(catalog_conn)
+    _slot(catalog_conn, deck_id, "ghoul-1")
+    card = _breakdown(catalog_conn, deck_id)["lines"][0]["card"]
+    assert card["type_line"] == "Creature — Vampire"
+    assert card["mana_cost"] == "{2}{B}"
+    assert card["cmc"] == 3.0
 
 
 def test_breakdown_attaches_swap_hint_only_to_needed_lines(

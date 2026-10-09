@@ -10,6 +10,16 @@ import {
   listInventory,
   ownedForPrinting,
   parseCsv,
+  addSlot,
+  createDeck,
+  deleteDeck,
+  deleteSlot,
+  getBreakdown,
+  getDeck,
+  listDecks,
+  reservationHolders,
+  updateDeck,
+  updateSlot,
   parseDecklist,
   resolveDecklist,
   searchPrintings,
@@ -375,5 +385,115 @@ describe('ownedForPrinting', () => {
       '/api/inventory/card/a%2Fb',
       undefined,
     )
+  })
+})
+
+describe('Tomes', () => {
+  it('lists the Tomes', async () => {
+    const fetchMock = mockFetch([])
+    expect(await listDecks()).toEqual([])
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks', undefined)
+  })
+
+  it('reads one Tome with its slots', async () => {
+    const fetchMock = mockFetch({ id: 3, cards: [] })
+    await getDeck(3)
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/3', undefined)
+  })
+
+  it('binds a Tome with a JSON body', async () => {
+    const fetchMock = mockFetch({ id: 1 })
+    await createDeck({ name: 'Edgar', format: 'commander' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Edgar', format: 'commander' }),
+    })
+  })
+
+  it('amends a Tome, sending null to clear a field', async () => {
+    const fetchMock = mockFetch({ id: 1 })
+    await updateDeck(1, { format: null, status: 'active' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: null, status: 'active' }),
+    })
+  })
+
+  it('unbinds a Tome without parsing the 204', async () => {
+    const json = vi.fn()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(deleteDeck(4)).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/4', { method: 'DELETE' })
+    expect(json).not.toHaveBeenCalled()
+  })
+
+  it('adds, amends, and removes a slot', async () => {
+    let fetchMock = mockFetch({ id: 9 })
+    await addSlot(2, { scryfall_id: 'bolt-lea', board: 'main', quantity: 4 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/2/cards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scryfall_id: 'bolt-lea',
+        board: 'main',
+        quantity: 4,
+      }),
+    })
+
+    fetchMock = mockFetch({ id: 9 })
+    await updateSlot(2, 9, { quantity: 3 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/2/cards/9', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantity: 3 }),
+    })
+
+    fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 })
+    vi.stubGlobal('fetch', fetchMock)
+    await deleteSlot(2, 9)
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/2/cards/9', {
+      method: 'DELETE',
+    })
+  })
+
+  it('reads the breakdown', async () => {
+    const fetchMock = mockFetch({ deck_id: 2, lines: [], totals: {} })
+    await getBreakdown(2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/decks/2/breakdown', undefined)
+  })
+})
+
+describe('reservationHolders', () => {
+  const holders = [
+    { deck_id: 1, name: 'Edgar', quantity: 2 },
+    { deck_id: 5, name: 'Olivia', quantity: 1 },
+  ]
+
+  it('reads the holders off a reservation 409 and keeps the message', async () => {
+    mockFetch(
+      { detail: { message: 'Edgar holds 2 copies.', holders } },
+      false,
+      409,
+    )
+    const err = await addSlot(2, { scryfall_id: 'bolt-lea' }).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).message).toBe('Edgar holds 2 copies.')
+    expect(reservationHolders(err)).toEqual(holders)
+  })
+
+  it('answers null for a string detail', async () => {
+    mockFetch({ detail: 'A commander slot holds one copy.' }, false, 409)
+    const err = await addSlot(2, { scryfall_id: 'x' }).catch((e: unknown) => e)
+    expect(reservationHolders(err)).toBeNull()
+  })
+
+  it('answers null for anything that is not an ApiError', () => {
+    expect(reservationHolders(new Error('boom'))).toBeNull()
+    expect(reservationHolders(undefined)).toBeNull()
   })
 })

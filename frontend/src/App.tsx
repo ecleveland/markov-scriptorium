@@ -6,6 +6,9 @@ import { Consulting } from './components'
 import { CatalogPage } from './catalog/CatalogPage'
 import { LotDetailPage } from './catalog/LotDetailPage'
 import { InscribePage } from './inscribe/InscribePage'
+import { BreakdownPage } from './tomes/BreakdownPage'
+import { TomeEditorPage } from './tomes/TomeEditorPage'
+import { TomesPage } from './tomes/TomesPage'
 import { CsvImportPage } from './onboarding/CsvImportPage'
 import { DecklistPage } from './onboarding/DecklistPage'
 
@@ -26,6 +29,9 @@ function App() {
           <Route path="/" element={<Navigate to="/catalog" replace />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/:lotId" element={<LotDetailPage />} />
+          <Route path="/tomes" element={<TomesPage />} />
+          <Route path="/tomes/:deckId" element={<TomeEditorPage />} />
+          <Route path="/tomes/:deckId/breakdown" element={<BreakdownPage />} />
           <Route path="/inscribe" element={<InscribePage />} />
           <Route path="/import/decklist" element={<DecklistPage />} />
           <Route path="/import/csv" element={<CsvImportPage />} />

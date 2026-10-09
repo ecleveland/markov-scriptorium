@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import {
   ApiError,
   CONDITIONS,
-  FINISHES,
   inscribe,
   type CardPrinting,
   type Condition,
@@ -19,20 +18,13 @@ import {
   Select,
   describePrinting,
 } from '../components'
+import { availableFinishes } from './finishes'
 import { coerceQuantity } from './quantity'
 
 interface Props {
   printing: CardPrinting
   onInscribed: (lot: InventoryLot) => void
   onChangePrinting: () => void
-}
-
-/** Finishes this printing actually exists in (per Scryfall), else nonfoil. */
-function availableFinishes(printing: CardPrinting): Finish[] {
-  const offered = FINISHES.filter((finish) =>
-    printing.finishes?.includes(finish),
-  )
-  return offered.length > 0 ? offered : ['nonfoil']
 }
 
 /** The acquisition details for a chosen printing, then POST to inscribe it. */
