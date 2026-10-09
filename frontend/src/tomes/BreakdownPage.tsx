@@ -38,11 +38,12 @@ export function BreakdownPage() {
   // Only a failed first read replaces the page; a failed refresh keeps what
   // is cached on screen with a notice above it.
   const failure = tome.error ?? breakdown.error
+  // A 404 replaces the page even over cached data, as on the editor.
+  if (failure instanceof ApiError && failure.status === 404) {
+    return <NoSuchTome />
+  }
   if (tome.data === undefined || breakdown.data === undefined) {
     if (failure) {
-      if (failure instanceof ApiError && failure.status === 404) {
-        return <NoSuchTome />
-      }
       return (
         <section className="tome">
           <Notice tone="danger" role="alert">

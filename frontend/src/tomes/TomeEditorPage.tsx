@@ -34,13 +34,15 @@ export function TomeEditorPage() {
   })
 
   if (deckId === null) return <NoSuchTome />
+  // A 404 replaces the page even over cached data: a Tome unbound elsewhere
+  // must not keep a stale editor alive.
+  if (query.error instanceof ApiError && query.error.status === 404) {
+    return <NoSuchTome />
+  }
   // Only a failed first read replaces the page. A failed background refetch
   // keeps the cached Tome on screen, so unsaved amend edits survive it.
   if (query.data === undefined) {
     if (query.isError) {
-      if (query.error instanceof ApiError && query.error.status === 404) {
-        return <NoSuchTome />
-      }
       return (
         <section className="tome">
           <Notice tone="danger" role="alert">
