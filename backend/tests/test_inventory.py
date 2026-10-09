@@ -575,3 +575,135 @@ def test_owned_across_printings_name_fallback_ignores_oracled_rows(
     assert across["grouping"] == "name"
     assert across["total_quantity"] == 1
     assert [p["scryfall_id"] for p in across["printings"]] == ["bolt-1"]
+
+
+# --- reservations on reads (VEG-224) ---------------------------------------
+
+
+def _claim(
+    conn: sqlite3.Connection,
+    scryfall_id: str,
+    quantity: int,
+    *,
+    finish: str = "nonfoil",
+    board: str = "main",
+    claims: bool = True,
+) -> None:
+    """Slot copies into a fresh Tome with raw inserts (no dependency on decks)."""
+    cur = conn.execute(
+        "INSERT INTO decks (name, claims_cards) VALUES (?, ?)", ("Tome", int(claims))
+    )
+    conn.execute(
+        "INSERT INTO deck_cards (deck_id, scryfall_id, finish, board, quantity) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (cur.lastrowid, scryfall_id, finish, board, quantity),
+    )
+    conn.commit()
+
+
+def test_lot_carries_its_folio_reservation(catalog_conn: sqlite3.Connection) -> None:
+    first = inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=2)
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=1)
+    foil = inventory.create_lot(catalog_conn, scryfall_id="bolt-1", finish="foil")
+    _claim(catalog_conn, "bolt-1", 2)
+    _claim(catalog_conn, "bolt-1", 5, board="maybeboard")
+    _claim(catalog_conn, "bolt-1", 5, claims=False)
+
+    lot = inventory.get_lot(catalog_conn, first["id"])
+    assert lot is not None
+    assert lot["folio"] == {"owned": 3, "reserved": 2, "available": 1}
+    listed = {row["id"]: row for row in inventory.list_lots(catalog_conn)[0]}
+    assert listed[first["id"]]["folio"] == {"owned": 3, "reserved": 2, "available": 1}
+    assert listed[foil["id"]]["folio"] == {"owned": 1, "reserved": 0, "available": 1}
+
+
+def test_lot_folio_available_floors_at_zero(catalog_conn: sqlite3.Connection) -> None:
+    lot = inventory.create_lot(catalog_conn, scryfall_id="bolt-1")
+    _claim(catalog_conn, "bolt-1", 3)
+    fetched = inventory.get_lot(catalog_conn, lot["id"])
+    assert fetched is not None
+    assert fetched["folio"] == {"owned": 1, "reserved": 3, "available": 0}
+
+
+def test_owned_for_printing_carries_reservations_per_finish(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=3)
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", finish="foil")
+    _claim(catalog_conn, "bolt-1", 2)
+    _claim(catalog_conn, "bolt-1", 1, finish="etched")  # claimed but unowned
+
+    owned = inventory.owned_for_printing(catalog_conn, "bolt-1")
+
+    assert owned["reservations"] == [
+        {"finish": "etched", "owned": 0, "reserved": 1, "available": 0},
+        {"finish": "foil", "owned": 1, "reserved": 0, "available": 1},
+        {"finish": "nonfoil", "owned": 3, "reserved": 2, "available": 1},
+    ]
+
+
+def test_owned_for_printing_unowned_unclaimed_has_no_reservations(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    assert inventory.owned_for_printing(catalog_conn, "helix-1")["reservations"] == []
+
+
+def test_owned_across_printings_carries_reserved_and_available(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(catalog_conn, "bolt-2", "Lightning Bolt", set_code="2x2")
+    _set_oracle_id(catalog_conn, "bolt-1", "oracle-bolt")
+    _set_oracle_id(catalog_conn, "bolt-2", "oracle-bolt")
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=3)
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", finish="foil")
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-2", quantity=1)
+    _claim(catalog_conn, "bolt-1", 2)
+    _claim(catalog_conn, "bolt-1", 1, finish="foil")
+    _claim(catalog_conn, "bolt-2", 4)
+
+    by_id = {p["scryfall_id"]: p for p in _across(catalog_conn, "bolt-1")["printings"]}
+
+    assert (by_id["bolt-1"]["quantity"], by_id["bolt-1"]["reserved"]) == (4, 3)
+    assert by_id["bolt-1"]["available"] == 1
+    # Reserved counts only owned copies: 4 claimed, 1 owned.
+    assert (by_id["bolt-2"]["quantity"], by_id["bolt-2"]["reserved"]) == (1, 1)
+    assert by_id["bolt-2"]["available"] == 0
+
+
+def test_reservations_ignore_maybeboard_and_brew_claims_on_unowned_finishes(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """Maybeboard and non-claiming rows never surface a reservation for an unowned finish."""
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1")
+    _claim(catalog_conn, "bolt-1", 1, finish="etched", board="maybeboard")
+    _claim(catalog_conn, "bolt-1", 1, finish="etched", claims=False)
+
+    finishes = [
+        r["finish"] for r in inventory.owned_for_printing(catalog_conn, "bolt-1")["reservations"]
+    ]
+
+    assert "etched" not in finishes
+    assert "nonfoil" in finishes
+
+
+def test_owned_across_printings_ignores_claims_on_unowned_finishes(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A claim on a foil the user doesn't own reserves none of their nonfoils."""
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=4)
+    _claim(catalog_conn, "bolt-1", 2, finish="foil")
+
+    (printing,) = _across(catalog_conn, "bolt-1")["printings"]
+
+    assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 0, 4)
+
+
+def test_owned_across_printings_counts_claims_on_owned_finishes(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=4)
+    _claim(catalog_conn, "bolt-1", 2)
+
+    (printing,) = _across(catalog_conn, "bolt-1")["printings"]
+
+    assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 2, 2)

@@ -31,6 +31,8 @@ describe('OwnershipSummary', () => {
               rarity: 'common',
               quantity: 3,
               lots: 1,
+              reserved: 0,
+              available: 3,
             },
             {
               scryfall_id: 'bolt-2x2',
@@ -40,6 +42,8 @@ describe('OwnershipSummary', () => {
               rarity: 'uncommon',
               quantity: 4,
               lots: 2,
+              reserved: 0,
+              available: 4,
             },
           ],
         }),
@@ -55,6 +59,49 @@ describe('OwnershipSummary', () => {
     expect(
       screen.getByText(/4× Double Masters 2022 \(2X2 #117\)/),
     ).toBeInTheDocument()
+  })
+
+  it('notes how many copies of a printing Tomes hold, and only when some do', async () => {
+    ownedMock.mockResolvedValue(
+      owned({
+        across_printings: across({
+          total_quantity: 7,
+          printing_count: 2,
+          printings: [
+            {
+              scryfall_id: 'bolt-lea',
+              set_code: 'lea',
+              set_name: 'Limited Edition Alpha',
+              collector_number: '161',
+              rarity: 'common',
+              quantity: 3,
+              lots: 1,
+              reserved: 2,
+              available: 1,
+            },
+            {
+              scryfall_id: 'bolt-2x2',
+              set_code: '2x2',
+              set_name: 'Double Masters 2022',
+              collector_number: '117',
+              rarity: 'uncommon',
+              quantity: 4,
+              lots: 2,
+              reserved: 0,
+              available: 4,
+            },
+          ],
+        }),
+      }),
+    )
+    renderWithQuery(<OwnershipSummary scryfallId="bolt-lea" />)
+
+    const items = await screen.findAllByRole('listitem')
+    expect(items[0]).toHaveTextContent(
+      '3× Limited Edition Alpha (LEA #161) · 2 in Tomes',
+    )
+    expect(items[1]).toHaveTextContent('4× Double Masters 2022 (2X2 #117)')
+    expect(items[1]).not.toHaveTextContent('in Tomes')
   })
 
   it('says "all in this printing" rather than "across 1 printing"', async () => {

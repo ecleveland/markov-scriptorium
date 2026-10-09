@@ -366,3 +366,40 @@ def test_owned_copies_across_printings_zero_for_unowned() -> None:
     across = client.get("/inventory/card/helix-1").json()["across_printings"]
     assert across["total_quantity"] == 0
     assert across["printings"] == []
+
+
+# --- reservations on reads (VEG-224) ---------------------------------------
+
+
+def _claim(quantity: int, *, scryfall_id: str = "bolt-1", finish: str = "nonfoil") -> None:
+    deck = client.post("/decks", json={"name": "Edgar's Court"})
+    assert deck.status_code == 201, deck.text
+    body = {"scryfall_id": scryfall_id, "finish": finish, "quantity": quantity}
+    resp = client.post(f"/decks/{deck.json()['id']}/cards", json=body)
+    assert resp.status_code == 201, resp.text
+
+
+def test_lots_carry_their_folio_reservation() -> None:
+    lot = _inscribe(quantity=3)
+    _claim(2)
+
+    listed = client.get("/inventory").json()["results"][0]
+    detail = client.get(f"/inventory/{lot['id']}").json()
+
+    assert listed["folio"] == {"owned": 3, "reserved": 2, "available": 1}
+    assert detail["folio"] == {"owned": 3, "reserved": 2, "available": 1}
+
+
+def test_owned_copies_carries_reservations_and_printing_counts() -> None:
+    _inscribe(quantity=3)
+    _inscribe(finish="foil")
+    _claim(2)
+
+    body = client.get("/inventory/card/bolt-1").json()
+
+    assert body["reservations"] == [
+        {"finish": "foil", "owned": 1, "reserved": 0, "available": 1},
+        {"finish": "nonfoil", "owned": 3, "reserved": 2, "available": 1},
+    ]
+    (printing,) = body["across_printings"]["printings"]
+    assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 2, 2)

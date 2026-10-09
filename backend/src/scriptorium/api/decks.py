@@ -6,7 +6,9 @@ SQLite catalog. The Pydantic models below validate every body, and their
 constraints (migration 0006), so bad input is a 422 and never a database error.
 
 Slot conflicts the data layer detects (a second commander copy, a swap onto a
-slot the Tome already holds) answer 409. An IntegrityError that still gets
+slot the Tome already holds) answer 409. So does a claim on copies another
+claiming Tome already holds (ADR 0020); its ``detail`` is an object with a
+``message`` and the ``holders`` in the way. An IntegrityError that still gets
 through, for example when a printing vanishes between the check and the write,
 maps to 404 or 409 and never to a 500.
 """
@@ -21,7 +23,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
-from scriptorium import decks
+from scriptorium import decks, reservations
 from scriptorium.db import connect
 from scriptorium.inventory import printing_exists
 
@@ -164,6 +166,10 @@ def _conflict(message: str) -> HTTPException:
     return HTTPException(status_code=409, detail=message)
 
 
+def _reservation_conflict(exc: reservations.ReservationConflictError) -> HTTPException:
+    return HTTPException(status_code=409, detail={"message": str(exc), "holders": exc.holders})
+
+
 # --- Tomes --------------------------------------------------------------------
 
 
@@ -233,6 +239,8 @@ def add_card(deck_id: int, payload: SlotCreate) -> dict[str, Any]:
             slot = decks.add_slot(conn, deck_id, **payload.model_dump())
         except decks.SlotConflictError as exc:
             raise _conflict(str(exc)) from exc
+        except reservations.ReservationConflictError as exc:
+            raise _reservation_conflict(exc) from exc
         except sqlite3.IntegrityError as exc:
             # Usually the printing is not in the catalog and the foreign key
             # refused it. The Tome may also have vanished mid-request, or a
@@ -260,6 +268,8 @@ def amend_card(deck_id: int, slot_id: int, payload: SlotUpdate) -> dict[str, Any
             slot = decks.update_slot(conn, deck_id, slot_id, updates)
         except decks.SlotConflictError as exc:
             raise _conflict(str(exc)) from exc
+        except reservations.ReservationConflictError as exc:
+            raise _reservation_conflict(exc) from exc
         except sqlite3.IntegrityError as exc:
             # Same fallback as add_card: name the missing row if there is one,
             # checking the Tome, then the slot, then the printing.

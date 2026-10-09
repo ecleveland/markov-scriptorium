@@ -15,6 +15,13 @@ enforce on its own:
   that would land on a tuple the Tome already holds) raises
   :class:`SlotConflictError` before the write, so the router answers 409 with a
   useful message instead of relaying a bare CHECK or UNIQUE failure.
+* A slot write that would claim copies another claiming Tome already holds
+  raises :class:`~scriptorium.reservations.ReservationConflictError` (ADR
+  0020).
+
+Slot writes issue ``BEGIN IMMEDIATE`` before any of these checks, so no other
+writer can change what they read before the write lands. A refused write rolls
+back and leaves no transaction open.
 
 :func:`breakdown` is the owned-versus-needed view, built on the reference query
 that ``tests/test_schema_decks.py`` pins.
@@ -30,6 +37,7 @@ import json
 import sqlite3
 from typing import Any
 
+from scriptorium import reservations
 from scriptorium.inventory import owned_across_printings
 
 # Deck columns PATCH may change. A fixed allowlist, so a caller's key never
@@ -377,13 +385,28 @@ def add_slot(
     companion) a second copy of the card, in any finish, raises
     :class:`SlotConflictError` instead.
 
+    A claiming Tome that would take copies another claiming Tome already holds
+    raises :class:`~scriptorium.reservations.ReservationConflictError`, after
+    a rollback, and nothing is written.
+
     A printing missing from the catalog makes the foreign key raise
     :class:`sqlite3.IntegrityError`, after a rollback, and nothing is written.
     """
     if not deck_exists(conn, deck_id):
         return None
-    _check_singleton(conn, deck_id, scryfall_id, board, quantity)
+    conn.execute("BEGIN IMMEDIATE")
     try:
+        _check_singleton(conn, deck_id, scryfall_id, board, quantity)
+        own_before = reservations.own_demand(conn, deck_id, scryfall_id, finish)
+        reservations.check_claim(
+            conn,
+            deck_id,
+            scryfall_id,
+            finish,
+            board,
+            own_after=own_before + quantity,
+            own_before=own_before,
+        )
         row = conn.execute(
             "INSERT INTO deck_cards (deck_id, scryfall_id, finish, board, quantity) "
             "VALUES (?, ?, ?, ?, ?) "
@@ -393,7 +416,10 @@ def add_slot(
             (deck_id, scryfall_id, finish, board, quantity),
         ).fetchone()
         _touch(conn, deck_id)
-    except sqlite3.Error:
+    except BaseException:
+        # BaseException, not a list of types: whatever escapes after BEGIN
+        # IMMEDIATE (a refusal, a database error, a KeyboardInterrupt) must
+        # release the write lock before it propagates.
         conn.rollback()
         raise
     conn.commit()
@@ -409,43 +435,66 @@ def update_slot(
     ignored, and an empty ``updates`` is a no-op. Raises
     :class:`SlotConflictError` if the result would collide with another slot of
     the Tome (``existing_slot_id`` names it), or put more than one copy on a
-    commander or companion board. An unknown ``scryfall_id`` raises
-    :class:`sqlite3.IntegrityError` from the foreign key, after a rollback.
+    commander or companion board. Raises
+    :class:`~scriptorium.reservations.ReservationConflictError` if a claiming
+    Tome would raise its demand for a folio past what other claiming Tomes
+    leave. An unknown ``scryfall_id`` raises :class:`sqlite3.IntegrityError`
+    from the foreign key. Both roll back first.
     """
-    current = conn.execute(
-        "SELECT scryfall_id, finish, board, quantity FROM deck_cards WHERE id = ? AND deck_id = ?",
-        (slot_id, deck_id),
-    ).fetchone()
-    if current is None:
-        return None
     fields = {col: updates[col] for col in _SLOT_UPDATABLE_COLUMNS if col in updates}
     if not fields:
+        # Nothing to write, so no reason to contend for the write lock.
         return get_slot(conn, deck_id, slot_id)
-
-    target = {**dict(current), **fields}
-    _check_singleton(
-        conn,
-        deck_id,
-        target["scryfall_id"],
-        target["board"],
-        target["quantity"],
-        except_slot_id=slot_id,
-    )
-    existing = _slot_id_for(conn, deck_id, target["scryfall_id"], target["finish"], target["board"])
-    if existing is not None and existing != slot_id:
-        raise SlotConflictError(
-            f"The Tome already holds this printing, finish, and board in slot {existing}.",
-            existing_slot_id=existing,
-        )
-
-    assignments = ", ".join(f"{col} = ?" for col in fields)
+    # Every read the checks depend on happens under the write lock, so a
+    # concurrent PATCH can't change the slot between the read and the write.
+    conn.execute("BEGIN IMMEDIATE")
     try:
+        current = conn.execute(
+            "SELECT scryfall_id, finish, board, quantity FROM deck_cards "
+            "WHERE id = ? AND deck_id = ?",
+            (slot_id, deck_id),
+        ).fetchone()
+        if current is None:
+            conn.rollback()
+            return None
+
+        target = {**dict(current), **fields}
+        folio = (target["scryfall_id"], target["finish"])
+        _check_singleton(
+            conn,
+            deck_id,
+            target["scryfall_id"],
+            target["board"],
+            target["quantity"],
+            except_slot_id=slot_id,
+        )
+        existing = _slot_id_for(conn, deck_id, *folio, target["board"])
+        if existing is not None and existing != slot_id:
+            raise SlotConflictError(
+                f"The Tome already holds this printing, finish, and board in slot {existing}.",
+                existing_slot_id=existing,
+            )
+        # The Tome's demand on the target folio before and after. Before
+        # includes this slot only if it already sits on that folio.
+        own_before = reservations.own_demand(conn, deck_id, *folio)
+        others = reservations.own_demand(conn, deck_id, *folio, except_slot_id=slot_id)
+        reservations.check_claim(
+            conn,
+            deck_id,
+            *folio,
+            target["board"],
+            own_after=others + target["quantity"],
+            own_before=own_before,
+        )
+        assignments = ", ".join(f"{col} = ?" for col in fields)
         conn.execute(
             f"UPDATE deck_cards SET {assignments} WHERE id = ? AND deck_id = ?",
             (*fields.values(), slot_id, deck_id),
         )
         _touch(conn, deck_id)
-    except sqlite3.Error:
+    except BaseException:
+        # BaseException, as in add_slot: anything escaping after BEGIN
+        # IMMEDIATE must release the write lock first.
         conn.rollback()
         raise
     conn.commit()

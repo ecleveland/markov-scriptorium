@@ -60,6 +60,8 @@ describe('PrintingChip', () => {
       rarity: 'common',
       quantity: 2,
       lots: 1,
+      reserved: 0,
+      available: 2,
     }
     const printing: PrintingSummary = owned
     render(<PrintingChip printing={printing} />)

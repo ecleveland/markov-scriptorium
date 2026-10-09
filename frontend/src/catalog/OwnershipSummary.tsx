@@ -57,6 +57,7 @@ export function OwnershipSummary({ scryfallId }: { scryfallId: string }) {
             >
               {printing.quantity}× {printing.set_name} (
               {printing.set_code.toUpperCase()} #{printing.collector_number})
+              {printing.reserved > 0 && ` · ${printing.reserved} in Tomes`}
             </li>
           ))}
         </ul>

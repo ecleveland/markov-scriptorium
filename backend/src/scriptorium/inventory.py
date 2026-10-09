@@ -10,6 +10,12 @@ Two rollups sit on top of the CRUD: :func:`owned_for_printing` sums one printing
 by folio, and :func:`owned_across_printings` sums a whole card over every
 printing of it (VEG-220).
 
+Reads also report how many copies claiming Tomes reserve (VEG-224, ADR 0020).
+Each lot carries a ``folio`` object for its (printing, finish), the per-printing
+rollup carries ``reservations`` per finish, and each printing in the
+cross-printing summary carries ``reserved`` and ``available``. The SQL comes
+from :mod:`scriptorium.reservations`.
+
 Write functions commit their own transaction: each call is a complete operation,
 so a created/updated/deleted lot is durable when the function returns. All
 functions expect a connection opened via :func:`scriptorium.db.connect` (i.e.
@@ -22,6 +28,8 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from typing import Any
+
+from scriptorium.reservations import owned_sql, reserved_sql
 
 # Inventory columns settable on insert (id is the surrogate key; everything else
 # is caller-supplied or defaulted by the schema).
@@ -65,20 +73,45 @@ _CARD_DISPLAY_COLUMNS = (
 _PRINTING_SUMMARY_COLUMNS = ("set_code", "set_name", "collector_number", "rarity")
 
 # The shared SELECT: every inventory column plus the card display columns aliased
-# under a ``card_`` prefix, so :func:`_row_to_lot` can split them back apart.
+# under a ``card_`` prefix, so :func:`_row_to_lot` can split them back apart, plus
+# the lot's folio totals (owned across every lot, reserved by claiming Tomes).
 _LOT_SELECT = (
     "SELECT i.id, i.scryfall_id, i.quantity, i.finish, i.condition, i.language, "
     "i.location, i.acquired_at, i.price_paid, i.notes, i.tags, "
     + ", ".join(f"c.{col} AS card_{col}" for col in _CARD_DISPLAY_COLUMNS)
+    + f", {owned_sql('i.scryfall_id', 'i.finish')} AS folio_owned"
+    + f", {reserved_sql('i.scryfall_id', 'i.finish')} AS folio_reserved"
     + " FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id"
 )
+
+# Owned and reserved per finish of one printing, for every finish that is owned
+# or claimed. A claimed but unowned finish still shows, so its shortfall does.
+_RESERVATIONS_SQL = f"""
+WITH finishes AS (
+  SELECT finish FROM inventory WHERE scryfall_id = :sid
+  UNION
+  SELECT dc.finish FROM deck_cards dc JOIN decks d ON d.id = dc.deck_id
+  WHERE d.claims_cards = 1 AND dc.board <> 'maybeboard' AND dc.scryfall_id = :sid)
+SELECT f.finish,
+       {owned_sql(":sid", "f.finish")} AS owned,
+       {reserved_sql(":sid", "f.finish")} AS reserved
+FROM finishes f
+ORDER BY f.finish
+"""
+
+
+def _with_available(record: dict[str, Any], owned_key: str) -> dict[str, Any]:
+    """Add ``available``: owned minus reserved, floored at zero."""
+    record["available"] = max(0, record[owned_key] - record["reserved"])
+    return record
 
 
 def _row_to_lot(row: sqlite3.Row) -> dict[str, Any]:
     """Split a joined row into a lot dict with a nested ``card`` object.
 
     Deserializes the lot's ``tags`` JSON array and the card's ``image_uris`` JSON
-    object back into structured values (leaving NULLs as ``None``).
+    object back into structured values (leaving NULLs as ``None``), and nests
+    the folio totals as ``folio: {owned, reserved, available}``.
     """
     record = dict(row)
     card: dict[str, Any] = {col: record.pop(f"card_{col}") for col in _CARD_DISPLAY_COLUMNS}
@@ -87,6 +120,8 @@ def _row_to_lot(row: sqlite3.Row) -> dict[str, Any]:
     if record.get("tags") is not None:
         record["tags"] = json.loads(record["tags"])
     record["card"] = card
+    folio = {"owned": record.pop("folio_owned"), "reserved": record.pop("folio_reserved")}
+    record["folio"] = _with_available(folio, "owned")
     return record
 
 
@@ -266,6 +301,9 @@ def owned_for_printing(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, 
     printing that exists in the catalog but is unowned yields empty lists and a
     zero total. The caller confirms the printing exists (see
     :func:`printing_exists`); a card object is always present for a real printing.
+
+    ``reservations`` lists ``{finish, owned, reserved, available}`` for each
+    finish that is owned or reserved by a claiming Tome, ordered by finish.
     """
     lot_rows = conn.execute(
         f"{_LOT_SELECT} WHERE i.scryfall_id = ? ORDER BY i.id", (scryfall_id,)
@@ -284,12 +322,17 @@ def owned_for_printing(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, 
     # Every lot already carries the identical nested card object (inner join on
     # cards); reuse it and only query separately when the printing is unowned.
     card = lots[0]["card"] if lots else _card_display(conn, scryfall_id)
+    reservations = [
+        _with_available(dict(row), "owned")
+        for row in conn.execute(_RESERVATIONS_SQL, {"sid": scryfall_id}).fetchall()
+    ]
     return {
         "scryfall_id": scryfall_id,
         "card": card,
         "lots": lots,
         "rollup": rollup,
         "total_quantity": total_quantity,
+        "reservations": reservations,
         "across_printings": owned_across_printings(conn, scryfall_id),
     }
 
@@ -304,6 +347,11 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
     printing with nothing owned is absent from the breakdown, so a wholly
     unowned card yields a zero total and an empty list. ``None`` means the
     anchor printing isn't in the catalog at all.
+
+    Each printing also carries ``reserved``, the owned copies claiming Tomes
+    reserve, and ``available`` (``quantity`` minus ``reserved``). Reserved is
+    counted per finish and capped at what is owned in that finish before it is
+    summed, so a claim on a foil the user doesn't own never eats a nonfoil.
 
     A printing's card identity is its ``oracle_id``, which is what Scryfall uses
     to tie reprints together, and its name only when there is no ``oracle_id``
@@ -336,20 +384,28 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
         predicate = "c.oracle_id IS NULL AND c.name = ? COLLATE NOCASE"
         params = (name,)
 
+    # One row per owned folio first, so reserved can be capped at what is owned
+    # in that finish before the printing totals are summed.
     rows = conn.execute(
-        "SELECT i.scryfall_id, "
-        + ", ".join(f"c.{col}" for col in _PRINTING_SUMMARY_COLUMNS)
-        + ", SUM(i.quantity) AS quantity, COUNT(*) AS lots "
+        "WITH folios AS ("
+        "SELECT i.scryfall_id, SUM(i.quantity) AS owned, COUNT(*) AS lots, "
+        f"{reserved_sql('i.scryfall_id', 'i.finish')} AS reserved "
         "FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id "
         f"WHERE {predicate} "
-        "GROUP BY i.scryfall_id "
+        "GROUP BY i.scryfall_id, i.finish) "
+        "SELECT f.scryfall_id, "
+        + ", ".join(f"c.{col}" for col in _PRINTING_SUMMARY_COLUMNS)
+        + ", SUM(f.owned) AS quantity, SUM(f.lots) AS lots, "
+        "SUM(MIN(f.owned, f.reserved)) AS reserved "
+        "FROM folios f JOIN cards c ON c.scryfall_id = f.scryfall_id "
+        "GROUP BY f.scryfall_id "
         # collector_number is TEXT (it can hold ★, letters, and the like), so a
         # plain sort puts "10" before "2". Cast for the numeric ordering people
         # expect and keep the raw value as the tiebreaker for non-numeric ones.
         "ORDER BY c.set_code, CAST(c.collector_number AS INTEGER), c.collector_number",
         params,
     ).fetchall()
-    printings = [dict(row) for row in rows]
+    printings = [_with_available(dict(row), "quantity") for row in rows]
 
     return {
         "grouping": grouping,
