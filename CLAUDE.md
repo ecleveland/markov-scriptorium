@@ -30,10 +30,11 @@ Use these terms in user-facing strings, route names, and conceptual naming. Inte
 - **Ask before adding dependencies.** Especially heavy ones. List what you considered and why.
 - **No silent decisions.** When a real design choice gets made (database schema, framework, library), record it as a short ADR in `docs/decisions/`.
 - **Commit messages:** imperative mood, present tense ("Add scanner endpoint", not "Added scanner endpoint"). Body explains *why* if non-obvious.
+- **Code layout:** backend source is `backend/src/scriptorium/`, migrations are `backend/migrations/NNNN_*.sql`, tests are `backend/tests/`. Run Python through `uv run` from `backend/`, because system `python3` is 3.9.
 
 ## Tech Stack
 
-Not yet chosen. When discussing or recommending options, optimize for:
+Chosen in ADR 0001 and ADR 0003: FastAPI with raw sqlite3 under uv in `backend/`, React with Vite and strict TypeScript in `frontend/`, SQLite on disk. Use these criteria when picking libraries:
 
 1. Single-developer maintainability over enterprise patterns
 2. Local-first storage — data lives on disk, not in someone else's cloud, unless I explicitly opt into hosted
