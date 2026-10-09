@@ -718,6 +718,41 @@ def test_update_slot_trim_on_over_claimed_folio_is_allowed(
     assert not catalog_conn.in_transaction
 
 
+def test_add_slot_refuses_to_write_under_a_rival_writer(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """The write refuses while another connection holds the write lock.
+
+    This proves the write refuses under a rival writer but cannot distinguish
+    BEGIN IMMEDIATE from a plain BEGIN, since both fail at the first write.
+    """
+    tome, _ = _contested(catalog_conn)
+    rival_conn = db.connect()
+    try:
+        rival_conn.execute("BEGIN IMMEDIATE")
+        catalog_conn.execute("PRAGMA busy_timeout = 50")
+        with pytest.raises(sqlite3.OperationalError):
+            decks.add_slot(catalog_conn, tome, scryfall_id="bolt-1")
+        assert not catalog_conn.in_transaction
+        assert _slot_rows(catalog_conn, tome) == []
+    finally:
+        rival_conn.rollback()
+        rival_conn.close()
+
+
+def test_update_slot_board_move_within_a_folio_survives_a_sale(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """Moving an over-claimed slot between claiming boards adds no demand, so it works."""
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    catalog_conn.execute("UPDATE inventory SET quantity = 3")  # rival 3 + tome 1 > 3
+    catalog_conn.commit()
+    updated = decks.update_slot(catalog_conn, tome, slot["id"], {"board": "sideboard"})
+    assert updated is not None and updated["board"] == "sideboard"
+    assert not catalog_conn.in_transaction
+
+
 def test_delete_slot_on_over_claimed_folio_is_allowed(catalog_conn: sqlite3.Connection) -> None:
     """Deleting a slot only lowers demand, so it is never checked."""
     tome, _ = _contested(catalog_conn)

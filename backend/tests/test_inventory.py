@@ -667,3 +667,19 @@ def test_owned_across_printings_carries_reserved_and_available(
     assert by_id["bolt-1"]["available"] == 1
     assert (by_id["bolt-2"]["quantity"], by_id["bolt-2"]["reserved"]) == (1, 4)
     assert by_id["bolt-2"]["available"] == 0
+
+
+def test_reservations_ignore_maybeboard_and_brew_claims_on_unowned_finishes(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """Maybeboard and non-claiming rows never surface a reservation for an unowned finish."""
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1")
+    _claim(catalog_conn, "bolt-1", 1, finish="etched", board="maybeboard")
+    _claim(catalog_conn, "bolt-1", 1, finish="etched", claims=False)
+
+    finishes = [
+        r["finish"] for r in inventory.owned_for_printing(catalog_conn, "bolt-1")["reservations"]
+    ]
+
+    assert "etched" not in finishes
+    assert "nonfoil" in finishes
