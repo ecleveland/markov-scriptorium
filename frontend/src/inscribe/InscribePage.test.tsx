@@ -47,6 +47,7 @@ function lot(overrides: Partial<InventoryLot>): InventoryLot {
     price_paid: null,
     notes: null,
     tags: null,
+    folio: { owned: 1, reserved: 0, available: 1 },
     card: {
       name: 'Lightning Bolt',
       set_code: 'lea',

@@ -24,7 +24,7 @@ export function printing(overrides: Partial<CardPrinting> = {}): CardPrinting {
 }
 
 export function lot(overrides: Partial<InventoryLot> = {}): InventoryLot {
-  const { card, ...rest } = overrides
+  const { card, folio, ...rest } = overrides
   return {
     id: 1,
     scryfall_id: 'bolt-lea',
@@ -38,6 +38,7 @@ export function lot(overrides: Partial<InventoryLot> = {}): InventoryLot {
     notes: null,
     tags: null,
     ...rest,
+    folio: { owned: 1, reserved: 0, available: 1, ...folio },
     card: {
       name: 'Lightning Bolt',
       set_code: 'lea',
@@ -72,6 +73,7 @@ export function owned(
     card: lot().card,
     lots: [],
     rollup: [],
+    reservations: [],
     total_quantity: 1,
     across_printings: across(),
     ...overrides,

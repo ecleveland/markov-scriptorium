@@ -34,6 +34,12 @@ export function LotRow({ lot }: { lot: InventoryLot }) {
       </td>
       <td className="catalog__quantity">
         <QuantityStepper lot={lot} />
+        {lot.folio.reserved > 0 && (
+          <span className="catalog__reserved">
+            {lot.folio.reserved} of {lot.folio.owned} in Tomes ·{' '}
+            {lot.folio.available} free
+          </span>
+        )}
       </td>
     </tr>
   )

@@ -282,6 +282,16 @@ export function LotDetailPage() {
               <dt>Paid</dt>
               <dd>{lot.price_paid ?? '—'}</dd>
             </div>
+            <div>
+              <dt>In Tomes</dt>
+              <dd>
+                {lot.folio.reserved} of {lot.folio.owned}
+              </dd>
+            </div>
+            <div>
+              <dt>Available</dt>
+              <dd>{lot.folio.available}</dd>
+            </div>
           </dl>
         </div>
       </header>

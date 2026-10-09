@@ -410,6 +410,61 @@ def test_breakdown_unknown_deck_is_404() -> None:
     assert client.get("/decks/999/breakdown").status_code == 404
 
 
+def test_breakdown_swap_hint_carries_reserved_and_available() -> None:
+    client.post("/inventory", json={"scryfall_id": "bolt-1", "quantity": 3})
+    rival = _create(name="Rival Court")
+    _add(rival["id"], quantity=2)
+    brew = _create(name="Brew", claims_cards=False)
+    _add(brew["id"], quantity=4)
+
+    line = client.get(f"/decks/{brew['id']}/breakdown").json()["lines"][0]
+
+    assert (line["owned"], line["available"], line["needed"]) == (3, 1, 3)
+    (printing,) = line["swap_hint"]["printings"]
+    assert (printing["quantity"], printing["reserved"], printing["available"]) == (3, 2, 1)
+
+
+# --- reservation conflicts (VEG-224) ------------------------------------------
+
+
+def _contest() -> tuple[dict[str, Any], dict[str, Any]]:
+    """Own 2 Bolts with a rival claiming Tome holding both. Returns (tome, rival)."""
+    client.post("/inventory", json={"scryfall_id": "bolt-1", "quantity": 2})
+    rival = _create(name="Rival Court")
+    _add(rival["id"], quantity=2)
+    return _create(), rival
+
+
+def test_add_slot_contested_is_409_naming_the_holders() -> None:
+    tome, rival = _contest()
+
+    resp = client.post(f"/decks/{tome['id']}/cards", json={"scryfall_id": "bolt-1"})
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["holders"] == [{"deck_id": rival["id"], "name": "Rival Court", "quantity": 2}]
+    assert "Rival Court" in detail["message"]
+    assert "maybeboard" in detail["message"]
+    assert client.get(f"/decks/{tome['id']}").json()["cards"] == []
+
+
+def test_update_slot_contested_is_409_naming_the_holders() -> None:
+    tome, rival = _contest()
+    slot = _add(tome["id"], board="maybeboard")
+
+    resp = client.patch(f"/decks/{tome['id']}/cards/{slot['id']}", json={"board": "main"})
+
+    assert resp.status_code == 409
+    assert [h["deck_id"] for h in resp.json()["detail"]["holders"]] == [rival["id"]]
+
+
+def test_contested_card_may_go_to_maybeboard_or_a_brew() -> None:
+    tome, _ = _contest()
+    brew = _create(name="Brew", claims_cards=False)
+    _add(tome["id"], board="maybeboard", quantity=4)
+    _add(brew["id"], quantity=4)
+
+
 # --- IntegrityError fallbacks ------------------------------------------------
 
 

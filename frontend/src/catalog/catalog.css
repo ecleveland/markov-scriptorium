@@ -85,6 +85,14 @@
   text-align: right;
 }
 
+/* Sits under the stepper, so it needs its own line in the right-aligned cell. */
+.catalog__reserved {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
 .catalog__pager {
   display: flex;
   gap: var(--space-3);

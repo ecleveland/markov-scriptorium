@@ -37,6 +37,17 @@ export interface InscribeRequest {
   location?: string | null
 }
 
+/**
+ * How a folio's copies split between Tomes and the shelf. Reservation is
+ * computed at read time from the Tomes that claim cards (ADR 0018), so
+ * `available` is `owned - reserved` and never goes below zero.
+ */
+export interface FolioCounts {
+  owned: number
+  reserved: number
+  available: number
+}
+
 /** An inventory lot (one acquisition), enriched with a nested card object. */
 export interface InventoryLot {
   id: number
@@ -58,6 +69,8 @@ export interface InventoryLot {
     rarity: string
     image_uris: Record<string, string> | null
   }
+  /** Counts for the lot's whole (printing, finish) folio, not this lot alone. */
+  folio: FolioCounts
 }
 
 /** Raised on a non-2xx response so callers can surface a message. */
@@ -362,6 +375,10 @@ export interface PrintingOwnership {
   rarity: string
   quantity: number
   lots: number
+  /** Copies of this printing, any finish, that claiming Tomes hold. */
+  reserved: number
+  /** Copies of this printing left free for another Tome. */
+  available: number
 }
 
 /**
@@ -378,6 +395,11 @@ export interface AcrossPrintings {
   printings: PrintingOwnership[]
 }
 
+/** One finish of a printing: copies owned, held by Tomes, and free. */
+export interface FolioReservation extends FolioCounts {
+  finish: string
+}
+
 /** GET /inventory/card/{id}: one printing's lots, its folio rollup, and the
  *  same card's total across every printing. */
 export interface OwnedForPrinting {
@@ -385,6 +407,8 @@ export interface OwnedForPrinting {
   card: InventoryLot['card'] | null
   lots: InventoryLot[]
   rollup: FolioRollup[]
+  /** Per-finish reservation counts for this printing. */
+  reservations: FolioReservation[]
   total_quantity: number
   across_printings: AcrossPrintings | null
 }

@@ -47,6 +47,19 @@ interface LotStub {
   card: CardDisplay
 }
 
+/** A lot as the API serves it: the stored record plus its folio counts. No
+ *  stubbed Tome claims cards, so every copy of the folio is free. */
+function served(record: LotStub, lots: Map<number, LotStub>) {
+  const owned = [...lots.values()]
+    .filter(
+      (other) =>
+        other.scryfall_id === record.scryfall_id &&
+        other.finish === record.finish,
+    )
+    .reduce((sum, other) => sum + other.quantity, 0)
+  return { ...record, folio: { owned, reserved: 0, available: owned } }
+}
+
 const BOLT_LEA: CardDisplay = {
   name: 'Lightning Bolt',
   set_code: 'lea',
@@ -155,14 +168,17 @@ function ownedForPrinting(lots: Map<number, LotStub>, scryfallId: string) {
       collector_number: card.collector_number,
       rarity: card.rarity,
       ...totals,
+      reserved: 0,
+      available: totals.quantity,
     }
   })
 
   return {
     scryfall_id: scryfallId,
     card: here[0]?.card ?? null,
-    lots: here,
+    lots: here.map((record) => served(record, lots)),
     rollup: [],
+    reservations: [],
     total_quantity: here.reduce((sum, record) => sum + record.quantity, 0),
     across_printings: {
       grouping: 'oracle_id',
@@ -221,7 +237,7 @@ export async function stubApi(page: Page): Promise<void> {
         card: SOL_RING_CARD,
       })
       lots.set(created.id, created)
-      return json(route, created, 201)
+      return json(route, served(created, lots), 201)
     }
 
     if (path === '/inventory' && method === 'GET') {
@@ -230,7 +246,9 @@ export async function stubApi(page: Page): Promise<void> {
       // Newest first, matching the backend's ORDER BY i.id DESC.
       const ordered = [...lots.values()].sort((a, b) => b.id - a.id)
       return json(route, {
-        results: ordered.slice(offset, offset + limit),
+        results: ordered
+          .slice(offset, offset + limit)
+          .map((record) => served(record, lots)),
         total: ordered.length,
         limit,
         offset,
@@ -252,11 +270,11 @@ export async function stubApi(page: Page): Promise<void> {
       if (record === undefined) {
         return json(route, { detail: `No inventory lot with id ${id}.` }, 404)
       }
-      if (method === 'GET') return json(route, record)
+      if (method === 'GET') return json(route, served(record, lots))
       if (method === 'PATCH') {
         const amended = { ...record, ...route.request().postDataJSON() }
         lots.set(id, amended)
-        return json(route, amended)
+        return json(route, served(amended, lots))
       }
       if (method === 'DELETE') {
         lots.delete(id)

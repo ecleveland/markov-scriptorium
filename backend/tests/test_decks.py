@@ -21,7 +21,7 @@ from typing import Any, NamedTuple
 
 import pytest
 
-from scriptorium import db, decks, inventory
+from scriptorium import db, decks, inventory, reservations
 from scriptorium.migrations import apply_migrations
 
 _REQUIRED_DEFAULTS = {
@@ -548,6 +548,195 @@ def test_failed_slot_update_leaves_updated_at_alone(catalog_conn: sqlite3.Connec
     ).fetchone()[0]
     assert stamp == _PAST
     assert not catalog_conn.in_transaction
+
+
+# --- reservation conflicts (VEG-224) -----------------------------------------
+
+
+def _contested(conn: sqlite3.Connection) -> tuple[int, int]:
+    """Own 4 nonfoil Bolts, with a rival claiming Tome holding 3. Returns (tome, rival)."""
+    inventory.create_lot(conn, scryfall_id="bolt-1", quantity=4)
+    rival = _deck(conn, "Rival Court")
+    _slot(conn, rival, "bolt-1", quantity=3)
+    return _deck(conn), rival
+
+
+def _stamp(conn: sqlite3.Connection, deck_id: int) -> str:
+    stamp: str = conn.execute("SELECT updated_at FROM decks WHERE id = ?", (deck_id,)).fetchone()[0]
+    return stamp
+
+
+def _slot_rows(conn: sqlite3.Connection, deck_id: int) -> list[tuple[Any, ...]]:
+    rows = conn.execute(
+        "SELECT scryfall_id, finish, board, quantity FROM deck_cards WHERE deck_id = ? ORDER BY id",
+        (deck_id,),
+    ).fetchall()
+    return [tuple(r) for r in rows]
+
+
+def test_add_slot_conflict_rolls_back_the_transaction(catalog_conn: sqlite3.Connection) -> None:
+    deck_id = _deck(catalog_conn)
+    _slot(catalog_conn, deck_id, "edgar-1", board="commander")
+    _make_stale(catalog_conn, deck_id)
+    with pytest.raises(decks.SlotConflictError):
+        decks.add_slot(catalog_conn, deck_id, scryfall_id="edgar-1", board="commander")
+    assert not catalog_conn.in_transaction
+    assert _stamp(catalog_conn, deck_id) == _PAST
+
+
+def test_update_slot_conflict_rolls_back_the_transaction(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    deck_id = _deck(catalog_conn)
+    _slot(catalog_conn, deck_id, "bolt-1", finish="foil")
+    nonfoil = _slot(catalog_conn, deck_id, "bolt-1")
+    _make_stale(catalog_conn, deck_id)
+    with pytest.raises(decks.SlotConflictError):
+        decks.update_slot(catalog_conn, deck_id, nonfoil["id"], {"finish": "foil"})
+    assert not catalog_conn.in_transaction
+    assert _stamp(catalog_conn, deck_id) == _PAST
+
+
+def test_add_slot_contested_raises_and_writes_nothing(catalog_conn: sqlite3.Connection) -> None:
+    tome, rival = _contested(catalog_conn)
+    _make_stale(catalog_conn, tome)
+    with pytest.raises(reservations.ReservationConflictError) as excinfo:
+        decks.add_slot(catalog_conn, tome, scryfall_id="bolt-1", quantity=2)
+    assert [h["deck_id"] for h in excinfo.value.holders] == [rival]
+    assert not catalog_conn.in_transaction
+    assert _slot_rows(catalog_conn, tome) == []
+    assert _stamp(catalog_conn, tome) == _PAST
+
+
+def test_add_slot_within_what_the_rival_leaves_succeeds(catalog_conn: sqlite3.Connection) -> None:
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    assert slot["quantity"] == 1
+    assert not catalog_conn.in_transaction
+
+
+def test_add_slot_merge_counts_the_existing_quantity(catalog_conn: sqlite3.Connection) -> None:
+    tome, _ = _contested(catalog_conn)
+    _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    with pytest.raises(reservations.ReservationConflictError):
+        decks.add_slot(catalog_conn, tome, scryfall_id="bolt-1", quantity=1)
+    assert _slot_rows(catalog_conn, tome) == [("bolt-1", "nonfoil", "main", 1)]
+
+
+def test_add_slot_counts_the_tomes_other_boards(catalog_conn: sqlite3.Connection) -> None:
+    tome, _ = _contested(catalog_conn)
+    _slot(catalog_conn, tome, "bolt-1", board="sideboard")
+    with pytest.raises(reservations.ReservationConflictError):
+        decks.add_slot(catalog_conn, tome, scryfall_id="bolt-1", board="main")
+
+
+def test_add_slot_to_maybeboard_or_brew_is_never_refused(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    tome, _ = _contested(catalog_conn)
+    brew = _deck(catalog_conn, "Brew", claims_cards=False)
+    assert _slot(catalog_conn, tome, "bolt-1", board="maybeboard", quantity=4)["quantity"] == 4
+    assert _slot(catalog_conn, brew, "bolt-1", quantity=4)["quantity"] == 4
+
+
+def test_add_slot_with_no_rival_may_exceed_owned(catalog_conn: sqlite3.Connection) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=1)
+    tome = _deck(catalog_conn)
+    assert _slot(catalog_conn, tome, "bolt-1", quantity=4)["quantity"] == 4
+
+
+def test_update_slot_contested_raises_and_writes_nothing(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    tome, rival = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    _make_stale(catalog_conn, tome)
+    with pytest.raises(reservations.ReservationConflictError) as excinfo:
+        decks.update_slot(catalog_conn, tome, slot["id"], {"quantity": 2})
+    assert [h["deck_id"] for h in excinfo.value.holders] == [rival]
+    assert not catalog_conn.in_transaction
+    assert _slot_rows(catalog_conn, tome) == [("bolt-1", "nonfoil", "main", 1)]
+    assert _stamp(catalog_conn, tome) == _PAST
+
+
+def test_update_slot_to_maybeboard_is_allowed(catalog_conn: sqlite3.Connection) -> None:
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", board="maybeboard", quantity=1)
+    updated = decks.update_slot(catalog_conn, tome, slot["id"], {"quantity": 4})
+    assert updated is not None and updated["quantity"] == 4
+
+
+def test_update_slot_moving_off_the_maybeboard_is_checked(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", board="maybeboard", quantity=2)
+    with pytest.raises(reservations.ReservationConflictError):
+        decks.update_slot(catalog_conn, tome, slot["id"], {"board": "main"})
+    assert _slot_rows(catalog_conn, tome) == [("bolt-1", "nonfoil", "maybeboard", 2)]
+
+
+def test_update_slot_moving_a_contested_slot_to_maybeboard_is_allowed(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A Tome left over-claimed (here, by selling copies) can park the slot."""
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    catalog_conn.execute("UPDATE inventory SET quantity = 3")
+    catalog_conn.commit()
+    updated = decks.update_slot(catalog_conn, tome, slot["id"], {"board": "maybeboard"})
+    assert updated is not None and updated["board"] == "maybeboard"
+
+
+def test_update_slot_swap_finish_onto_contested_folio_raises(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", finish="foil", quantity=1)
+    rival = _deck(catalog_conn, "Rival Court")
+    _slot(catalog_conn, rival, "bolt-1", finish="foil")
+    tome = _deck(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", finish="nonfoil")
+    with pytest.raises(reservations.ReservationConflictError):
+        decks.update_slot(catalog_conn, tome, slot["id"], {"finish": "foil"})
+    assert _slot_rows(catalog_conn, tome) == [("bolt-1", "nonfoil", "main", 1)]
+    assert not catalog_conn.in_transaction
+
+
+def test_update_slot_trim_on_over_claimed_folio_is_allowed(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """Selling copies can leave a Tome over-claimed. Lowering it must still work."""
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    _make_stale(catalog_conn, tome)
+    catalog_conn.execute("UPDATE inventory SET quantity = 2")  # rival 3 + tome 1 > 2
+    catalog_conn.execute("UPDATE deck_cards SET quantity = 3 WHERE id = ?", (slot["id"],))
+    catalog_conn.commit()
+    updated = decks.update_slot(catalog_conn, tome, slot["id"], {"quantity": 2})
+    assert updated is not None and updated["quantity"] == 2
+    _assert_touched(catalog_conn, tome)
+    assert not catalog_conn.in_transaction
+
+
+def test_delete_slot_on_over_claimed_folio_is_allowed(catalog_conn: sqlite3.Connection) -> None:
+    """Deleting a slot only lowers demand, so it is never checked."""
+    tome, _ = _contested(catalog_conn)
+    slot = _slot(catalog_conn, tome, "bolt-1", quantity=1)
+    catalog_conn.execute("UPDATE inventory SET quantity = 2")  # rival 3 + tome 1 > 2
+    catalog_conn.commit()
+    assert decks.delete_slot(catalog_conn, tome, slot["id"]) is True
+    assert _slot_rows(catalog_conn, tome) == []
+    assert not catalog_conn.in_transaction
+
+
+def test_deck_patch_turning_claims_on_is_never_refused(catalog_conn: sqlite3.Connection) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=1)
+    rival = _deck(catalog_conn, "Rival Court")
+    _slot(catalog_conn, rival, "bolt-1")
+    brew = _deck(catalog_conn, "Brew", claims_cards=False)
+    _slot(catalog_conn, brew, "bolt-1", quantity=4)
+    deck = decks.update_deck(catalog_conn, brew, {"claims_cards": True})
+    assert deck is not None and deck["claims_cards"] is True
 
 
 # --- delete slot ------------------------------------------------------------

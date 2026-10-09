@@ -153,12 +153,10 @@ trigger would do is application code.
 
 ## Consequences
 
-- Over-reservation is checked at write time in application code ([VEG-224]).
-  The claimed sum plus the new quantity is compared to owned inside the write
-  transaction, returning 409 when it would exceed. Selling a lot, or turning
-  `claims_cards` on for a deck, can still leave a deck over-claimed. That is
-  allowed and shows as needed, because refusing it would block the user from
-  recording what is true.
+- Over-reservation is checked at write time in application code ([VEG-224]),
+  and only when contested: a claiming Tome gets a 409 when other claiming Tomes
+  already hold copies of the folio and the write would take more than they
+  leave ([0020](0020-reservation-rule.md)).
 - A deck with `claims_cards = 0` still sees other decks' claims subtracted from
   its available count, because availability is a property of the collection,
   not of the asking deck.

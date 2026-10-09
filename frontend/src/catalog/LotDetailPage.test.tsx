@@ -72,6 +72,24 @@ describe('LotDetailPage', () => {
     expect(screen.getByLabelText('Volume')).toHaveValue('Red binder')
   })
 
+  it('shows how many copies of the folio Tomes hold and how many are free', async () => {
+    getMock.mockResolvedValue(
+      lot({
+        id: 7,
+        quantity: 1,
+        folio: { owned: 4, reserved: 3, available: 1 },
+      }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const inTomes = await screen.findByText('In Tomes')
+    expect(inTomes.nextElementSibling).toHaveTextContent('3 of 4')
+    expect(screen.getByText('Available').nextElementSibling).toHaveTextContent(
+      '1',
+    )
+  })
+
   it('amends the four mutable fields in one PATCH', async () => {
     const user = userEvent.setup()
     const record = lot({ id: 7, quantity: 2 })
