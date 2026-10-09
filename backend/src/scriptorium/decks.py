@@ -442,6 +442,9 @@ def update_slot(
     from the foreign key. Both roll back first.
     """
     fields = {col: updates[col] for col in _SLOT_UPDATABLE_COLUMNS if col in updates}
+    if not fields:
+        # Nothing to write, so no reason to contend for the write lock.
+        return get_slot(conn, deck_id, slot_id)
     # Every read the checks depend on happens under the write lock, so a
     # concurrent PATCH can't change the slot between the read and the write.
     conn.execute("BEGIN IMMEDIATE")
@@ -454,9 +457,6 @@ def update_slot(
         if current is None:
             conn.rollback()
             return None
-        if not fields:
-            conn.rollback()
-            return get_slot(conn, deck_id, slot_id)
 
         target = {**dict(current), **fields}
         folio = (target["scryfall_id"], target["finish"])
