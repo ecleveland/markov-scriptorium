@@ -665,7 +665,8 @@ def test_owned_across_printings_carries_reserved_and_available(
 
     assert (by_id["bolt-1"]["quantity"], by_id["bolt-1"]["reserved"]) == (4, 3)
     assert by_id["bolt-1"]["available"] == 1
-    assert (by_id["bolt-2"]["quantity"], by_id["bolt-2"]["reserved"]) == (1, 4)
+    # Reserved counts only owned copies: 4 claimed, 1 owned.
+    assert (by_id["bolt-2"]["quantity"], by_id["bolt-2"]["reserved"]) == (1, 1)
     assert by_id["bolt-2"]["available"] == 0
 
 
@@ -683,3 +684,26 @@ def test_reservations_ignore_maybeboard_and_brew_claims_on_unowned_finishes(
 
     assert "etched" not in finishes
     assert "nonfoil" in finishes
+
+
+def test_owned_across_printings_ignores_claims_on_unowned_finishes(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """A claim on a foil the user doesn't own reserves none of their nonfoils."""
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=4)
+    _claim(catalog_conn, "bolt-1", 2, finish="foil")
+
+    (printing,) = _across(catalog_conn, "bolt-1")["printings"]
+
+    assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 0, 4)
+
+
+def test_owned_across_printings_counts_claims_on_owned_finishes(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=4)
+    _claim(catalog_conn, "bolt-1", 2)
+
+    (printing,) = _across(catalog_conn, "bolt-1")["printings"]
+
+    assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 2, 2)

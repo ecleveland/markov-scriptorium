@@ -348,11 +348,10 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
     unowned card yields a zero total and an empty list. ``None`` means the
     anchor printing isn't in the catalog at all.
 
-    Each printing also carries ``reserved`` (copies claiming Tomes reserve,
-    summed over every finish) and ``available`` (``quantity`` minus
-    ``reserved``, floored at zero). Summing over finishes lets a foil claim
-    offset nonfoil copies here; the finish-exact numbers live on each lot's
-    ``folio`` and in :func:`owned_for_printing`.
+    Each printing also carries ``reserved``, the owned copies claiming Tomes
+    reserve, and ``available`` (``quantity`` minus ``reserved``). Reserved is
+    counted per finish and capped at what is owned in that finish before it is
+    summed, so a claim on a foil the user doesn't own never eats a nonfoil.
 
     A printing's card identity is its ``oracle_id``, which is what Scryfall uses
     to tie reprints together, and its name only when there is no ``oracle_id``
@@ -385,14 +384,21 @@ def owned_across_printings(conn: sqlite3.Connection, scryfall_id: str) -> dict[s
         predicate = "c.oracle_id IS NULL AND c.name = ? COLLATE NOCASE"
         params = (name,)
 
+    # One row per owned folio first, so reserved can be capped at what is owned
+    # in that finish before the printing totals are summed.
     rows = conn.execute(
-        "SELECT i.scryfall_id, "
-        + ", ".join(f"c.{col}" for col in _PRINTING_SUMMARY_COLUMNS)
-        + ", SUM(i.quantity) AS quantity, COUNT(*) AS lots, "
-        + f"{reserved_sql('i.scryfall_id', None)} AS reserved "
+        "WITH folios AS ("
+        "SELECT i.scryfall_id, SUM(i.quantity) AS owned, COUNT(*) AS lots, "
+        f"{reserved_sql('i.scryfall_id', 'i.finish')} AS reserved "
         "FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id "
         f"WHERE {predicate} "
-        "GROUP BY i.scryfall_id "
+        "GROUP BY i.scryfall_id, i.finish) "
+        "SELECT f.scryfall_id, "
+        + ", ".join(f"c.{col}" for col in _PRINTING_SUMMARY_COLUMNS)
+        + ", SUM(f.owned) AS quantity, SUM(f.lots) AS lots, "
+        "SUM(MIN(f.owned, f.reserved)) AS reserved "
+        "FROM folios f JOIN cards c ON c.scryfall_id = f.scryfall_id "
+        "GROUP BY f.scryfall_id "
         # collector_number is TEXT (it can hold ★, letters, and the like), so a
         # plain sort puts "10" before "2". Cast for the numeric ordering people
         # expect and keep the raw value as the tiebreaker for non-numeric ones.

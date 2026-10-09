@@ -498,6 +498,7 @@ def test_update_slot_under_wrong_deck_returns_none(catalog_conn: sqlite3.Connect
     slot = _slot(catalog_conn, deck_id, "bolt-1")
     assert decks.update_slot(catalog_conn, other, slot["id"], {"quantity": 2}) is None
     assert decks.update_slot(catalog_conn, deck_id, 999, {"quantity": 2}) is None
+    assert not catalog_conn.in_transaction
 
 
 def test_update_slot_empty_is_noop(catalog_conn: sqlite3.Connection) -> None:
@@ -505,6 +506,7 @@ def test_update_slot_empty_is_noop(catalog_conn: sqlite3.Connection) -> None:
     slot = _slot(catalog_conn, deck_id, "bolt-1")
     _make_stale(catalog_conn, deck_id)
     assert decks.update_slot(catalog_conn, deck_id, slot["id"], {}) == slot
+    assert not catalog_conn.in_transaction
 
 
 def test_update_slot_unknown_printing_violates_fk(catalog_conn: sqlite3.Connection) -> None:
@@ -606,6 +608,21 @@ def test_add_slot_contested_raises_and_writes_nothing(catalog_conn: sqlite3.Conn
     assert not catalog_conn.in_transaction
     assert _slot_rows(catalog_conn, tome) == []
     assert _stamp(catalog_conn, tome) == _PAST
+
+
+def test_conflict_message_counts_what_the_tome_already_holds(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    inventory.create_lot(catalog_conn, scryfall_id="bolt-1", quantity=4)
+    rival = _deck(catalog_conn, "Rival Court")
+    _slot(catalog_conn, rival, "bolt-1", quantity=2)
+    tome = _deck(catalog_conn)
+    _slot(catalog_conn, tome, "bolt-1", quantity=2)
+    with pytest.raises(reservations.ReservationConflictError) as excinfo:
+        decks.add_slot(catalog_conn, tome, scryfall_id="bolt-1")
+    message = str(excinfo.value)
+    assert "Rival Court already claims 2 copies" in message
+    assert "You own 4 and this Tome already holds 2, so 0 more are free for it" in message
 
 
 def test_add_slot_within_what_the_rival_leaves_succeeds(catalog_conn: sqlite3.Connection) -> None:

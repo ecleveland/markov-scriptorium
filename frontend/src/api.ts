@@ -39,7 +39,7 @@ export interface InscribeRequest {
 
 /**
  * How a folio's copies split between Tomes and the shelf. Reservation is
- * computed at read time from the Tomes that claim cards (ADR 0018), so
+ * computed at read time from the Tomes that claim cards (ADR 0020), so
  * `available` is `owned - reserved` and never goes below zero.
  */
 export interface FolioCounts {

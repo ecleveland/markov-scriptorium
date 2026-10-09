@@ -404,7 +404,7 @@ def add_slot(
             scryfall_id,
             finish,
             board,
-            own_before + quantity,
+            own_after=own_before + quantity,
             own_before=own_before,
         )
         row = conn.execute(
@@ -416,7 +416,10 @@ def add_slot(
             (deck_id, scryfall_id, finish, board, quantity),
         ).fetchone()
         _touch(conn, deck_id)
-    except (sqlite3.Error, SlotConflictError, reservations.ReservationConflictError):
+    except BaseException:
+        # BaseException, not a list of types: whatever escapes after BEGIN
+        # IMMEDIATE (a refusal, a database error, a KeyboardInterrupt) must
+        # release the write lock before it propagates.
         conn.rollback()
         raise
     conn.commit()
@@ -438,21 +441,25 @@ def update_slot(
     leave. An unknown ``scryfall_id`` raises :class:`sqlite3.IntegrityError`
     from the foreign key. Both roll back first.
     """
-    current = conn.execute(
-        "SELECT scryfall_id, finish, board, quantity FROM deck_cards WHERE id = ? AND deck_id = ?",
-        (slot_id, deck_id),
-    ).fetchone()
-    if current is None:
-        return None
     fields = {col: updates[col] for col in _SLOT_UPDATABLE_COLUMNS if col in updates}
-    if not fields:
-        return get_slot(conn, deck_id, slot_id)
-
-    target = {**dict(current), **fields}
-    assignments = ", ".join(f"{col} = ?" for col in fields)
-    folio = (target["scryfall_id"], target["finish"])
+    # Every read the checks depend on happens under the write lock, so a
+    # concurrent PATCH can't change the slot between the read and the write.
     conn.execute("BEGIN IMMEDIATE")
     try:
+        current = conn.execute(
+            "SELECT scryfall_id, finish, board, quantity FROM deck_cards "
+            "WHERE id = ? AND deck_id = ?",
+            (slot_id, deck_id),
+        ).fetchone()
+        if current is None:
+            conn.rollback()
+            return None
+        if not fields:
+            conn.rollback()
+            return get_slot(conn, deck_id, slot_id)
+
+        target = {**dict(current), **fields}
+        folio = (target["scryfall_id"], target["finish"])
         _check_singleton(
             conn,
             deck_id,
@@ -476,15 +483,18 @@ def update_slot(
             deck_id,
             *folio,
             target["board"],
-            others + target["quantity"],
+            own_after=others + target["quantity"],
             own_before=own_before,
         )
+        assignments = ", ".join(f"{col} = ?" for col in fields)
         conn.execute(
             f"UPDATE deck_cards SET {assignments} WHERE id = ? AND deck_id = ?",
             (*fields.values(), slot_id, deck_id),
         )
         _touch(conn, deck_id)
-    except (sqlite3.Error, SlotConflictError, reservations.ReservationConflictError):
+    except BaseException:
+        # BaseException, as in add_slot: anything escaping after BEGIN
+        # IMMEDIATE must release the write lock first.
         conn.rollback()
         raise
     conn.commit()

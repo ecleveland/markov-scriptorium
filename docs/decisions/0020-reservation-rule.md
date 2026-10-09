@@ -85,5 +85,7 @@ slots, and `available` is `MAX(0, owned - reserved)`.
   - each printing in `across_printings` gains `reserved` and `available`
 - The breakdown query is unchanged. Its swap hint picks up `reserved` and
   `available` per printing through `across_printings`.
-- Per-printing `reserved` sums every finish, so a foil claim can offset
-  nonfoil copies in the swap hint. Splitting the hint by finish is deferred.
+- Per-printing `reserved` counts only owned copies. Each finish's claim is
+  capped at what is owned in that finish before the finishes are summed, so a
+  claim on an unowned foil never takes a nonfoil copy. Splitting the swap hint
+  itself by finish is deferred.

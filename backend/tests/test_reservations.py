@@ -92,7 +92,7 @@ def _check(
     own_before: int = 0,
 ) -> None:
     reservations.check_claim(
-        conn, deck_id, "bolt-1", "nonfoil", board, own_after, own_before=own_before
+        conn, deck_id, "bolt-1", "nonfoil", board, own_after=own_after, own_before=own_before
     )
 
 
@@ -179,7 +179,8 @@ def test_check_claim_refuses_any_copy_when_rivals_hold_all(conn: sqlite3.Connect
         _check(conn, _tome(conn, "Sleeved"), 1)
     assert [h["deck_id"] for h in excinfo.value.holders] == [first, second]
     message = str(excinfo.value)
-    assert "Edgar's Court" in message and "Vampire Tribal" in message
+    assert "Edgar's Court (1) and Vampire Tribal (1) already claim 2 copies" in message
+    assert "You own 2, so 0 more are free for it" in message
 
 
 def test_check_claim_refuses_an_unowned_folio_a_rival_already_wants(
@@ -224,3 +225,20 @@ def test_check_claim_allows_a_decrease_on_an_over_claimed_folio(
     _check(conn, tome, 4, own_before=4)
     with pytest.raises(reservations.ReservationConflictError):
         _check(conn, tome, 5, own_before=4)
+
+
+# --- SQL fragments ----------------------------------------------------------
+
+
+@pytest.mark.parametrize("fragment", [reservations.owned_sql, reservations.reserved_sql])
+def test_sql_fragments_refuse_a_value_in_place_of_an_expression(fragment: object) -> None:
+    assert callable(fragment)
+    with pytest.raises(ValueError):
+        fragment("'bolt-1'", "i.finish")
+    with pytest.raises(ValueError):
+        fragment("i.scryfall_id", "'foil' OR 1=1")
+
+
+def test_sql_fragments_accept_columns_and_placeholders() -> None:
+    assert "i.scryfall_id" in reservations.owned_sql("i.scryfall_id", "i.finish")
+    assert ":sid" in reservations.reserved_sql(":sid", "?")
