@@ -50,8 +50,9 @@ _SLOT_UPDATABLE_COLUMNS = ("quantity", "scryfall_id", "finish", "board")
 # Boards that hold exactly one copy per slot (the schema CHECK).
 SINGLETON_BOARDS = frozenset({"commander", "companion"})
 
-# Card display fields nested under ``card`` on each slot. Same shape as an
-# inventory lot's ``card`` object.
+# Card display fields nested under ``card`` on each slot and breakdown line.
+# The first six match an inventory lot's ``card`` object. The last three
+# (type_line, mana_cost, cmc) are extra: the editor sorts by type and mana value.
 _CARD_DISPLAY_COLUMNS = (
     "name",
     "set_code",
@@ -59,6 +60,9 @@ _CARD_DISPLAY_COLUMNS = (
     "collector_number",
     "rarity",
     "image_uris",
+    "type_line",
+    "mana_cost",
+    "cmc",
 )
 
 _DECK_COLUMNS = (

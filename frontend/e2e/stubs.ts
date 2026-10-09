@@ -9,6 +9,10 @@ import type { Page, Route } from '@playwright/test'
 // Catalog flow (adjust a quantity, amend a folio, remove it) behaves the way a
 // real backend would across several requests.
 //
+// The Tome endpoints (decks, their slots, and the breakdown) work the same way:
+// decks and slots live in memory for one test, and the breakdown reads the
+// stubbed lots to say how many copies each slot has.
+//
 // Shapes mirror frontend/src/api.ts. Keep them in sync if the contracts change.
 
 /** A single catalog printing — enough fields for the Inscribe flow. */
@@ -22,6 +26,21 @@ export const SOL_RING_PRINTING = {
   finishes: ['nonfoil', 'foil'],
   image_uris: null,
 }
+
+/** Lightning Bolt from Alpha, so name searches can find a second card. */
+export const BOLT_LEA_PRINTING = {
+  scryfall_id: 'bolt-lea',
+  name: 'Lightning Bolt',
+  set_code: 'lea',
+  set_name: 'Limited Edition Alpha',
+  collector_number: '161',
+  rarity: 'common',
+  finishes: ['nonfoil'],
+  image_uris: null,
+}
+
+/** The printings the stubbed catalog knows, for name search. */
+const CATALOG_PRINTINGS = [SOL_RING_PRINTING, BOLT_LEA_PRINTING]
 
 interface CardDisplay {
   name: string
@@ -93,6 +112,68 @@ const ORACLE_OF: Record<string, string> = {
   'bolt-2x2': 'oracle-lightning-bolt',
   [SOL_RING_PRINTING.scryfall_id]: 'oracle-sol-ring',
 }
+
+/** Type-line fields a slot's card carries beyond the display fields. */
+const CARD_TYPES: Record<
+  string,
+  { type_line: string; mana_cost: string; cmc: number }
+> = {
+  'bolt-lea': { type_line: 'Instant', mana_cost: '{R}', cmc: 1 },
+  'bolt-2x2': { type_line: 'Instant', mana_cost: '{R}', cmc: 1 },
+  [SOL_RING_PRINTING.scryfall_id]: {
+    type_line: 'Artifact',
+    mana_cost: '{1}',
+    cmc: 1,
+  },
+}
+
+/** The card a slot shows, or undefined when the catalog lacks the printing. */
+function slotCard(scryfallId: string) {
+  const display: Record<string, CardDisplay> = {
+    [SOL_RING_PRINTING.scryfall_id]: SOL_RING_CARD,
+    'bolt-lea': BOLT_LEA,
+    'bolt-2x2': BOLT_2X2,
+  }
+  const base = display[scryfallId]
+  const types = CARD_TYPES[scryfallId]
+  if (base === undefined || types === undefined) return undefined
+  return { ...base, ...types }
+}
+
+interface DeckStub {
+  id: number
+  name: string
+  format: string | null
+  status: string
+  claims_cards: boolean
+  notes: string | null
+  changelog: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface SlotStub {
+  id: number
+  deck_id: number
+  scryfall_id: string
+  finish: string
+  board: string
+  quantity: number
+}
+
+const STUB_TIMESTAMP = '2026-10-01T00:00:00Z'
+
+/** Display order of boards within a Tome. */
+const BOARD_RANK: Record<string, number> = {
+  commander: 0,
+  companion: 1,
+  main: 2,
+  sideboard: 3,
+  maybeboard: 4,
+}
+
+const SINGLE_COPY_BOARDS = ['commander', 'companion']
+const SINGLE_COPY_DETAIL = 'A commander or companion slot holds one copy.'
 
 function lot(overrides: Partial<LotStub> & { id: number }): LotStub {
   return {
@@ -193,7 +274,8 @@ function ownedForPrinting(lots: Map<number, LotStub>, scryfallId: string) {
 
 /**
  * Register a single `/api/**` handler covering the health probe, the Inscribe
- * read/write path, and the Catalog's list, detail, amend and remove. Routes are
+ * read/write path, the Catalog's list, detail, amend and remove, and the Tome
+ * endpoints (deck CRUD, slot CRUD, breakdown). Routes are
  * matched by pathname + method; anything unmatched gets a 404 so an unstubbed
  * call fails loudly instead of hitting the network.
  *
@@ -202,6 +284,32 @@ function ownedForPrinting(lots: Map<number, LotStub>, scryfallId: string) {
 export async function stubApi(page: Page): Promise<void> {
   const lots = seedLots()
   let nextId = lots.size + 1
+  const decks = new Map<number, DeckStub>()
+  const slots = new Map<number, SlotStub>()
+  let nextDeckId = 1
+  let nextSlotId = 1
+
+  const missingDeck = (route: Route, id: number) =>
+    json(route, { detail: `No Tome with id ${id}.` }, 404)
+
+  /** A slot as the API serves it, with its card attached. */
+  const servedSlot = (slot: SlotStub) => ({
+    ...slot,
+    card: slotCard(slot.scryfall_id),
+  })
+
+  /** A Tome's slots in display order: board, then card name, then id. */
+  const orderedSlots = (deckId: number) =>
+    [...slots.values()]
+      .filter((slot) => slot.deck_id === deckId)
+      .sort(
+        (a, b) =>
+          BOARD_RANK[a.board] - BOARD_RANK[b.board] ||
+          (slotCard(a.scryfall_id)?.name ?? '').localeCompare(
+            slotCard(b.scryfall_id)?.name ?? '',
+          ) ||
+          a.id - b.id,
+      )
 
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
@@ -214,16 +322,20 @@ export async function stubApi(page: Page): Promise<void> {
 
     if (path === '/cards/autocomplete') {
       const q = (url.searchParams.get('q') ?? '').toLowerCase()
-      const names = SOL_RING_PRINTING.name.toLowerCase().includes(q)
-        ? [SOL_RING_PRINTING.name]
-        : []
+      const names = CATALOG_PRINTINGS.map((printing) => printing.name).filter(
+        (name) => name.toLowerCase().includes(q),
+      )
       return json(route, { names })
     }
 
     if (path === '/cards/search') {
+      const q = (url.searchParams.get('q') ?? '').toLowerCase()
+      const results = CATALOG_PRINTINGS.filter((printing) =>
+        printing.name.toLowerCase().includes(q),
+      )
       return json(route, {
-        results: [SOL_RING_PRINTING],
-        total: 1,
+        results,
+        total: results.length,
         limit: Number(url.searchParams.get('limit') ?? 100),
         offset: 0,
       })
@@ -280,6 +392,180 @@ export async function stubApi(page: Page): Promise<void> {
         lots.delete(id)
         return route.fulfill({ status: 204, body: '' })
       }
+    }
+
+    if (path === '/decks' && method === 'GET') {
+      const listed = [...decks.values()]
+        .sort((a, b) => b.id - a.id)
+        .map((deck) => ({
+          ...deck,
+          card_count: [...slots.values()]
+            .filter(
+              (slot) => slot.deck_id === deck.id && slot.board !== 'maybeboard',
+            )
+            .reduce((sum, slot) => sum + slot.quantity, 0),
+        }))
+      return json(route, listed)
+    }
+
+    if (path === '/decks' && method === 'POST') {
+      const body = route.request().postDataJSON()
+      const format =
+        typeof body.format === 'string' ? body.format.trim().toLowerCase() : ''
+      const deck: DeckStub = {
+        id: nextDeckId++,
+        name: String(body.name).trim(),
+        format: format === '' ? null : format,
+        status: body.status ?? 'in_progress',
+        claims_cards: body.claims_cards ?? true,
+        notes: body.notes ?? null,
+        changelog: body.changelog ?? null,
+        created_at: STUB_TIMESTAMP,
+        updated_at: STUB_TIMESTAMP,
+      }
+      decks.set(deck.id, deck)
+      return json(route, deck, 201)
+    }
+
+    const deckMatch = path.match(/^\/decks\/(\d+)$/)
+    if (deckMatch) {
+      const id = Number(deckMatch[1])
+      const deck = decks.get(id)
+      if (deck === undefined) return missingDeck(route, id)
+      if (method === 'GET') {
+        return json(route, {
+          ...deck,
+          cards: orderedSlots(id).map(servedSlot),
+        })
+      }
+      if (method === 'PATCH') {
+        const amended = { ...deck, ...route.request().postDataJSON() }
+        decks.set(id, amended)
+        return json(route, amended)
+      }
+      if (method === 'DELETE') {
+        decks.delete(id)
+        for (const slot of orderedSlots(id)) slots.delete(slot.id)
+        return route.fulfill({ status: 204, body: '' })
+      }
+    }
+
+    const deckCardsMatch = path.match(/^\/decks\/(\d+)\/cards$/)
+    if (deckCardsMatch && method === 'POST') {
+      const deckId = Number(deckCardsMatch[1])
+      if (!decks.has(deckId)) return missingDeck(route, deckId)
+      const body = route.request().postDataJSON()
+      const scryfallId: string = body.scryfall_id
+      if (slotCard(scryfallId) === undefined) {
+        return json(
+          route,
+          {
+            detail: `No card with Scryfall ID '${scryfallId}' resides in the catalog.`,
+          },
+          404,
+        )
+      }
+      const finish: string = body.finish ?? 'nonfoil'
+      const board: string = body.board ?? 'main'
+      const quantity: number = body.quantity ?? 1
+      const existing = orderedSlots(deckId).find(
+        (slot) =>
+          slot.scryfall_id === scryfallId &&
+          slot.finish === finish &&
+          slot.board === board,
+      )
+      if (SINGLE_COPY_BOARDS.includes(board)) {
+        if (existing !== undefined || quantity > 1) {
+          return json(route, { detail: SINGLE_COPY_DETAIL }, 409)
+        }
+      }
+      if (existing !== undefined) {
+        existing.quantity += quantity
+        return json(route, servedSlot(existing), 201)
+      }
+      const created: SlotStub = {
+        id: nextSlotId++,
+        deck_id: deckId,
+        scryfall_id: scryfallId,
+        finish,
+        board,
+        quantity,
+      }
+      slots.set(created.id, created)
+      return json(route, servedSlot(created), 201)
+    }
+
+    const slotMatch = path.match(/^\/decks\/(\d+)\/cards\/(\d+)$/)
+    if (slotMatch) {
+      const deckId = Number(slotMatch[1])
+      const slotId = Number(slotMatch[2])
+      if (!decks.has(deckId)) return missingDeck(route, deckId)
+      const slot = slots.get(slotId)
+      if (slot === undefined || slot.deck_id !== deckId) {
+        return json(route, { detail: `No slot with id ${slotId}.` }, 404)
+      }
+      if (method === 'PATCH') {
+        const amended = { ...slot, ...route.request().postDataJSON() }
+        slots.set(slotId, amended)
+        return json(route, servedSlot(amended))
+      }
+      if (method === 'DELETE') {
+        slots.delete(slotId)
+        return route.fulfill({ status: 204, body: '' })
+      }
+    }
+
+    const breakdownMatch = path.match(/^\/decks\/(\d+)\/breakdown$/)
+    if (breakdownMatch && method === 'GET') {
+      const deckId = Number(breakdownMatch[1])
+      if (!decks.has(deckId)) return missingDeck(route, deckId)
+      // Demand already served per folio, so two slots of one folio share its copies.
+      const served = new Map<string, number>()
+      const lines = orderedSlots(deckId)
+        .filter((slot) => slot.board !== 'maybeboard')
+        .map((slot) => {
+          const owned = [...lots.values()]
+            .filter(
+              (record) =>
+                record.scryfall_id === slot.scryfall_id &&
+                record.finish === slot.finish,
+            )
+            .reduce((sum, record) => sum + record.quantity, 0)
+          // No rival Tome claims copies in the stub, so all owned copies are free.
+          const available = owned
+          const key = `${slot.scryfall_id}|${slot.finish}`
+          const taken = served.get(key) ?? 0
+          const have = Math.min(slot.quantity, Math.max(0, available - taken))
+          const needed = slot.quantity - have
+          served.set(key, taken + slot.quantity)
+          return {
+            id: slot.id,
+            board: slot.board,
+            scryfall_id: slot.scryfall_id,
+            finish: slot.finish,
+            quantity: slot.quantity,
+            owned,
+            available,
+            have,
+            needed,
+            card: slotCard(slot.scryfall_id),
+            swap_hint:
+              needed > 0
+                ? ownedForPrinting(lots, slot.scryfall_id).across_printings
+                : null,
+          }
+        })
+      const sum = (pick: (line: (typeof lines)[number]) => number) =>
+        lines.reduce((total, line) => total + pick(line), 0)
+      return json(route, {
+        deck_id: deckId,
+        lines,
+        totals: {
+          cards: sum((line) => line.quantity),
+          have: sum((line) => line.have),
+          needed: sum((line) => line.needed),
+        },
+      })
     }
 
     return json(route, { detail: `Unstubbed ${method} ${path}` }, 404)

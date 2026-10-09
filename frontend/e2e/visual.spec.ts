@@ -41,6 +41,7 @@ test.describe('reflows at phone width', () => {
     { path: '/catalog', slug: 'catalog', table: true },
     { path: '/catalog/2', slug: 'catalog-detail', heading: 'Lightning Bolt' },
     { path: '/inscribe', slug: 'inscribe' },
+    { path: '/tomes', slug: 'tomes', heading: 'The Tomes' },
     { path: '/import/decklist', slug: 'import-decklist' },
     { path: '/import/csv', slug: 'import-csv' },
   ]

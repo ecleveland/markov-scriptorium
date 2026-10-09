@@ -9,6 +9,9 @@ export type Finish = (typeof FINISHES)[number]
 export const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
+/** Scryfall's `image_uris` (size name to URL), or null when the card has none. */
+export type ImageUris = Record<string, string> | null
+
 /** A single printing as served by the card catalog endpoints. */
 export interface CardPrinting {
   scryfall_id: string
@@ -18,7 +21,7 @@ export interface CardPrinting {
   collector_number: string
   rarity: string
   finishes: string[] | null
-  image_uris: Record<string, string> | null
+  image_uris: ImageUris
 }
 
 export interface SearchResponse {
@@ -67,7 +70,7 @@ export interface InventoryLot {
     set_name: string
     collector_number: string
     rarity: string
-    image_uris: Record<string, string> | null
+    image_uris: ImageUris
   }
   /** Counts for the lot's whole (printing, finish) folio, not this lot alone. */
   folio: FolioCounts
@@ -452,4 +455,176 @@ export async function ownedForPrinting(
   return request<OwnedForPrinting>(
     `/inventory/card/${encodeURIComponent(scryfallId)}`,
   )
+}
+
+// --- Tomes (VEG-223, VEG-224, VEG-225) -------------------------------------
+
+export const DECK_STATUSES = [
+  'in_progress',
+  'active',
+  'playtest',
+  'shelved',
+] as const
+export type DeckStatus = (typeof DECK_STATUSES)[number]
+
+/** Boards in the order the backend ranks them (commander first). */
+export const BOARDS = [
+  'commander',
+  'companion',
+  'main',
+  'sideboard',
+  'maybeboard',
+] as const
+export type Board = (typeof BOARDS)[number]
+
+/** A Tome as the API returns it. */
+export interface Deck {
+  id: number
+  name: string
+  format: string | null
+  status: DeckStatus
+  claims_cards: boolean
+  notes: string | null
+  changelog: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** One entry of GET /decks: the Tome plus its copy count, maybeboard excluded. */
+export interface DeckListEntry extends Deck {
+  card_count: number
+}
+
+/** The card display object on a slot or breakdown line. */
+export interface SlotCard {
+  name: string
+  set_code: string
+  set_name: string
+  collector_number: string
+  rarity: string
+  image_uris: ImageUris
+  type_line: string | null
+  mana_cost: string | null
+  cmc: number | null
+}
+
+/** One (printing, finish, board) row of a Tome with its copy count. */
+export interface DeckSlot {
+  id: number
+  deck_id: number
+  scryfall_id: string
+  finish: Finish
+  board: Board
+  quantity: number
+  card: SlotCard
+}
+
+/** GET /decks/{id}: the Tome and every slot in it. */
+export interface DeckWithCards extends Deck {
+  cards: DeckSlot[]
+}
+
+export interface DeckCreate {
+  name: string
+  format?: string | null
+  status?: DeckStatus
+  claims_cards?: boolean
+  notes?: string | null
+  changelog?: string | null
+}
+
+/** PATCH /decks/{id}. Omitted keys stay; null clears format, notes, changelog. */
+export type DeckPatch = Partial<DeckCreate>
+
+export interface SlotCreate {
+  scryfall_id: string
+  finish?: Finish
+  board?: Board
+  quantity?: number
+}
+
+export type SlotPatch = Partial<SlotCreate>
+
+/** One slot's owned versus needed. `swap_hint` is set only when needed > 0. */
+export interface BreakdownLine {
+  id: number
+  board: Board
+  scryfall_id: string
+  finish: Finish
+  quantity: number
+  owned: number
+  available: number
+  have: number
+  needed: number
+  card: SlotCard
+  swap_hint: AcrossPrintings | null
+}
+
+export interface Breakdown {
+  deck_id: number
+  lines: BreakdownLine[]
+  totals: { cards: number; have: number; needed: number }
+}
+
+function jsonBody(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }
+}
+
+/** Every Tome, newest first. */
+export async function listDecks(): Promise<DeckListEntry[]> {
+  return request<DeckListEntry[]>('/decks')
+}
+
+/** One Tome with its slots, ordered by board then card name. */
+export async function getDeck(deckId: number): Promise<DeckWithCards> {
+  return request<DeckWithCards>(`/decks/${deckId}`)
+}
+
+export async function createDeck(body: DeckCreate): Promise<Deck> {
+  return request<Deck>('/decks', jsonBody('POST', body))
+}
+
+export async function updateDeck(
+  deckId: number,
+  patch: DeckPatch,
+): Promise<Deck> {
+  return request<Deck>(`/decks/${deckId}`, jsonBody('PATCH', patch))
+}
+
+export async function deleteDeck(deckId: number): Promise<void> {
+  return requestVoid(`/decks/${deckId}`, { method: 'DELETE' })
+}
+
+/** Add copies to a Tome. A slot already holding the tuple grows instead. */
+export async function addSlot(
+  deckId: number,
+  body: SlotCreate,
+): Promise<DeckSlot> {
+  return request<DeckSlot>(`/decks/${deckId}/cards`, jsonBody('POST', body))
+}
+
+export async function updateSlot(
+  deckId: number,
+  slotId: number,
+  patch: SlotPatch,
+): Promise<DeckSlot> {
+  return request<DeckSlot>(
+    `/decks/${deckId}/cards/${slotId}`,
+    jsonBody('PATCH', patch),
+  )
+}
+
+export async function deleteSlot(
+  deckId: number,
+  slotId: number,
+): Promise<void> {
+  return requestVoid(`/decks/${deckId}/cards/${slotId}`, { method: 'DELETE' })
+}
+
+export async function getBreakdown(deckId: number): Promise<Breakdown> {
+  return request<Breakdown>(`/decks/${deckId}/breakdown`)
 }

@@ -55,6 +55,7 @@ export function StatusHeader() {
       <div className="scriptorium-header-end">
         <nav className="scriptorium-nav" aria-label="Primary">
           <NavLink to="/catalog">Catalog</NavLink>
+          <NavLink to="/tomes">Tomes</NavLink>
           <NavLink to="/inscribe">Inscribe</NavLink>
           <NavLink to="/import/decklist">Decklist</NavLink>
           <NavLink to="/import/csv">CSV</NavLink>
