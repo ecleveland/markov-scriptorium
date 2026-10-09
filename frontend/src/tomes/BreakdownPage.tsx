@@ -35,20 +35,22 @@ export function BreakdownPage() {
   })
 
   if (deckId === null) return <NoSuchTome />
+  // Only a failed first read replaces the page; a failed refresh keeps what
+  // is cached on screen with a notice above it.
   const failure = tome.error ?? breakdown.error
-  if (failure) {
-    if (failure instanceof ApiError && failure.status === 404) {
-      return <NoSuchTome />
+  if (tome.data === undefined || breakdown.data === undefined) {
+    if (failure) {
+      if (failure instanceof ApiError && failure.status === 404) {
+        return <NoSuchTome />
+      }
+      return (
+        <section className="tome">
+          <Notice tone="danger" role="alert">
+            The breakdown could not be read. {failure.message}
+          </Notice>
+        </section>
+      )
     }
-    return (
-      <section className="tome">
-        <Notice tone="danger" role="alert">
-          The breakdown could not be read. {failure.message}
-        </Notice>
-      </section>
-    )
-  }
-  if (!tome.isSuccess || !breakdown.isSuccess) {
     return (
       <section className="tome">
         <Consulting>Counting what is in hand…</Consulting>
@@ -63,6 +65,11 @@ export function BreakdownPage() {
       <p className="tome__back">
         <Link to={`/tomes/${deckId}`}>← Back to the Tome</Link>
       </p>
+      {failure && (
+        <Notice tone="danger" role="alert">
+          The breakdown could not be refreshed. {failure.message}
+        </Notice>
+      )}
       <PageHeader eyebrow="Owned and needed" title={tome.data.name} />
       <Notice>
         {cardCount(totals.cards)}, {totals.have} in hand, {totals.needed} needed

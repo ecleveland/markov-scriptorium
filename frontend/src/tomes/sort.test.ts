@@ -15,6 +15,10 @@ describe('typeGroup', () => {
     ['Basic Land — Swamp', 'Land'],
     ['Battle — Siege', 'Battle'],
     ['Kindred Tribal', 'Other'],
+    // Land beats Artifact and Enchantment; Creature still beats Land.
+    ['Artifact Land', 'Land'],
+    ['Enchantment Land — Urza’s Saga', 'Land'],
+    ['Land Creature — Forest Dryad', 'Creature'],
   ])('files %s under %s', (typeLine, group) => {
     expect(typeGroup(typeLine)).toBe(group)
   })

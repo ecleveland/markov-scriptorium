@@ -34,22 +34,24 @@ export function TomeEditorPage() {
   })
 
   if (deckId === null) return <NoSuchTome />
-  if (query.isPending) {
-    return (
-      <section className="tome">
-        <Consulting>Opening the Tome…</Consulting>
-      </section>
-    )
-  }
-  if (query.isError) {
-    if (query.error instanceof ApiError && query.error.status === 404) {
-      return <NoSuchTome />
+  // Only a failed first read replaces the page. A failed background refetch
+  // keeps the cached Tome on screen, so unsaved amend edits survive it.
+  if (query.data === undefined) {
+    if (query.isError) {
+      if (query.error instanceof ApiError && query.error.status === 404) {
+        return <NoSuchTome />
+      }
+      return (
+        <section className="tome">
+          <Notice tone="danger" role="alert">
+            The Tome could not be read. {query.error.message}
+          </Notice>
+        </section>
+      )
     }
     return (
       <section className="tome">
-        <Notice tone="danger" role="alert">
-          The Tome could not be read. {query.error.message}
-        </Notice>
+        <Consulting>Opening the Tome…</Consulting>
       </section>
     )
   }
@@ -61,6 +63,11 @@ export function TomeEditorPage() {
       <p className="tome__back">
         <Link to="/tomes">← Back to the Tomes</Link>
       </p>
+      {query.isError && (
+        <Notice tone="danger" role="alert">
+          The Tome could not be refreshed. {query.error.message}
+        </Notice>
+      )}
       <TomeHead key={`head-${deck.id}`} deck={deck} />
       <TomeAmendForm key={`amend-${deck.id}`} deck={deck} />
       <AddCard deckId={deck.id} />
@@ -142,14 +149,14 @@ function UnbindTome({ deck }: { deck: Deck }) {
 
   const unbind = useMutation({
     mutationFn: () => deleteDeck(deck.id),
-    onSuccess: async () => {
-      // Drop the gone Tome's entries first. `all` prefix-matches them and the
-      // editor query is still mounted, so invalidating alone would refetch an
-      // id that no longer exists.
+    onSuccess: () => {
+      // Leave first, so no editor is mounted to rebuild a query for the gone
+      // id. Then drop its entries, since `all` prefix-matches them and
+      // invalidating alone would refetch an id that no longer exists.
+      navigate('/tomes')
       queryClient.removeQueries({ queryKey: tomeKeys.tome(deck.id) })
       queryClient.removeQueries({ queryKey: tomeKeys.breakdown(deck.id) })
-      await invalidateAfterSlotWrite(queryClient)
-      navigate('/tomes')
+      return invalidateAfterSlotWrite(queryClient)
     },
   })
 

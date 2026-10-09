@@ -17,7 +17,6 @@ import {
   getBreakdown,
   getDeck,
   listDecks,
-  reservationHolders,
   updateDeck,
   updateSlot,
   parseDecklist,
@@ -466,34 +465,20 @@ describe('Tomes', () => {
   })
 })
 
-describe('reservationHolders', () => {
-  const holders = [
-    { deck_id: 1, name: 'Edgar', quantity: 2 },
-    { deck_id: 5, name: 'Olivia', quantity: 1 },
-  ]
-
-  it('reads the holders off a reservation 409 and keeps the message', async () => {
+describe('object error details', () => {
+  it('surfaces the message of an object detail, such as a reservation 409', async () => {
     mockFetch(
-      { detail: { message: 'Edgar holds 2 copies.', holders } },
+      {
+        detail: {
+          message: 'Edgar holds 2 copies.',
+          holders: [{ deck_id: 1, name: 'Edgar', quantity: 2 }],
+        },
+      },
       false,
       409,
     )
-    const err = await addSlot(2, { scryfall_id: 'bolt-lea' }).catch(
-      (e: unknown) => e,
+    await expect(addSlot(2, { scryfall_id: 'bolt-lea' })).rejects.toMatchObject(
+      { status: 409, message: 'Edgar holds 2 copies.' },
     )
-    expect(err).toBeInstanceOf(ApiError)
-    expect((err as ApiError).message).toBe('Edgar holds 2 copies.')
-    expect(reservationHolders(err)).toEqual(holders)
-  })
-
-  it('answers null for a string detail', async () => {
-    mockFetch({ detail: 'A commander slot holds one copy.' }, false, 409)
-    const err = await addSlot(2, { scryfall_id: 'x' }).catch((e: unknown) => e)
-    expect(reservationHolders(err)).toBeNull()
-  })
-
-  it('answers null for anything that is not an ApiError', () => {
-    expect(reservationHolders(new Error('boom'))).toBeNull()
-    expect(reservationHolders(undefined)).toBeNull()
   })
 })

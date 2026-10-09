@@ -1,4 +1,5 @@
-import { screen, within } from '@testing-library/react'
+import { focusManager } from '@tanstack/react-query'
+import { act, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Breakdown } from '../api'
@@ -175,5 +176,25 @@ describe('BreakdownPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The breakdown could not be read.',
     )
+  })
+
+  it('keeps the breakdown on screen when a refresh fails', async () => {
+    deckMock.mockResolvedValue({ ...deck({ id: 4 }), cards: [] })
+    breakdownMock
+      .mockResolvedValueOnce(result)
+      .mockRejectedValue(new ApiError('The scriptorium is closed.', 503))
+    renderPage()
+    await screen.findByText('5 cards, 2 in hand, 3 needed')
+
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The breakdown could not be refreshed. The scriptorium is closed.',
+    )
+    expect(screen.getByText('5 cards, 2 in hand, 3 needed')).toBeInTheDocument()
+    focusManager.setFocused(undefined)
   })
 })

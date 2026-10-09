@@ -19,15 +19,19 @@ export function TomesPage() {
       {query.isPending && <Consulting>Taking down the Tomes…</Consulting>}
       {query.isError && (
         <Notice tone="danger" role="alert">
-          The Tomes could not be read. {query.error.message}
+          {query.data === undefined
+            ? 'The Tomes could not be read.'
+            : 'The Tomes could not be refreshed.'}{' '}
+          {query.error.message}
         </Notice>
       )}
-      {query.isSuccess && query.data.length === 0 && (
+      {/* A failed refresh keeps the cached list on screen. */}
+      {query.data !== undefined && query.data.length === 0 && (
         <EmptyState title="No Tomes bound yet">
           Bind one above, then add its cards from the collection or the catalog.
         </EmptyState>
       )}
-      {query.isSuccess && query.data.length > 0 && (
+      {query.data !== undefined && query.data.length > 0 && (
         <ul className="tomes__list" aria-label="Tomes">
           {query.data.map((deck) => (
             <li key={deck.id} className="tomes__entry">

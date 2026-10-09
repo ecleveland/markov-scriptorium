@@ -17,14 +17,18 @@ export type TypeGroup = (typeof TYPE_GROUPS)[number]
 export type SlotSort = 'type' | 'cmc'
 
 /**
- * The group a type line files under. Creature wins over Artifact or Land, so an
- * artifact creature sits with the creatures, the way decklists are read. Only
- * the front face counts on a double-faced card.
+ * The group a type line files under, the way decklists are read. Creature wins
+ * over everything, so an artifact creature or Dryad Arbor sits with the
+ * creatures. Land wins next, so an artifact land or Urza's Saga sits with the
+ * lands. Anything else takes its first type in `TYPE_GROUPS` order. Only the
+ * front face counts on a double-faced card.
  */
 export function typeGroup(typeLine: string | null): TypeGroup {
   if (typeLine === null) return 'Other'
   const front = typeLine.split('//')[0]
   const types = front.split('—')[0].split(/\s+/)
+  if (types.includes('Creature')) return 'Creature'
+  if (types.includes('Land')) return 'Land'
   return TYPE_GROUPS.find((group) => types.includes(group)) ?? 'Other'
 }
 

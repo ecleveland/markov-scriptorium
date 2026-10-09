@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { focusManager } from '@tanstack/react-query'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -159,5 +160,27 @@ describe('TomesPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'format must be a lowercase format key',
     )
+  })
+
+  it('keeps the list on screen when a refresh fails', async () => {
+    listMock
+      .mockResolvedValueOnce([deck({ id: 2, name: 'Edgar Markov' })])
+      .mockRejectedValue(new ApiError('The scriptorium is closed.', 503))
+    renderPage()
+    await screen.findByRole('link', { name: 'Edgar Markov' })
+
+    // Regaining focus refetches the stale list, and this time it fails.
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The Tomes could not be refreshed. The scriptorium is closed.',
+    )
+    expect(
+      screen.getByRole('link', { name: 'Edgar Markov' }),
+    ).toBeInTheDocument()
+    focusManager.setFocused(undefined)
   })
 })

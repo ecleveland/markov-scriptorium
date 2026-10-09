@@ -9,6 +9,9 @@ export type Finish = (typeof FINISHES)[number]
 export const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
+/** Scryfall's `image_uris` (size name to URL), or null when the card has none. */
+export type ImageUris = Record<string, string> | null
+
 /** A single printing as served by the card catalog endpoints. */
 export interface CardPrinting {
   scryfall_id: string
@@ -18,7 +21,7 @@ export interface CardPrinting {
   collector_number: string
   rarity: string
   finishes: string[] | null
-  image_uris: Record<string, string> | null
+  image_uris: ImageUris
 }
 
 export interface SearchResponse {
@@ -67,7 +70,7 @@ export interface InventoryLot {
     set_name: string
     collector_number: string
     rarity: string
-    image_uris: Record<string, string> | null
+    image_uris: ImageUris
   }
   /** Counts for the lot's whole (printing, finish) folio, not this lot alone. */
   folio: FolioCounts
@@ -78,62 +81,41 @@ export class ApiError extends Error {
   readonly status: number
   /** The backend's `detail` (FastAPI error body), when present. */
   readonly detail?: string
-  /** The parsed `detail` when the backend sent an object, such as a 409 that
-   *  names the Tomes holding the copies. */
-  readonly detailObject?: unknown
 
-  constructor(
-    message: string,
-    status: number,
-    detail?: string,
-    detailObject?: unknown,
-  ) {
+  constructor(message: string, status: number, detail?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
-    this.detailObject = detailObject
   }
-}
-
-interface ErrorBody {
-  /** A sentence to show, when the body carried one. */
-  text?: string
-  /** The raw `detail` when it was an object. */
-  object?: unknown
 }
 
 /** Pull FastAPI's `{ detail }` off an error response, tolerant of any body. */
-async function errorDetail(res: Response): Promise<ErrorBody> {
+async function errorDetail(res: Response): Promise<string | undefined> {
   try {
     const body = (await res.json()) as { detail?: unknown }
-    if (typeof body.detail === 'string') return { text: body.detail }
+    if (typeof body.detail === 'string') return body.detail
     // Structured details (e.g. the bulk-inscribe 422 `{message, unknown}`) carry
-    // a human sentence in `message`. Surface that, not the raw JSON blob.
+    // a human sentence in `message` — surface that, not the raw JSON blob.
     if (body.detail != null && typeof body.detail === 'object') {
       const message = (body.detail as { message?: unknown }).message
-      return {
-        text:
-          typeof message === 'string' ? message : JSON.stringify(body.detail),
-        object: body.detail,
-      }
+      if (typeof message === 'string') return message
     }
-    if (body.detail != null) return { text: JSON.stringify(body.detail) }
+    if (body.detail != null) return JSON.stringify(body.detail)
   } catch {
     // Non-JSON body; the status code alone will have to do.
   }
-  return {}
+  return undefined
 }
 
 async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
-    const { text, object } = await errorDetail(res)
+    const detail = await errorDetail(res)
     throw new ApiError(
-      text ?? `Request to ${path} failed (${res.status})`,
+      detail ?? `Request to ${path} failed (${res.status})`,
       res.status,
-      text,
-      object,
+      detail,
     )
   }
   return res
@@ -520,7 +502,7 @@ export interface SlotCard {
   set_name: string
   collector_number: string
   rarity: string
-  image_uris: Record<string, string> | null
+  image_uris: ImageUris
   type_line: string | null
   mana_cost: string | null
   cmc: number | null
@@ -582,32 +564,6 @@ export interface Breakdown {
   deck_id: number
   lines: BreakdownLine[]
   totals: { cards: number; have: number; needed: number }
-}
-
-/** A claiming Tome that already holds copies a write wanted. */
-export interface ReservationHolder {
-  deck_id: number
-  name: string
-  quantity: number
-}
-
-/** The 409 `detail` when a claim would take copies other Tomes hold. */
-export interface ReservationConflict {
-  message: string
-  holders: ReservationHolder[]
-}
-
-/**
- * The Tomes in the way when `err` is a reservation 409, else null. No screen
- * reads it yet, because the 409 message already names the holders. It is kept
- * for the Tome editor, for when a control wants to link to the holding Tomes.
- */
-export function reservationHolders(err: unknown): ReservationHolder[] | null {
-  if (!(err instanceof ApiError)) return null
-  const detail = err.detailObject
-  if (detail == null || typeof detail !== 'object') return null
-  const holders = (detail as { holders?: unknown }).holders
-  return Array.isArray(holders) ? (holders as ReservationHolder[]) : null
 }
 
 function jsonBody(method: string, body: unknown): RequestInit {

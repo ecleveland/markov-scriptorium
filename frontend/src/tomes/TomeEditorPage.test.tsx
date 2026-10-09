@@ -33,6 +33,7 @@ import {
   getDeck,
   searchPrintings,
   updateDeck,
+  updateSlot,
 } from '../api'
 
 const getMock = vi.mocked(getDeck)
@@ -369,6 +370,31 @@ describe('TomeEditorPage', () => {
     await waitFor(() => expect(deleteSlotMock).toHaveBeenCalledWith(4, 2))
   })
 
+  it('keeps the editor and its unsaved edits when a refresh fails', async () => {
+    const user = userEvent.setup()
+    getMock
+      .mockResolvedValueOnce(tome([bolt]))
+      .mockRejectedValue(new ApiError('The scriptorium is closed.', 503))
+    vi.mocked(updateSlot).mockResolvedValue({ ...bolt, quantity: 5 })
+    renderEditor()
+
+    await user.click(await screen.findByText('Amend the Tome'))
+    await user.type(screen.getByLabelText('Changelog'), 'draft')
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Increase quantity of Lightning Bolt',
+      }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The Tome could not be refreshed. The scriptorium is closed.',
+    )
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Edgar Markov' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Changelog')).toHaveValue('draft')
+  })
+
   it('explains a Tome that does not exist', async () => {
     getMock.mockRejectedValue(new ApiError('No Tome with id 4.', 404))
     renderEditor()
@@ -558,15 +584,7 @@ describe('TomeEditorPage, adding a card', () => {
     const user = userEvent.setup()
     getMock.mockResolvedValue(tome([]))
     const message = 'Other Tomes hold all 3 copies you own.'
-    addMock.mockRejectedValue(
-      new ApiError(message, 409, message, {
-        message,
-        holders: [
-          { deck_id: 1, name: 'Olivia', quantity: 2 },
-          { deck_id: 2, name: 'Sorin', quantity: 1 },
-        ],
-      }),
-    )
+    addMock.mockRejectedValue(new ApiError(message, 409, message))
     renderEditor()
 
     await pickBolt(user)
