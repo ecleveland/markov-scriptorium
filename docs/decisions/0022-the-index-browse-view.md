@@ -41,8 +41,9 @@ discovering a value matters more than predicting its hit count. Volumes group
 case-insensitively under the alphabetically first spelling (SQL `MIN`), because
 the search's `location` filter folds case and two checkboxes that filter
 identically would be a bug. Tags group exactly, because the tag filter is exact.
-Blank and whitespace-only values are left out of both, as the search already
-treats them as no filter. Color, type, finish and condition are fixed
+Blank and space-only values are left out of both, as the search already treats
+them as no filter. SQLite's `trim` does not strip tabs, which the search would;
+nobody types a tab into a Volume name, so the two rules are close enough. Color, type, finish and condition are fixed
 vocabularies and ship with the frontend.
 
 **A tile opens a printing page at `/index/:scryfallId`.** A result is a folio,
