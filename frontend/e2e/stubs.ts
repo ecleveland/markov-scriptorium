@@ -13,6 +13,10 @@ import type { Page, Route } from '@playwright/test'
 // decks and slots live in memory for one test, and the breakdown reads the
 // stubbed lots to say how many copies each slot has.
 //
+// The Index's search and facets are computed from the same lots on every
+// request, so a quantity changed in the Catalog shows up in the Index. The
+// search stub covers only the filters the specs use (see searchFolios below).
+//
 // Shapes mirror frontend/src/api.ts. Keep them in sync if the contracts change.
 
 /** A single catalog printing — enough fields for the Inscribe flow. */
@@ -254,12 +258,27 @@ function ownedForPrinting(lots: Map<number, LotStub>, scryfallId: string) {
     }
   })
 
+  // No stubbed Tome claims cards, so every copy of each finish is free.
+  const byFinish = new Map<string, number>()
+  for (const record of here) {
+    byFinish.set(
+      record.finish,
+      (byFinish.get(record.finish) ?? 0) + record.quantity,
+    )
+  }
+  const reservations = [...byFinish.entries()].map(([finish, owned]) => ({
+    finish,
+    owned,
+    reserved: 0,
+    available: owned,
+  }))
+
   return {
     scryfall_id: scryfallId,
     card: here[0]?.card ?? null,
     lots: here.map((record) => served(record, lots)),
     rollup: [],
-    reservations: [],
+    reservations,
     total_quantity: here.reduce((sum, record) => sum + record.quantity, 0),
     across_printings: {
       grouping: 'oracle_id',
@@ -272,10 +291,131 @@ function ownedForPrinting(lots: Map<number, LotStub>, scryfallId: string) {
   }
 }
 
+/** The order the backend picks for a sort key when none is sent. */
+function defaultOrder(sort: string): 'asc' | 'desc' {
+  return sort === 'name' || sort === 'set' ? 'asc' : 'desc'
+}
+
+/**
+ * GET /inventory/search over the stubbed lots: one row per (printing, finish).
+ * Only `name`, `finish`, `set` and `location` filter, because those are what
+ * the specs exercise; the colour, type, tag and condition params are ignored.
+ * As in the backend, a folio matches when one of its lots passes every filter,
+ * and its totals then count all of its lots.
+ */
+function searchFolios(lots: Map<number, LotStub>, params: URLSearchParams) {
+  const name = (params.get('name') ?? '').toLowerCase()
+  const finishes = params.getAll('finish')
+  const sets = params.getAll('set')
+  const locations = params.getAll('location').map((loc) => loc.toLowerCase())
+  const all = [...lots.values()]
+  const key = (record: LotStub) => `${record.scryfall_id}|${record.finish}`
+
+  const matching = new Set(
+    all
+      .filter(
+        (record) =>
+          record.card.name.toLowerCase().includes(name) &&
+          (finishes.length === 0 || finishes.includes(record.finish)) &&
+          (sets.length === 0 || sets.includes(record.card.set_code)) &&
+          (locations.length === 0 ||
+            locations.includes((record.location ?? '').toLowerCase())),
+      )
+      .map(key),
+  )
+
+  const folios = [...matching].map((folioKey) => {
+    const members = all.filter((record) => key(record) === folioKey)
+    const quantity = members.reduce((sum, record) => sum + record.quantity, 0)
+    const distinct = (values: (string | null)[]) =>
+      [...new Set(values.filter((v): v is string => v !== null))].sort()
+    return {
+      newest: Math.max(...members.map((record) => record.id)),
+      row: {
+        scryfall_id: members[0].scryfall_id,
+        finish: members[0].finish,
+        quantity,
+        lots: members.length,
+        conditions: distinct(members.map((record) => record.condition)),
+        locations: distinct(members.map((record) => record.location)),
+        tags: distinct(members.flatMap((record) => record.tags ?? [])),
+        card: members[0].card,
+        reserved: 0,
+        available: quantity,
+      },
+    }
+  })
+
+  const sort = params.get('sort') ?? 'added'
+  const order = params.get('order') ?? defaultOrder(sort)
+  const compare: Record<
+    string,
+    (a: (typeof folios)[number], b: (typeof folios)[number]) => number
+  > = {
+    added: (a, b) => a.newest - b.newest,
+    name: (a, b) => a.row.card.name.localeCompare(b.row.card.name),
+    set: (a, b) =>
+      a.row.card.set_code.localeCompare(b.row.card.set_code) ||
+      Number(a.row.card.collector_number) - Number(b.row.card.collector_number),
+    quantity: (a, b) => a.row.quantity - b.row.quantity,
+  }
+  const by = compare[sort] ?? compare.added
+  folios.sort((a, b) => (order === 'asc' ? by(a, b) : by(b, a)))
+
+  const limit = Number(params.get('limit') ?? 50)
+  const offset = Number(params.get('offset') ?? 0)
+  return {
+    results: folios.slice(offset, offset + limit).map((folio) => folio.row),
+    total: folios.length,
+    limit,
+    offset,
+  }
+}
+
+/** GET /inventory/facets over the stubbed lots, counted in folios. */
+function listFacets(lots: Map<number, LotStub>) {
+  const all = [...lots.values()]
+  const folioKey = (record: LotStub) => `${record.scryfall_id}|${record.finish}`
+  const count = (pick: (record: LotStub) => string[]) => {
+    const folios = new Map<string, Set<string>>()
+    for (const record of all) {
+      for (const value of pick(record)) {
+        folios.set(
+          value,
+          (folios.get(value) ?? new Set()).add(folioKey(record)),
+        )
+      }
+    }
+    return [...folios.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([value, keys]) => ({ value, folios: keys.size }))
+  }
+  const setNames = new Map(
+    all.map((record) => [record.card.set_code, record.card.set_name]),
+  )
+  return {
+    sets: count((record) => [record.card.set_code]).map(
+      ({ value, folios }) => ({
+        set_code: value,
+        set_name: setNames.get(value) ?? value,
+        folios,
+      }),
+    ),
+    locations: count((record) =>
+      record.location === null ? [] : [record.location],
+    ).map(({ value, folios }) => ({ location: value, folios })),
+    tags: count((record) => record.tags ?? []).map(({ value, folios }) => ({
+      tag: value,
+      folios,
+    })),
+  }
+}
+
 /**
  * Register a single `/api/**` handler covering the health probe, the Inscribe
- * read/write path, the Catalog's list, detail, amend and remove, and the Tome
- * endpoints (deck CRUD, slot CRUD, breakdown). Routes are
+ * read/write path, the Catalog's list, detail, amend and remove, the Index's
+ * search and facets, and the Tome endpoints (deck CRUD, slot CRUD,
+ * breakdown). Routes are
  * matched by pathname + method; anything unmatched gets a 404 so an unstubbed
  * call fails loudly instead of hitting the network.
  *
@@ -365,6 +505,14 @@ export async function stubApi(page: Page): Promise<void> {
         limit,
         offset,
       })
+    }
+
+    if (path === '/inventory/search' && method === 'GET') {
+      return json(route, searchFolios(lots, url.searchParams))
+    }
+
+    if (path === '/inventory/facets' && method === 'GET') {
+      return json(route, listFacets(lots))
     }
 
     const cardMatch = path.match(/^\/inventory\/card\/(.+)$/)

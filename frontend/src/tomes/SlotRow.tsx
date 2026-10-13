@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { deleteSlot, type DeckSlot } from '../api'
-import { CardThumb } from '../catalog/CardThumb'
-import { Button, Notice, describePrinting } from '../components'
+import { Button, CardThumb, Notice, describePrinting } from '../components'
 import { SlotStepper } from './SlotStepper'
 import { invalidateAfterSlotWrite } from './invalidate'
 

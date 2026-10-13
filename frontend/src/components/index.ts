@@ -1,4 +1,5 @@
 export { Button, type ButtonProps, type ButtonVariant } from './Button'
+export { CardThumb, type CardThumbProps } from './CardThumb'
 export { Consulting, type ConsultingProps } from './Consulting'
 export { EmptyState, type EmptyStateProps } from './EmptyState'
 export { Field, type FieldProps } from './Field'

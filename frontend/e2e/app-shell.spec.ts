@@ -19,6 +19,7 @@ test('renders the brand mark, nav, and a healthy status chip', async ({
     page.getByRole('link', { name: /The Markov Scriptorium/ }),
   ).toBeVisible()
 
+  await expect(page.getByRole('link', { name: 'Index' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Catalog' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Inscribe' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Decklist' })).toBeVisible()
@@ -31,7 +32,12 @@ test('renders the brand mark, nav, and a healthy status chip', async ({
 test('navigates between the views via the nav', async ({ page }) => {
   await page.goto('/')
 
-  // Root redirects to the Catalog, the collection's home.
+  // Root redirects to the Index, the collection's home.
+  await expect(page).toHaveURL(/\/index$/)
+  await expect(page.getByRole('heading', { name: 'The Index' })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Catalog' }).click()
+  await expect(page).toHaveURL(/\/catalog$/)
   await expect(page.getByRole('heading', { name: 'The Catalog' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Inscribe' }).click()
@@ -54,6 +60,6 @@ test('navigates between the views via the nav', async ({ page }) => {
 
   // The brand mark returns home.
   await page.getByRole('link', { name: /The Markov Scriptorium/ }).click()
-  await expect(page).toHaveURL(/\/catalog$/)
-  await expect(page.getByRole('heading', { name: 'The Catalog' })).toBeVisible()
+  await expect(page).toHaveURL(/\/index$/)
+  await expect(page.getByRole('heading', { name: 'The Index' })).toBeVisible()
 })

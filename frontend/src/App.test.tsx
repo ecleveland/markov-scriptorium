@@ -22,6 +22,9 @@ vi.mock('./api', async (importOriginal) => {
     listDecks: vi.fn(),
     getDeck: vi.fn(),
     getBreakdown: vi.fn(),
+    searchFolios: vi.fn(),
+    listFacets: vi.fn(),
+    ownedForPrinting: vi.fn(),
   }
 })
 
@@ -31,7 +34,10 @@ import {
   getDeck,
   getLot,
   listDecks,
+  listFacets,
   listInventory,
+  ownedForPrinting,
+  searchFolios,
 } from './api'
 
 vi.mocked(listInventory).mockResolvedValue({
@@ -46,6 +52,14 @@ vi.mocked(getLot).mockRejectedValue(new ApiError('gone', 404))
 vi.mocked(listDecks).mockResolvedValue([])
 vi.mocked(getDeck).mockRejectedValue(new ApiError('gone', 404))
 vi.mocked(getBreakdown).mockRejectedValue(new ApiError('gone', 404))
+vi.mocked(searchFolios).mockResolvedValue({
+  results: [],
+  total: 0,
+  limit: 24,
+  offset: 0,
+})
+vi.mocked(listFacets).mockResolvedValue({ sets: [], locations: [], tags: [] })
+vi.mocked(ownedForPrinting).mockRejectedValue(new ApiError('gone', 404))
 
 function renderAt(path: string) {
   return renderWithQuery(
@@ -58,11 +72,27 @@ function renderAt(path: string) {
 afterEach(() => vi.clearAllMocks())
 
 describe('App routing', () => {
-  it('redirects the root path to the Catalog', async () => {
+  it('redirects the root path to the Index', async () => {
     renderAt('/')
     expect(
-      await screen.findByRole('heading', { name: 'The Catalog' }),
+      await screen.findByRole('heading', { name: 'The Index' }),
     ).toBeInTheDocument()
+  })
+
+  it('renders the Index directly at /index', async () => {
+    renderAt('/index')
+    expect(
+      await screen.findByRole('heading', { name: 'The Index' }),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(searchFolios).toHaveBeenCalled())
+  })
+
+  it('renders the printing route at /index/:scryfallId', async () => {
+    renderAt('/index/bolt-lea')
+    expect(
+      await screen.findByRole('heading', { name: 'No such printing' }),
+    ).toBeInTheDocument()
+    expect(ownedForPrinting).toHaveBeenCalledWith('bolt-lea')
   })
 
   it('renders the Catalog directly at /catalog', async () => {
@@ -107,13 +137,17 @@ describe('App routing', () => {
     await waitFor(() => expect(getBreakdown).toHaveBeenCalledWith(999))
   })
 
-  it('links the Tomes from the primary nav, after the Catalog', () => {
+  it('links the Index first in the primary nav, then the Catalog and the Tomes', () => {
     renderAt('/inscribe')
     const nav = screen.getByRole('navigation', { name: 'Primary' })
     const links = within(nav)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(links.slice(0, 2)).toEqual(['Catalog', 'Tomes'])
+    expect(links.slice(0, 3)).toEqual(['Index', 'Catalog', 'Tomes'])
+    expect(within(nav).getByRole('link', { name: 'Index' })).toHaveAttribute(
+      'href',
+      '/index',
+    )
     expect(within(nav).getByRole('link', { name: 'Tomes' })).toHaveAttribute(
       'href',
       '/tomes',
