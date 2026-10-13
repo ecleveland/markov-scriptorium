@@ -32,9 +32,10 @@ exceed `quantity` on a filtered row, which reads as a bug.
 (`finish=foil&finish=etched`). Different parameters combine with AND. The one
 exception is `color_identity`, which is "within", meaning the card's identity
 is a subset of the requested colors. That is the deck-building question, and
-any-of would return a five-color card for a mono-blue request. A blank value in
-any parameter, such as `set=` from an unselected dropdown, applies no filter.
-`C` means colorless in both color parameters. `colors` also checks
+any-of would return a five-color card for a mono-blue request. A blank `set=`,
+`tag=` or `location=`, as an empty form field sends, applies no filter; a blank
+value in one of the enum parameters is a 422 like any other bad value. `C`
+means colorless in both color parameters. `colors` also checks
 `card_faces.colors`, because Scryfall leaves the top-level array null for some
 two-faced layouts, and a card counts as colorless only when neither it nor any
 face has a color. A NULL `color_identity`, which only hand-seeded rows have,
