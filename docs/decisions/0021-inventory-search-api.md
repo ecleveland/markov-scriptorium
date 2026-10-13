@@ -33,7 +33,7 @@ exceed `quantity` on a filtered row, which reads as a bug.
 exception is `color_identity`, which is "within", meaning the card's identity
 is a subset of the requested colors. That is the deck-building question, and
 any-of would return a five-color card for a mono-blue request. A blank `set=`,
-`tag=` or `location=`, as an empty form field sends, applies no filter; a blank
+`tag=` or `location=`, as an empty form field sends, applies no filter. A blank
 value in one of the enum parameters is a 422 like any other bad value. `C`
 means colorless in both color parameters. `colors` also checks
 `card_faces.colors`, because Scryfall leaves the top-level array null for some
