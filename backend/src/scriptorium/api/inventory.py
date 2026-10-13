@@ -195,6 +195,18 @@ def search_inventory(
     return {"results": results, "total": total, "limit": limit, "offset": offset}
 
 
+# /facets is declared before /{lot_id} for the same reason as /search.
+@router.get("/facets")
+def inventory_facets() -> dict[str, Any]:
+    """The sets, volumes, and tags in the collection, each with its folio count.
+
+    The Index's filter sidebar reads these to offer only values that match
+    something. See :func:`scriptorium.inventory.list_facets`.
+    """
+    with closing(connect()) as conn:
+        return inventory.list_facets(conn)
+
+
 # /card/{scryfall_id} is declared before /{lot_id} so the literal segment wins
 # and a Scryfall ID isn't parsed as an integer lot id.
 @router.get("/card/{scryfall_id}")

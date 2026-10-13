@@ -736,3 +736,45 @@ def search_folios(
         [*params, limit, offset],
     ).fetchall()
     return [_row_to_folio(row) for row in rows], total
+
+
+# Counts distinct folios. SQLite's COUNT(DISTINCT ...) takes one expression, so
+# the (scryfall_id, finish) pair is joined into one string.
+_FOLIO_COUNT = "COUNT(DISTINCT i.scryfall_id || '|' || i.finish) AS folios"
+
+_FACET_QUERIES: dict[str, str] = {
+    # Grouped by code alone so each code is one entry, even if its cards
+    # disagree on the set name.
+    "sets": (
+        f"SELECT c.set_code, MIN(c.set_name) AS set_name, {_FOLIO_COUNT} FROM inventory i "
+        "JOIN cards c ON c.scryfall_id = i.scryfall_id "
+        "GROUP BY c.set_code ORDER BY c.set_code"
+    ),
+    # Grouped case-insensitively because the location filter folds case.
+    "locations": (
+        f"SELECT MIN(i.location) AS location, {_FOLIO_COUNT} FROM inventory i "
+        "WHERE i.location IS NOT NULL "
+        "GROUP BY lower(i.location) ORDER BY lower(i.location)"
+    ),
+    # Grouped by exact value because the tag filter matches exactly. A NULL
+    # tags column gives json_each no rows.
+    "tags": (
+        f"SELECT t.value AS tag, {_FOLIO_COUNT} FROM inventory i, json_each(i.tags) t "
+        "GROUP BY t.value ORDER BY t.value"
+    ),
+}
+
+
+def list_facets(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
+    """Return the values The Index can filter on, each with its folio count.
+
+    ``sets`` lists every owned set code once, with the MIN of its names.
+    ``locations`` lists every volume (NULL left out, spellings that differ only
+    in case merged under the MIN spelling), and ``tags`` every tag. ``folios`` counts the distinct
+    (printing, finish) pairs with at least one lot carrying the value, so a
+    folio split over two lots counts once.
+    """
+    return {
+        facet: [dict(row) for row in conn.execute(sql).fetchall()]
+        for facet, sql in _FACET_QUERIES.items()
+    }

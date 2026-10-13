@@ -1212,3 +1212,66 @@ def test_search_rejects_unknown_sort_and_order(search_conn: sqlite3.Connection) 
         inventory.search_folios(search_conn, filters, sort="price")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         inventory.search_folios(search_conn, filters, order="sideways")  # type: ignore[arg-type]
+
+
+# --- list_facets (VEG-228) -------------------------------------------------
+
+
+def test_facets_sets_count_each_folio_once(search_conn: sqlite3.Connection) -> None:
+    """Two lots of one folio count once; two finishes of one printing count twice."""
+    # _insert_card gives every set the default name, so give each code its real one.
+    search_conn.executemany(
+        "UPDATE cards SET set_name = ? WHERE set_code = ?",
+        [("Limited Edition Alpha", "lea"), ("Return to Ravnica", "rtr"), ("Kaldheim", "khm")],
+    )
+    search_conn.commit()
+
+    assert inventory.list_facets(search_conn)["sets"] == [
+        {"set_code": "khm", "set_name": "Kaldheim", "folios": 1},
+        {"set_code": "lea", "set_name": "Limited Edition Alpha", "folios": 4},
+        {"set_code": "rtr", "set_name": "Return to Ravnica", "folios": 2},
+        {"set_code": "tst", "set_name": "Test Set", "folios": 2},
+    ]
+
+
+def test_facets_sets_give_one_entry_per_code(catalog_conn: sqlite3.Connection) -> None:
+    """Cards that share a set code but disagree on its name still make one entry."""
+    _insert_card(catalog_conn, "one-1", "One", set_code="xyz", set_name="Zeta Name")
+    _insert_card(catalog_conn, "two-1", "Two", set_code="xyz", set_name="Alpha Name")
+    catalog_conn.commit()
+    inventory.create_lots(
+        catalog_conn,
+        [{"scryfall_id": "one-1"}, {"scryfall_id": "two-1"}, {"scryfall_id": "two-1"}],
+    )
+
+    assert inventory.list_facets(catalog_conn)["sets"] == [
+        {"set_code": "xyz", "set_name": "Alpha Name", "folios": 2},
+    ]
+
+
+def test_facets_locations_fold_case_and_drop_null(search_conn: sqlite3.Connection) -> None:
+    """ "Volume I" and "volume i" share an entry, labelled with the MIN spelling."""
+    inventory.create_lot(search_conn, scryfall_id="bolt-1", location="VOLUME I")
+    inventory.create_lot(search_conn, scryfall_id="sol-1", location="attic box")
+
+    assert inventory.list_facets(search_conn)["locations"] == [
+        {"location": "attic box", "folios": 1},
+        {"location": "Vault", "folios": 1},
+        {"location": "VOLUME I", "folios": 2},
+        {"location": "Volume II", "folios": 1},
+    ]
+
+
+def test_facets_tags_come_from_the_json_arrays(search_conn: sqlite3.Connection) -> None:
+    """A tag on two lots of one folio counts once, and tags group by exact value."""
+    inventory.create_lot(search_conn, scryfall_id="sol-1", tags=["Burn"])
+
+    assert inventory.list_facets(search_conn)["tags"] == [
+        {"tag": "Burn", "folios": 1},
+        {"tag": "burn", "folios": 1},
+        {"tag": "staple", "folios": 2},
+    ]
+
+
+def test_facets_of_an_empty_inventory_are_empty(catalog_conn: sqlite3.Connection) -> None:
+    assert inventory.list_facets(catalog_conn) == {"sets": [], "locations": [], "tags": []}
