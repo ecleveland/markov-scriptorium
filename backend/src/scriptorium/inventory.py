@@ -16,6 +16,10 @@ rollup carries ``reservations`` per finish, and each printing in the
 cross-printing summary carries ``reserved`` and ``available``. The SQL comes
 from :mod:`scriptorium.reservations`.
 
+:func:`search_folios` backs The Index (VEG-227). It filters owned cards and
+returns one row per folio, with quantity, reservation and lot details summed
+over every lot of that folio.
+
 Write functions commit their own transaction: each call is a complete operation,
 so a created/updated/deleted lot is durable when the function returns. All
 functions expect a connection opened via :func:`scriptorium.db.connect` (i.e.
@@ -26,9 +30,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Any
 
+from scriptorium.catalog import _escape_like
 from scriptorium.reservations import owned_sql, reserved_sql
 
 # Inventory columns settable on insert (id is the surrogate key; everything else
@@ -106,6 +112,17 @@ def _with_available(record: dict[str, Any], owned_key: str) -> dict[str, Any]:
     return record
 
 
+def _pop_card(record: dict[str, Any]) -> dict[str, Any]:
+    """Remove the ``card_``-prefixed columns from ``record``; return them as a card.
+
+    ``image_uris`` is parsed from JSON text, and a NULL stays ``None``.
+    """
+    card: dict[str, Any] = {col: record.pop(f"card_{col}") for col in _CARD_DISPLAY_COLUMNS}
+    if card.get("image_uris") is not None:
+        card["image_uris"] = json.loads(card["image_uris"])
+    return card
+
+
 def _row_to_lot(row: sqlite3.Row) -> dict[str, Any]:
     """Split a joined row into a lot dict with a nested ``card`` object.
 
@@ -114,9 +131,7 @@ def _row_to_lot(row: sqlite3.Row) -> dict[str, Any]:
     the folio totals as ``folio: {owned, reserved, available}``.
     """
     record = dict(row)
-    card: dict[str, Any] = {col: record.pop(f"card_{col}") for col in _CARD_DISPLAY_COLUMNS}
-    if card.get("image_uris") is not None:
-        card["image_uris"] = json.loads(card["image_uris"])
+    card = _pop_card(record)
     if record.get("tags") is not None:
         record["tags"] = json.loads(record["tags"])
     record["card"] = card
@@ -429,3 +444,258 @@ def _card_display(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] 
     if card.get("image_uris") is not None:
         card["image_uris"] = json.loads(card["image_uris"])
     return card
+
+
+# --- search (VEG-227) --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    """Filters for :func:`search_folios`. An empty field means no filter.
+
+    Values within one field are "any of" and fields combine with AND. The one
+    exception is ``color_identity``, which keeps cards whose identity fits inside
+    the requested colors. ``"C"`` means colorless in both color fields.
+    ``tags``, ``locations`` and ``conditions`` are lot fields: a folio matches
+    when any one of its lots does.
+    """
+
+    name: str | None = None
+    set_codes: tuple[str, ...] = ()
+    colors: tuple[str, ...] = ()
+    color_identity: tuple[str, ...] = ()
+    type_line: str | None = None
+    tags: tuple[str, ...] = ()
+    locations: tuple[str, ...] = ()
+    finishes: tuple[str, ...] = ()
+    conditions: tuple[str, ...] = ()
+
+
+# A WHERE fragment and the values bound to its placeholders.
+_Clause = tuple[str, list[Any]]
+
+_COLORLESS = "C"
+
+# A card is colorless when neither the card nor any of its faces has a color.
+# Valki has NULL top-level colors but colored faces, so the top level alone
+# would call it colorless.
+_COLORLESS_SQL = (
+    "(json_array_length(coalesce(c.colors, '[]')) = 0 AND NOT EXISTS ("
+    "SELECT 1 FROM card_faces cf, json_each(cf.colors) "
+    "WHERE cf.scryfall_id = c.scryfall_id))"
+)
+
+# Sort keys map to fixed ORDER BY expressions; callers never supply SQL. Each
+# expression takes the requested direction. ``added`` is the folio's newest lot
+# id, the same insertion order list_lots calls newest first. ``set`` orders
+# collector numbers numerically, as owned_across_printings does.
+_SORT_EXPRESSIONS: dict[str, tuple[str, ...]] = {
+    "added": ("latest_id",),
+    "name": ("c.name COLLATE NOCASE",),
+    "set": ("c.set_code", "CAST(c.collector_number AS INTEGER)", "c.collector_number"),
+    "quantity": ("quantity",),
+}
+_DEFAULT_ORDER = {"added": "desc", "name": "asc", "set": "asc", "quantity": "desc"}
+_ORDER_KEYWORDS = {"asc": "ASC", "desc": "DESC"}
+
+# One row per matching folio. The CTE picks folios where any lot passes the
+# filters, then the outer query sums every lot of each of them, so a lot-level
+# filter never shrinks a folio's quantity or reservation.
+_FOLIO_SELECT = (
+    "SELECT i.scryfall_id, i.finish, SUM(i.quantity) AS quantity, COUNT(*) AS lots, "
+    "MAX(i.id) AS latest_id, "
+    "json_group_array(DISTINCT i.condition) AS conditions, "
+    "(SELECT json_group_array(DISTINCT il.location) FROM inventory il "
+    "WHERE il.scryfall_id = i.scryfall_id AND il.finish = i.finish "
+    "AND il.location IS NOT NULL) AS locations, "
+    "(SELECT json_group_array(DISTINCT lt.value) FROM inventory it, json_each(it.tags) lt "
+    "WHERE it.scryfall_id = i.scryfall_id AND it.finish = i.finish) AS tags, "
+    + ", ".join(f"c.{col} AS card_{col}" for col in _CARD_DISPLAY_COLUMNS)
+    + f", {reserved_sql('i.scryfall_id', 'i.finish')} AS reserved"
+    + " FROM inventory i"
+    " JOIN matching m ON m.scryfall_id = i.scryfall_id AND m.finish = i.finish"
+    " JOIN cards c ON c.scryfall_id = i.scryfall_id"
+    " GROUP BY i.scryfall_id, i.finish"
+)
+
+
+def _placeholders(values: tuple[str, ...], template: str = "?") -> str:
+    """One placeholder per value, comma separated, for an ``IN (...)`` list."""
+    return ", ".join(template for _ in values)
+
+
+def _substring_clause(column: str, term: str | None) -> _Clause | None:
+    """Case-insensitive substring match on ``column``; a blank term is no filter."""
+    if term is None or not term.strip():
+        return None
+    return f"{column} LIKE ? ESCAPE '\\' COLLATE NOCASE", [f"%{_escape_like(term.strip())}%"]
+
+
+def _name_clause(filters: SearchFilters) -> _Clause | None:
+    return _substring_clause("c.name", filters.name)
+
+
+def _type_clause(filters: SearchFilters) -> _Clause | None:
+    # Scryfall's top-level type_line reads "Front // Back" on multi-faced cards,
+    # so one match covers both faces.
+    return _substring_clause("c.type_line", filters.type_line)
+
+
+def _set_clause(filters: SearchFilters) -> _Clause | None:
+    codes = filters.set_codes
+    if not codes:
+        return None
+    return f"lower(c.set_code) IN ({_placeholders(codes, 'lower(?)')})", list(codes)
+
+
+def _colors_clause(filters: SearchFilters) -> _Clause | None:
+    """Any of the colors, read from the card or from any of its faces.
+
+    Scryfall leaves top-level ``colors`` NULL on some multi-faced layouts and
+    puts them on the faces instead.
+    """
+    if not filters.colors:
+        return None
+    hues = tuple(color for color in filters.colors if color != _COLORLESS)
+    parts: list[str] = []
+    params: list[Any] = []
+    if hues:
+        marks = _placeholders(hues)
+        parts.append(f"EXISTS (SELECT 1 FROM json_each(c.colors) cc WHERE cc.value IN ({marks}))")
+        parts.append(
+            "EXISTS (SELECT 1 FROM card_faces cf, json_each(cf.colors) fc "
+            f"WHERE cf.scryfall_id = c.scryfall_id AND fc.value IN ({marks}))"
+        )
+        params.extend(hues * 2)
+    if _COLORLESS in filters.colors:
+        parts.append(_COLORLESS_SQL)
+    return f"({' OR '.join(parts)})", params
+
+
+def _color_identity_clause(filters: SearchFilters) -> _Clause | None:
+    """Cards whose identity holds no color outside the requested ones.
+
+    A NULL identity falls back to the card's colors, and an empty array always
+    fits. Identity arrays never contain ``"C"``, so binding it is harmless, and
+    ``C`` alone leaves only the colorless cards.
+    """
+    allowed = filters.color_identity
+    if not allowed:
+        return None
+    return (
+        "NOT EXISTS (SELECT 1 FROM json_each(coalesce(c.color_identity, c.colors, '[]')) ci "
+        f"WHERE ci.value NOT IN ({_placeholders(allowed)}))",
+        list(allowed),
+    )
+
+
+def _tags_clause(filters: SearchFilters) -> _Clause | None:
+    tags = filters.tags
+    if not tags:
+        return None
+    return (
+        "EXISTS (SELECT 1 FROM json_each(coalesce(i.tags, '[]')) t "
+        f"WHERE t.value IN ({_placeholders(tags)}))",
+        list(tags),
+    )
+
+
+def _locations_clause(filters: SearchFilters) -> _Clause | None:
+    # Both sides lowercase in SQL, so the folding rule is the same on each.
+    locations = filters.locations
+    if not locations:
+        return None
+    return f"lower(i.location) IN ({_placeholders(locations, 'lower(?)')})", list(locations)
+
+
+def _finishes_clause(filters: SearchFilters) -> _Clause | None:
+    finishes = filters.finishes
+    if not finishes:
+        return None
+    return f"i.finish IN ({_placeholders(finishes)})", list(finishes)
+
+
+def _conditions_clause(filters: SearchFilters) -> _Clause | None:
+    conditions = filters.conditions
+    if not conditions:
+        return None
+    return f"i.condition IN ({_placeholders(conditions)})", list(conditions)
+
+
+_CLAUSE_BUILDERS: tuple[Callable[[SearchFilters], _Clause | None], ...] = (
+    _name_clause,
+    _set_clause,
+    _colors_clause,
+    _color_identity_clause,
+    _type_clause,
+    _tags_clause,
+    _locations_clause,
+    _finishes_clause,
+    _conditions_clause,
+)
+
+
+def _matching_cte(filters: SearchFilters) -> _Clause:
+    """The ``matching`` CTE of folios with at least one lot passing every filter."""
+    clauses: list[str] = []
+    params: list[Any] = []
+    for build in _CLAUSE_BUILDERS:
+        clause = build(filters)
+        if clause is not None:
+            clauses.append(clause[0])
+            params.extend(clause[1])
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = (
+        "WITH matching AS (SELECT DISTINCT i.scryfall_id, i.finish "
+        f"FROM inventory i JOIN cards c ON c.scryfall_id = i.scryfall_id{where})"
+    )
+    return sql, params
+
+
+def _row_to_folio(row: sqlite3.Row) -> dict[str, Any]:
+    """Turn a grouped row into a folio dict with a nested ``card`` object."""
+    record = dict(row)
+    del record["latest_id"]
+    for key in ("conditions", "locations", "tags"):
+        record[key] = sorted(json.loads(record[key]))
+    record["card"] = _pop_card(record)
+    return _with_available(record, "quantity")
+
+
+def search_folios(
+    conn: sqlite3.Connection,
+    filters: SearchFilters,
+    *,
+    sort: str = "added",
+    order: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Return ``(results, total)``: one row per owned folio that passes ``filters``.
+
+    A folio is a (printing, finish). Each row has ``scryfall_id``, ``finish``,
+    ``quantity`` and ``lots``, the sorted distinct ``conditions``, ``locations``
+    (NULL left out) and ``tags`` of its lots, the nested ``card``, and
+    ``reserved`` and ``available``. All of these cover every lot of the folio,
+    even when a lot filter picked it through just one lot, so ``available`` never
+    exceeds ``quantity``.
+
+    ``sort`` is ``added``, ``name``, ``set`` or ``quantity``. ``order`` defaults
+    to newest or largest first for ``added`` and ``quantity`` and to A to Z for
+    ``name`` and ``set``. Ties fall back to (scryfall_id, finish) ascending, so
+    pages are stable. ``total`` counts every match, ignoring the page.
+    """
+    if sort not in _SORT_EXPRESSIONS:
+        raise ValueError(f"unknown sort key {sort!r}")
+    direction = _ORDER_KEYWORDS.get(order or _DEFAULT_ORDER[sort])
+    if direction is None:
+        raise ValueError(f"unknown sort order {order!r}")
+    order_by = ", ".join(f"{expr} {direction}" for expr in _SORT_EXPRESSIONS[sort])
+
+    cte, params = _matching_cte(filters)
+    total = conn.execute(f"{cte} SELECT COUNT(*) FROM matching", params).fetchone()[0]
+    rows = conn.execute(
+        f"{cte} {_FOLIO_SELECT} ORDER BY {order_by}, i.scryfall_id, i.finish LIMIT ? OFFSET ?",
+        [*params, limit, offset],
+    ).fetchall()
+    return [_row_to_folio(row) for row in rows], total
