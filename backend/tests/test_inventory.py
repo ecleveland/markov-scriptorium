@@ -707,3 +707,508 @@ def test_owned_across_printings_counts_claims_on_owned_finishes(
     (printing,) = _across(catalog_conn, "bolt-1")["printings"]
 
     assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 2, 2)
+
+
+# --- search_folios (VEG-227) -----------------------------------------------
+
+
+@pytest.fixture
+def search_conn(catalog_conn: sqlite3.Connection) -> sqlite3.Connection:
+    """The catalog plus colored, typed printings and lots spread over nine folios.
+
+    Lot ids follow insertion order, so ``added`` sorts are predictable. Valki has
+    no top-level colors: Scryfall puts an MDFC's colors on its faces only.
+    """
+    conn = catalog_conn
+    conn.execute(
+        "UPDATE cards SET colors = '[\"R\"]', color_identity = '[\"R\"]', "
+        "type_line = 'Instant' WHERE scryfall_id = 'bolt-1'"
+    )
+    conn.execute(
+        'UPDATE cards SET colors = \'["R","W"]\', color_identity = \'["R","W"]\', '
+        "type_line = 'Instant' WHERE scryfall_id = 'helix-1'"
+    )
+    _insert_card(
+        conn,
+        "counter-1",
+        "Counterspell",
+        set_code="lea",
+        collector_number="54",
+        colors='["U"]',
+        color_identity='["U"]',
+        type_line="Instant",
+    )
+    _insert_card(
+        conn,
+        "izzet-1",
+        "Izzet Charm",
+        set_code="rtr",
+        collector_number="10",
+        colors='["U","R"]',
+        color_identity='["U","R"]',
+        type_line="Instant",
+    )
+    _insert_card(
+        conn,
+        "sphere-1",
+        "Detention Sphere",
+        set_code="rtr",
+        collector_number="2",
+        colors='["W","U"]',
+        color_identity='["W","U"]',
+        type_line="Enchantment",
+    )
+    _insert_card(
+        conn,
+        "sol-1",
+        "Sol Ring",
+        set_code="lea",
+        collector_number="270",
+        colors="[]",
+        color_identity="[]",
+        type_line="Artifact",
+    )
+    _insert_card(
+        conn,
+        "valki-1",
+        "Valki, God of Lies // Tibalt, Cosmic Impostor",
+        set_code="khm",
+        collector_number="114",
+        layout="modal_dfc",
+        color_identity='["B","R"]',
+        type_line="Legendary Creature — God // Legendary Planeswalker — Tibalt",
+    )
+    conn.executemany(
+        "INSERT INTO card_faces (scryfall_id, face_index, name, colors) VALUES (?, ?, ?, ?)",
+        [
+            ("valki-1", 0, "Valki, God of Lies", '["B"]'),
+            ("valki-1", 1, "Tibalt, Cosmic Impostor", '["R"]'),
+        ],
+    )
+    # No colors, identity or faces at all: NULL counts as colorless.
+    _insert_card(conn, "coin-1", "Krark's 50% Coin", type_line="Artifact")
+    conn.commit()
+
+    lots: list[dict[str, Any]] = [
+        {
+            "scryfall_id": "bolt-1",
+            "quantity": 2,
+            "location": "Volume I",
+            "tags": ["burn"],
+        },
+        {"scryfall_id": "bolt-1", "condition": "LP", "tags": ["staple", "burn"]},
+        {"scryfall_id": "bolt-1", "finish": "foil", "location": "Vault"},
+        {"scryfall_id": "helix-1", "quantity": 3, "condition": "MP", "location": "volume i"},
+        {"scryfall_id": "counter-1", "location": "Volume II", "tags": ["staple"]},
+        {"scryfall_id": "izzet-1", "quantity": 4, "finish": "etched", "condition": "HP"},
+        {"scryfall_id": "sphere-1", "condition": "DMG"},
+        {"scryfall_id": "sol-1", "quantity": 5},
+        {"scryfall_id": "valki-1", "finish": "foil"},
+        {"scryfall_id": "coin-1"},
+    ]
+    inventory.create_lots(conn, lots)
+    return conn
+
+
+def _search(
+    conn: sqlite3.Connection, **kwargs: Any
+) -> tuple[list[tuple[str, str]], dict[tuple[str, str], dict[str, Any]], int]:
+    """Run a search; return the folio keys in order, rows by key, and the total.
+
+    Filter fields go to :class:`inventory.SearchFilters`; ``sort``, ``order``,
+    ``limit`` and ``offset`` go to :func:`inventory.search_folios`.
+    """
+    paging = {k: kwargs.pop(k) for k in ("sort", "order", "limit", "offset") if k in kwargs}
+    results, total = inventory.search_folios(conn, inventory.SearchFilters(**kwargs), **paging)
+    keys = [(r["scryfall_id"], r["finish"]) for r in results]
+    return keys, dict(zip(keys, results, strict=True)), total
+
+
+_ALL_FOLIOS = {
+    ("bolt-1", "nonfoil"),
+    ("bolt-1", "foil"),
+    ("helix-1", "nonfoil"),
+    ("counter-1", "nonfoil"),
+    ("izzet-1", "etched"),
+    ("sphere-1", "nonfoil"),
+    ("sol-1", "nonfoil"),
+    ("valki-1", "foil"),
+    ("coin-1", "nonfoil"),
+}
+
+
+def test_search_without_filters_returns_every_folio(search_conn: sqlite3.Connection) -> None:
+    keys, rows, total = _search(search_conn)
+
+    assert set(keys) == _ALL_FOLIOS
+    assert total == len(_ALL_FOLIOS) == len(keys)
+    bolt = rows[("bolt-1", "nonfoil")]
+    assert (bolt["quantity"], bolt["lots"]) == (3, 2)
+    assert bolt["card"]["name"] == "Lightning Bolt"
+    assert bolt["card"]["set_code"] == "lea"
+    assert bolt["card"]["image_uris"] == {"normal": "https://img/bolt.jpg"}
+    assert "latest_id" not in bolt
+
+
+def test_search_on_an_empty_inventory_is_empty(catalog_conn: sqlite3.Connection) -> None:
+    assert _search(catalog_conn) == ([], {}, 0)
+
+
+def test_search_by_name_is_a_case_insensitive_substring(search_conn: sqlite3.Connection) -> None:
+    keys, _, total = _search(search_conn, name="LIGHTNING")
+
+    assert set(keys) == {("bolt-1", "nonfoil"), ("bolt-1", "foil"), ("helix-1", "nonfoil")}
+    assert total == 3
+
+
+def test_search_by_name_treats_like_metacharacters_literally(
+    search_conn: sqlite3.Connection,
+) -> None:
+    # Unescaped, "% c" would match "Izzet Charm" and "s_ell" would match "Counterspell".
+    assert _search(search_conn, name="% c")[0] == [("coin-1", "nonfoil")]
+    assert _search(search_conn, name="s_ell")[0] == []
+
+
+def test_search_blank_name_and_type_mean_no_filter(search_conn: sqlite3.Connection) -> None:
+    keys, _, _ = _search(search_conn, name="  ", type_line="")
+
+    assert set(keys) == _ALL_FOLIOS
+
+
+def test_search_blank_list_values_mean_no_filter(search_conn: sqlite3.Connection) -> None:
+    everything = _search(search_conn)
+
+    for blank in (
+        {"set_codes": ("",)},
+        {"tags": (" ",)},
+        {"locations": ("",)},
+        {"finishes": ("",)},
+        {"conditions": ("  ",)},
+    ):
+        keys, _, total = _search(search_conn, **blank)
+        assert (keys, total) == (everything[0], everything[2]), blank
+    assert _search(search_conn, set_codes=("", "lea")) == _search(search_conn, set_codes=("lea",))
+
+
+def test_search_by_set_is_any_of_and_case_insensitive(search_conn: sqlite3.Connection) -> None:
+    keys, _, _ = _search(search_conn, set_codes=("LEA", "Khm"))
+
+    assert set(keys) == {
+        ("bolt-1", "nonfoil"),
+        ("bolt-1", "foil"),
+        ("counter-1", "nonfoil"),
+        ("sol-1", "nonfoil"),
+        ("valki-1", "foil"),
+    }
+
+
+def test_search_by_colors_is_any_of(search_conn: sqlite3.Connection) -> None:
+    keys, _, _ = _search(search_conn, colors=("U",))
+    assert set(keys) == {("counter-1", "nonfoil"), ("izzet-1", "etched"), ("sphere-1", "nonfoil")}
+
+    keys, _, _ = _search(search_conn, colors=("W", "B"))
+    assert set(keys) == {("helix-1", "nonfoil"), ("sphere-1", "nonfoil"), ("valki-1", "foil")}
+
+
+def test_search_by_colors_reads_card_faces(search_conn: sqlite3.Connection) -> None:
+    """Valki's colors live only on its faces, and it still matches B."""
+    keys, _, _ = _search(search_conn, colors=("B",))
+
+    assert keys == [("valki-1", "foil")]
+
+
+def test_search_colorless_matches_empty_and_null_colors(search_conn: sqlite3.Connection) -> None:
+    """C matches Sol Ring ([]) and the coin (NULL), never Valki, whose faces have colors."""
+    keys, _, _ = _search(search_conn, colors=("C",))
+    assert set(keys) == {("sol-1", "nonfoil"), ("coin-1", "nonfoil")}
+
+    keys, _, _ = _search(search_conn, colors=("C", "B"))
+    assert set(keys) == {("sol-1", "nonfoil"), ("coin-1", "nonfoil"), ("valki-1", "foil")}
+
+
+def test_search_by_color_identity_is_within(search_conn: sqlite3.Connection) -> None:
+    keys, _, _ = _search(search_conn, color_identity=("U", "R"))
+
+    # Mono-R, mono-U, UR and colorless; not RW, WU, or BR.
+    assert set(keys) == {
+        ("bolt-1", "nonfoil"),
+        ("bolt-1", "foil"),
+        ("counter-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("sol-1", "nonfoil"),
+        ("coin-1", "nonfoil"),
+    }
+
+
+def test_search_color_identity_colorless_alone_matches_only_colorless(
+    search_conn: sqlite3.Connection,
+) -> None:
+    keys, _, _ = _search(search_conn, color_identity=("C",))
+
+    assert set(keys) == {("sol-1", "nonfoil"), ("coin-1", "nonfoil")}
+
+
+def test_search_color_identity_falls_back_to_colors_when_null(
+    search_conn: sqlite3.Connection,
+) -> None:
+    """A hand-seeded card with no identity is judged by its colors, not as colorless."""
+    _insert_card(search_conn, "edgar-1", "Edgar, Charmed Groom", colors='["B","R","W"]')
+    search_conn.commit()
+    inventory.create_lot(search_conn, scryfall_id="edgar-1")
+
+    assert ("edgar-1", "nonfoil") not in _search(search_conn, color_identity=("U", "R"))[0]
+    assert ("edgar-1", "nonfoil") in _search(search_conn, color_identity=("W", "B", "R"))[0]
+
+
+def test_search_by_type_matches_either_face(search_conn: sqlite3.Connection) -> None:
+    assert _search(search_conn, type_line="planeswalker")[0] == [("valki-1", "foil")]
+    assert _search(search_conn, type_line="GOD // LEGENDARY")[0] == [("valki-1", "foil")]
+    keys, _, _ = _search(search_conn, type_line="instant")
+    assert len(keys) == 5
+
+
+def test_search_by_type_reads_card_faces_when_top_level_is_null(
+    search_conn: sqlite3.Connection,
+) -> None:
+    """Reversible cards carry their type line only on the faces."""
+    _insert_card(search_conn, "reversible-1", "Reversible Knight", layout="reversible_card")
+    search_conn.execute(
+        "INSERT INTO card_faces (scryfall_id, face_index, name, type_line) VALUES (?, ?, ?, ?)",
+        ("reversible-1", 0, "Reversible Knight", "Legendary Creature — Human Soldier"),
+    )
+    search_conn.commit()
+    inventory.create_lot(search_conn, scryfall_id="reversible-1")
+
+    assert ("reversible-1", "nonfoil") in _search(search_conn, type_line="creature")[0]
+    assert _search(search_conn, type_line="sorcery")[0] == []
+
+
+def test_search_by_tag_selects_the_folio_and_keeps_whole_folio_totals(
+    search_conn: sqlite3.Connection,
+) -> None:
+    keys, rows, _ = _search(search_conn, tags=("staple",))
+
+    assert set(keys) == {("bolt-1", "nonfoil"), ("counter-1", "nonfoil")}
+    # Only the LP lot carries "staple", but the folio counts both lots.
+    bolt = rows[("bolt-1", "nonfoil")]
+    assert (bolt["quantity"], bolt["lots"]) == (3, 2)
+    assert bolt["conditions"] == ["LP", "NM"]
+
+
+def test_search_by_location_is_any_of_and_case_insensitive(
+    search_conn: sqlite3.Connection,
+) -> None:
+    keys, _, _ = _search(search_conn, locations=("VOLUME I", "vault"))
+
+    assert set(keys) == {("bolt-1", "nonfoil"), ("bolt-1", "foil"), ("helix-1", "nonfoil")}
+
+
+def test_search_lists_conditions_locations_and_tags_sorted_and_distinct(
+    search_conn: sqlite3.Connection,
+) -> None:
+    _, rows, _ = _search(search_conn)
+
+    bolt = rows[("bolt-1", "nonfoil")]
+    assert bolt["conditions"] == ["LP", "NM"]
+    # The LP lot has no location; NULL is left out.
+    assert bolt["locations"] == ["Volume I"]
+    assert bolt["tags"] == ["burn", "staple"]
+    sol = rows[("sol-1", "nonfoil")]
+    assert (sol["conditions"], sol["locations"], sol["tags"]) == (["NM"], [], [])
+
+
+def test_search_by_finish_and_condition_is_any_of(search_conn: sqlite3.Connection) -> None:
+    keys, _, _ = _search(search_conn, finishes=("foil", "etched"))
+    assert set(keys) == {("bolt-1", "foil"), ("izzet-1", "etched"), ("valki-1", "foil")}
+
+    keys, _, _ = _search(search_conn, conditions=("LP", "DMG"))
+    assert set(keys) == {("bolt-1", "nonfoil"), ("sphere-1", "nonfoil")}
+
+
+def test_search_combines_facets_with_and(search_conn: sqlite3.Connection) -> None:
+    assert _search(search_conn, name="lightning", finishes=("foil",))[0] == [("bolt-1", "foil")]
+    assert _search(search_conn, colors=("R",), set_codes=("tst",))[0] == [("helix-1", "nonfoil")]
+
+
+_ADDED_DESC = [
+    ("coin-1", "nonfoil"),
+    ("valki-1", "foil"),
+    ("sol-1", "nonfoil"),
+    ("sphere-1", "nonfoil"),
+    ("izzet-1", "etched"),
+    ("counter-1", "nonfoil"),
+    ("helix-1", "nonfoil"),
+    ("bolt-1", "foil"),
+    ("bolt-1", "nonfoil"),
+]
+
+
+def test_search_sorts_by_added_newest_first_by_default(search_conn: sqlite3.Connection) -> None:
+    """Added is the folio's newest lot id, so bolt nonfoil (lots 1 and 2) is oldest."""
+    assert _search(search_conn)[0] == _ADDED_DESC
+    assert _search(search_conn, sort="added", order="desc")[0] == _ADDED_DESC
+    assert _search(search_conn, sort="added", order="asc")[0] == _ADDED_DESC[::-1]
+
+
+def test_search_sorts_by_name_ascending_by_default(search_conn: sqlite3.Connection) -> None:
+    ascending = [
+        ("counter-1", "nonfoil"),
+        ("sphere-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("coin-1", "nonfoil"),
+        ("bolt-1", "foil"),
+        ("bolt-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+        ("sol-1", "nonfoil"),
+        ("valki-1", "foil"),
+    ]
+    assert _search(search_conn, sort="name")[0] == ascending
+    assert _search(search_conn, sort="name", order="asc")[0] == ascending
+    # The tiebreak stays ascending, so the two Bolt folios keep their order.
+    descending = [
+        ("valki-1", "foil"),
+        ("sol-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+        ("bolt-1", "foil"),
+        ("bolt-1", "nonfoil"),
+        ("coin-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("sphere-1", "nonfoil"),
+        ("counter-1", "nonfoil"),
+    ]
+    assert _search(search_conn, sort="name", order="desc")[0] == descending
+
+
+def test_search_name_sort_ignores_case(search_conn: sqlite3.Connection) -> None:
+    _insert_card(search_conn, "lower-1", "aether vial")
+    search_conn.commit()
+    inventory.create_lot(search_conn, scryfall_id="lower-1")
+
+    assert _search(search_conn, sort="name")[0][0] == ("lower-1", "nonfoil")
+
+
+def test_search_sorts_by_set_with_numeric_collector_numbers(
+    search_conn: sqlite3.Connection,
+) -> None:
+    ascending = [
+        ("valki-1", "foil"),
+        ("counter-1", "nonfoil"),
+        ("bolt-1", "foil"),
+        ("bolt-1", "nonfoil"),
+        ("sol-1", "nonfoil"),
+        ("sphere-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("coin-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+    ]
+    # 54 < 161 < 270 and 2 < 10, which a text sort would get wrong.
+    assert _search(search_conn, sort="set")[0] == ascending
+    assert _search(search_conn, sort="set", order="asc")[0] == ascending
+    keys, _, _ = _search(search_conn, sort="set", order="desc")
+    # Coin and Helix tie on set and number; the ascending tiebreak puts Coin first.
+    assert keys[:4] == [
+        ("coin-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("sphere-1", "nonfoil"),
+    ]
+
+
+def test_search_sorts_by_quantity_largest_first_by_default(
+    search_conn: sqlite3.Connection,
+) -> None:
+    descending = [
+        ("sol-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("bolt-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+        ("bolt-1", "foil"),
+        ("coin-1", "nonfoil"),
+        ("counter-1", "nonfoil"),
+        ("sphere-1", "nonfoil"),
+        ("valki-1", "foil"),
+    ]
+    assert _search(search_conn, sort="quantity")[0] == descending
+    assert _search(search_conn, sort="quantity", order="desc")[0] == descending
+    ascending = [
+        ("bolt-1", "foil"),
+        ("coin-1", "nonfoil"),
+        ("counter-1", "nonfoil"),
+        ("sphere-1", "nonfoil"),
+        ("valki-1", "foil"),
+        ("bolt-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("sol-1", "nonfoil"),
+    ]
+    assert _search(search_conn, sort="quantity", order="asc")[0] == ascending
+
+
+def test_search_reports_reserved_and_available_per_folio(
+    search_conn: sqlite3.Connection,
+) -> None:
+    _claim(search_conn, "bolt-1", 2)
+    _claim(search_conn, "bolt-1", 3, finish="foil")
+    _claim(search_conn, "bolt-1", 5, board="maybeboard")
+    _claim(search_conn, "bolt-1", 5, claims=False)
+
+    _, rows, _ = _search(search_conn, locations=("Volume I", "Vault"))
+
+    nonfoil, foil = rows[("bolt-1", "nonfoil")], rows[("bolt-1", "foil")]
+    # Totals cover the whole folio, including the lot with no location.
+    assert (nonfoil["quantity"], nonfoil["reserved"], nonfoil["available"]) == (3, 2, 1)
+    # Three claimed against one owned: available floors at zero.
+    assert (foil["quantity"], foil["reserved"], foil["available"]) == (1, 3, 0)
+    assert rows[("helix-1", "nonfoil")]["reserved"] == 0
+
+
+def test_search_paginates_and_total_ignores_the_page(search_conn: sqlite3.Connection) -> None:
+    keys, _, total = _search(search_conn, limit=2, offset=1)
+
+    assert keys == _ADDED_DESC[1:3]
+    assert total == len(_ADDED_DESC)
+    keys, _, total = _search(search_conn, finishes=("foil",), limit=1, offset=5)
+    assert (keys, total) == ([], 2)
+
+
+def test_search_added_sort_uses_the_newest_lot_in_the_folio(
+    search_conn: sqlite3.Connection,
+) -> None:
+    oldest = _search(search_conn)[0][-1]
+    assert oldest == ("bolt-1", "nonfoil")
+
+    inventory.create_lot(search_conn, scryfall_id=oldest[0], finish=oldest[1])
+
+    assert _search(search_conn)[0][0] == oldest
+
+
+def test_search_color_identity_prefers_identity_over_colors(
+    search_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(
+        search_conn,
+        "signet-1",
+        "Rakdos Signet",
+        colors="[]",
+        color_identity='["B","R"]',
+    )
+    search_conn.commit()
+    inventory.create_lot(search_conn, scryfall_id="signet-1")
+
+    assert ("signet-1", "nonfoil") not in _search(search_conn, color_identity=("U",))[0]
+    assert ("signet-1", "nonfoil") in _search(search_conn, color_identity=("B", "R"))[0]
+
+
+def test_search_tags_are_per_finish(search_conn: sqlite3.Connection) -> None:
+    _, rows, _ = _search(search_conn)
+
+    assert rows[("bolt-1", "foil")]["tags"] == []
+    assert rows[("bolt-1", "nonfoil")]["tags"] == ["burn", "staple"]
+
+
+def test_search_rejects_unknown_sort_and_order(search_conn: sqlite3.Connection) -> None:
+    filters = inventory.SearchFilters()
+    with pytest.raises(ValueError):
+        inventory.search_folios(search_conn, filters, sort="price")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        inventory.search_folios(search_conn, filters, order="sideways")  # type: ignore[arg-type]

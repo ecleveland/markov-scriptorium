@@ -403,3 +403,136 @@ def test_owned_copies_carries_reservations_and_printing_counts() -> None:
     ]
     (printing,) = body["across_printings"]["printings"]
     assert (printing["quantity"], printing["reserved"], printing["available"]) == (4, 2, 2)
+
+
+# --- GET /inventory/search (VEG-227) ---------------------------------------
+
+
+def test_search_without_params_echoes_paging_and_total() -> None:
+    _inscribe(quantity=2)
+    _inscribe()
+    _inscribe(scryfall_id="helix-1")
+
+    body = client.get("/inventory/search").json()
+
+    assert (body["limit"], body["offset"], body["total"]) == (50, 0, 2)
+    by_name = {r["card"]["name"]: r for r in body["results"]}
+    assert by_name["Lightning Bolt"]["quantity"] == 3
+    assert by_name["Lightning Bolt"]["lots"] == 2
+    assert by_name["Lightning Bolt"]["available"] == 3
+
+
+def test_search_parses_repeated_params_as_lists() -> None:
+    _inscribe()
+    _inscribe(finish="foil")
+    _inscribe(finish="etched")
+
+    resp = client.get("/inventory/search?finish=foil&finish=etched")
+
+    assert resp.status_code == 200
+    assert sorted(r["finish"] for r in resp.json()["results"]) == ["etched", "foil"]
+
+
+def test_search_reads_set_and_type_through_their_aliases() -> None:
+    with closing(db.connect()) as conn:
+        conn.execute("UPDATE cards SET type_line = 'Instant' WHERE scryfall_id = 'helix-1'")
+        conn.commit()
+    _inscribe()
+    _inscribe(scryfall_id="helix-1")
+
+    by_set = client.get("/inventory/search", params={"set": "LEA"}).json()
+    by_type = client.get("/inventory/search", params={"type": "instant"}).json()
+
+    assert [r["scryfall_id"] for r in by_set["results"]] == ["bolt-1"]
+    assert [r["scryfall_id"] for r in by_type["results"]] == ["helix-1"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"finish": "shiny"},
+        {"colors": "P"},
+        {"color_identity": "X"},
+        {"condition": "MINT"},
+        {"sort": "price"},
+        {"order": "sideways"},
+        {"limit": 0},
+        {"limit": 201},
+        {"offset": -1},
+    ],
+)
+def test_search_rejects_bad_params(params: dict[str, Any]) -> None:
+    assert client.get("/inventory/search", params=params).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"name": "helix"},
+        {"colors": "W"},
+        {"color_identity": "W"},
+        {"tag": "burn"},
+        {"location": "Box A"},
+        {"condition": "LP"},
+        {"limit": 1},
+        {"offset": 1},
+    ],
+)
+def test_search_forwards_each_filter_param(params: dict[str, Any]) -> None:
+    with closing(db.connect()) as conn:
+        _insert_card(conn, "plains-1", "Plains Walker", colors='["W"]', color_identity='["W"]')
+        # color_identity is "fits within", so colorless cards match W too. A blue
+        # card is what makes that case exclude something.
+        _insert_card(conn, "island-1", "Island Walker", colors='["U"]', color_identity='["U"]')
+        conn.commit()
+    _inscribe(scryfall_id="bolt-1", quantity=3, condition="LP", location="Box A", tags=["burn"])
+    _inscribe(scryfall_id="helix-1", finish="foil")
+    _inscribe(scryfall_id="1")
+    _inscribe(scryfall_id="plains-1")
+    _inscribe(scryfall_id="island-1")
+
+    unfiltered = client.get("/inventory/search").json()
+    resp = client.get("/inventory/search", params=params)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    if "limit" in params:
+        assert len(body["results"]) == 1
+    elif "offset" in params:
+        assert len(body["results"]) == unfiltered["total"] - 1
+    else:
+        assert 0 < body["total"] < unfiltered["total"]
+
+
+def test_search_forwards_sort_and_order() -> None:
+    _inscribe(scryfall_id="bolt-1")
+    _inscribe(scryfall_id="helix-1")
+    _inscribe(scryfall_id="1")
+
+    body = client.get("/inventory/search", params={"sort": "name", "order": "desc"}).json()
+
+    names = [r["card"]["name"] for r in body["results"]]
+    assert names[0] == max(names)
+    assert names == sorted(names, reverse=True)
+
+
+def test_search_blank_list_params_are_ignored() -> None:
+    _inscribe(location="Box A", tags=["burn"])
+    _inscribe(scryfall_id="helix-1")
+
+    unfiltered = client.get("/inventory/search").json()
+    blank = client.get("/inventory/search?set=&tag=&location=")
+
+    assert blank.status_code == 200
+    assert unfiltered["total"] == 2
+    assert blank.json()["total"] == unfiltered["total"]
+
+
+def test_search_route_not_shadowed_by_lot_id() -> None:
+    """/inventory/search reaches the search, not the integer /{lot_id} lookup."""
+    _inscribe()
+
+    resp = client.get("/inventory/search")
+
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1

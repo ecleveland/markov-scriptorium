@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 
 from scriptorium import inventory
 from scriptorium.db import connect
+from scriptorium.inventory import Color, SortKey, SortOrder
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -147,6 +148,50 @@ def list_inventory(
     """List owned lots, newest first; paginated, with a total count."""
     with closing(connect()) as conn:
         results, total = inventory.list_lots(conn, limit=limit, offset=offset)
+    return {"results": results, "total": total, "limit": limit, "offset": offset}
+
+
+# /search is declared before /{lot_id} so the literal segment wins over the
+# integer lot id. Its parameters use Annotated with tuple defaults because a
+# Query() call or a list as the default trips ruff's B008 and B006.
+@router.get("/search")
+def search_inventory(
+    name: Annotated[str | None, Query()] = None,
+    set_codes: Annotated[tuple[str, ...], Query(alias="set")] = (),
+    colors: Annotated[tuple[Color, ...], Query()] = (),
+    color_identity: Annotated[tuple[Color, ...], Query()] = (),
+    type_line: Annotated[str | None, Query(alias="type")] = None,
+    tag: Annotated[tuple[str, ...], Query()] = (),
+    location: Annotated[tuple[str, ...], Query()] = (),
+    finish: Annotated[tuple[Finish, ...], Query()] = (),
+    condition: Annotated[tuple[Condition, ...], Query()] = (),
+    sort: Annotated[SortKey, Query()] = "added",
+    order: Annotated[SortOrder | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict[str, Any]:
+    """Search The Index: one row per owned folio, filtered, sorted, and paginated.
+
+    Repeat a list parameter to match any of its values (``finish=foil&finish=etched``).
+    Different parameters combine with AND. ``color_identity`` keeps cards whose
+    identity fits inside the given colors. ``order`` defaults per sort key; see
+    :func:`scriptorium.inventory.search_folios`.
+    """
+    filters = inventory.SearchFilters(
+        name=name,
+        set_codes=set_codes,
+        colors=colors,
+        color_identity=color_identity,
+        type_line=type_line,
+        tags=tag,
+        locations=location,
+        finishes=finish,
+        conditions=condition,
+    )
+    with closing(connect()) as conn:
+        results, total = inventory.search_folios(
+            conn, filters, sort=sort, order=order, limit=limit, offset=offset
+        )
     return {"results": results, "total": total, "limit": limit, "offset": offset}
 
 
