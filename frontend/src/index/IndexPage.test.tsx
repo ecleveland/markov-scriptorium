@@ -1,6 +1,12 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { facets, folio } from '../test/fixtures'
 import { renderWithQuery } from '../test/queryWrapper'
@@ -59,9 +65,21 @@ function Opened() {
   )
 }
 
-function renderIndex(entry = '/index') {
+/** The browser's Back button, for stepping to an earlier Index URL. */
+function Back() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      Browser back
+    </button>
+  )
+}
+
+/** Renders the Index at the last entry, with the earlier ones behind it. */
+function renderIndex(...entries: string[]) {
+  const history = entries.length === 0 ? ['/index'] : entries
   return renderWithQuery(
-    <MemoryRouter initialEntries={[entry]}>
+    <MemoryRouter initialEntries={history} initialIndex={history.length - 1}>
       <Routes>
         <Route
           path="/index"
@@ -69,6 +87,7 @@ function renderIndex(entry = '/index') {
             <>
               <IndexPage />
               <Where />
+              <Back />
             </>
           }
         />
@@ -369,6 +388,79 @@ describe('IndexPage', () => {
         expect.objectContaining({ finish: ['foil'], offset: 0 }),
         expect.any(AbortSignal),
       ),
+    )
+  })
+
+  it('lands on page one when the offset sits exactly at the total', async () => {
+    searchMock.mockResolvedValueOnce(page([], INDEX_PAGE_SIZE, INDEX_PAGE_SIZE))
+    searchMock.mockResolvedValue(page([folio()], INDEX_PAGE_SIZE))
+    renderIndex('/index?page=2')
+
+    await waitFor(() =>
+      expect(searchMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: 0 }),
+        expect.any(AbortSignal),
+      ),
+    )
+    expect(where()).toBeEmptyDOMElement()
+  })
+
+  it('counts a part-full last page when it lands there', async () => {
+    searchMock.mockResolvedValueOnce(page([], 30, 2 * INDEX_PAGE_SIZE))
+    searchMock.mockResolvedValue(page([folio()], 30, INDEX_PAGE_SIZE))
+    renderIndex('/index?page=3')
+
+    await waitFor(() =>
+      expect(searchMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: INDEX_PAGE_SIZE }),
+        expect.any(AbortSignal),
+      ),
+    )
+    expect(where()).toHaveTextContent(/^\?page=2$/)
+  })
+
+  it('disables Next when the last page is exactly full', async () => {
+    const full = Array.from({ length: INDEX_PAGE_SIZE }, (_, i) =>
+      folio({ scryfall_id: `bolt-${i}` }),
+    )
+    searchMock.mockResolvedValue(page(full, INDEX_PAGE_SIZE))
+    renderIndex()
+    expect(await screen.findByRole('button', { name: 'Next' })).toBeDisabled()
+  })
+
+  it('keeps the search and facets up while cleared filters load', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([], 0))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    renderIndex('/index?finish=foil')
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Clear filters' }),
+    )
+    expect(where()).toBeEmptyDOMElement()
+    // The empty filtered result is still the placeholder here. It says nothing
+    // about whether the whole collection is empty.
+    expect(
+      screen.queryByRole('heading', { name: 'Nothing inscribed yet' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Search the Index')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'foil' })).toBeInTheDocument()
+  })
+
+  it('does not redirect on the previous result while a later page loads', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([folio(), SOL_RING], 2))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    renderIndex('/index?page=3', '/index?finish=foil')
+
+    await screen.findByText('Showing 1 to 2 of 2 folios')
+    await user.click(screen.getByRole('button', { name: 'Browser back' }))
+
+    // Two folios cannot fill page 3, but they are the old filter's count.
+    expect(where()).toHaveTextContent(/^\?page=3$/)
+    expect(searchMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ offset: 2 * INDEX_PAGE_SIZE }),
+      expect.any(AbortSignal),
     )
   })
 })

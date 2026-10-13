@@ -104,7 +104,10 @@ export function IndexPage() {
 
   const filtered = isFiltered(state)
 
-  if (query.isSuccess) {
+  // While a new key loads, `data` is the previous key's answer. Its total says
+  // nothing about this URL, so neither the redirect nor the empty collection
+  // may act on it. Results still shows those rows as the placeholder.
+  if (query.isSuccess && !query.isPlaceholderData) {
     const { total } = query.data
     const offset = params.offset ?? 0
     // The collection can shrink under a bookmarked or returned-to page. Land

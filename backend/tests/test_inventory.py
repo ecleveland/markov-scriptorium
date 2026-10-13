@@ -1273,5 +1273,20 @@ def test_facets_tags_come_from_the_json_arrays(search_conn: sqlite3.Connection) 
     ]
 
 
+def test_facets_leave_out_blank_locations_and_tags(search_conn: sqlite3.Connection) -> None:
+    """A blank volume or tag can never be filtered on, so it gets no entry."""
+    inventory.create_lot(search_conn, scryfall_id="sol-1", location="")
+    inventory.create_lot(search_conn, scryfall_id="coin-1", tags=[""])
+
+    facets = inventory.list_facets(search_conn)
+
+    assert [entry["location"] for entry in facets["locations"]] == [
+        "Vault",
+        "Volume I",
+        "Volume II",
+    ]
+    assert [entry["tag"] for entry in facets["tags"]] == ["burn", "staple"]
+
+
 def test_facets_of_an_empty_inventory_are_empty(catalog_conn: sqlite3.Connection) -> None:
     assert inventory.list_facets(catalog_conn) == {"sets": [], "locations": [], "tags": []}

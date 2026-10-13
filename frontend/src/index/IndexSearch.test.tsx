@@ -203,4 +203,44 @@ describe('IndexSearch', () => {
     await user.keyboard('{ArrowDown}')
     expect(first).toHaveFocus()
   })
+
+  it('keeps a trailing space typed before the URL caught up', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValue(named())
+    renderSearch()
+
+    const input = screen.getByLabelText('Search the Index')
+    await user.type(input, 'Lightning ')
+    await waitFor(() => expect(location()).toHaveTextContent('?name=Lightning'))
+    await user.type(input, 'Bolt')
+    expect(input).toHaveValue('Lightning Bolt')
+  })
+
+  it('closes the suggestions on Escape', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValue(named('Sol Ring', 'Soldevi Digger'))
+    renderSearch()
+
+    await user.type(screen.getByLabelText('Search the Index'), 'sol')
+    await screen.findByRole('list', { name: 'Owned cards' })
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('list', { name: 'Owned cards' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides suggestions for the old text as soon as more is typed', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValue(named('Lightning Bolt', 'Lightning Helix'))
+    renderSearch()
+
+    const input = screen.getByLabelText('Search the Index')
+    await user.type(input, 'li')
+    await screen.findByRole('list', { name: 'Owned cards' })
+    // The debounce has not caught up to "lig", so the list on hand is for "li".
+    await user.type(input, 'g')
+    expect(
+      screen.queryByRole('list', { name: 'Owned cards' }),
+    ).not.toBeInTheDocument()
+  })
 })
