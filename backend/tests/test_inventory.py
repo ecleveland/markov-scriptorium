@@ -875,6 +875,21 @@ def test_search_blank_name_and_type_mean_no_filter(search_conn: sqlite3.Connecti
     assert set(keys) == _ALL_FOLIOS
 
 
+def test_search_blank_list_values_mean_no_filter(search_conn: sqlite3.Connection) -> None:
+    everything = _search(search_conn)
+
+    for blank in (
+        {"set_codes": ("",)},
+        {"tags": (" ",)},
+        {"locations": ("",)},
+        {"finishes": ("",)},
+        {"conditions": ("  ",)},
+    ):
+        keys, _, total = _search(search_conn, **blank)
+        assert (keys, total) == (everything[0], everything[2]), blank
+    assert _search(search_conn, set_codes=("", "lea")) == _search(search_conn, set_codes=("lea",))
+
+
 def test_search_by_set_is_any_of_and_case_insensitive(search_conn: sqlite3.Connection) -> None:
     keys, _, _ = _search(search_conn, set_codes=("LEA", "Khm"))
 
@@ -950,6 +965,22 @@ def test_search_by_type_matches_either_face(search_conn: sqlite3.Connection) -> 
     assert _search(search_conn, type_line="GOD // LEGENDARY")[0] == [("valki-1", "foil")]
     keys, _, _ = _search(search_conn, type_line="instant")
     assert len(keys) == 5
+
+
+def test_search_by_type_reads_card_faces_when_top_level_is_null(
+    search_conn: sqlite3.Connection,
+) -> None:
+    """Reversible cards carry their type line only on the faces."""
+    _insert_card(search_conn, "reversible-1", "Reversible Knight", layout="reversible_card")
+    search_conn.execute(
+        "INSERT INTO card_faces (scryfall_id, face_index, name, type_line) VALUES (?, ?, ?, ?)",
+        ("reversible-1", 0, "Reversible Knight", "Legendary Creature — Human Soldier"),
+    )
+    search_conn.commit()
+    inventory.create_lot(search_conn, scryfall_id="reversible-1")
+
+    assert ("reversible-1", "nonfoil") in _search(search_conn, type_line="creature")[0]
+    assert _search(search_conn, type_line="sorcery")[0] == []
 
 
 def test_search_by_tag_selects_the_folio_and_keeps_whole_folio_totals(

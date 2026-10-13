@@ -516,6 +516,18 @@ def test_search_forwards_sort_and_order() -> None:
     assert names == sorted(names, reverse=True)
 
 
+def test_search_blank_list_params_are_ignored() -> None:
+    _inscribe(location="Box A", tags=["burn"])
+    _inscribe(scryfall_id="helix-1")
+
+    unfiltered = client.get("/inventory/search").json()
+    blank = client.get("/inventory/search?set=&tag=&location=")
+
+    assert blank.status_code == 200
+    assert unfiltered["total"] == 2
+    assert blank.json()["total"] == unfiltered["total"]
+
+
 def test_search_route_not_shadowed_by_lot_id() -> None:
     """/inventory/search reaches the search, not the integer /{lot_id} lookup."""
     _inscribe()

@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from scriptorium.catalog import _escape_like
@@ -530,6 +530,19 @@ def _placeholders(values: tuple[str, ...], template: str = "?") -> str:
     return ", ".join(template for _ in values)
 
 
+def _in_clause(column: str, values: tuple[str, ...], *, fold_case: bool = False) -> _Clause | None:
+    """``column IN (...)`` with one bound value each; no values is no filter.
+
+    ``fold_case`` lowercases both sides in SQL, so the folding rule is the same
+    on each. Without it the match is exact.
+    """
+    if not values:
+        return None
+    if fold_case:
+        return f"lower({column}) IN ({_placeholders(values, 'lower(?)')})", list(values)
+    return f"{column} IN ({_placeholders(values)})", list(values)
+
+
 def _substring_clause(column: str, term: str | None) -> _Clause | None:
     """Case-insensitive substring match on ``column``; a blank term is no filter."""
     if term is None or not term.strip():
@@ -542,16 +555,22 @@ def _name_clause(filters: SearchFilters) -> _Clause | None:
 
 
 def _type_clause(filters: SearchFilters) -> _Clause | None:
-    # Scryfall's top-level type_line reads "Front // Back" on multi-faced cards,
-    # so one match covers both faces.
-    return _substring_clause("c.type_line", filters.type_line)
+    # The top-level type_line is usually enough, because multi-faced cards read
+    # "Front // Back" there. Reversible cards carry it only on their faces, so
+    # the faces are checked too.
+    card = _substring_clause("c.type_line", filters.type_line)
+    face = _substring_clause("tf.type_line", filters.type_line)
+    if card is None or face is None:
+        return None
+    return (
+        f"({card[0]} OR EXISTS (SELECT 1 FROM card_faces tf "
+        f"WHERE tf.scryfall_id = c.scryfall_id AND {face[0]}))",
+        card[1] + face[1],
+    )
 
 
 def _set_clause(filters: SearchFilters) -> _Clause | None:
-    codes = filters.set_codes
-    if not codes:
-        return None
-    return f"lower(c.set_code) IN ({_placeholders(codes, 'lower(?)')})", list(codes)
+    return _in_clause("c.set_code", filters.set_codes, fold_case=True)
 
 
 def _colors_clause(filters: SearchFilters) -> _Clause | None:
@@ -596,36 +615,22 @@ def _color_identity_clause(filters: SearchFilters) -> _Clause | None:
 
 
 def _tags_clause(filters: SearchFilters) -> _Clause | None:
-    tags = filters.tags
-    if not tags:
+    tag = _in_clause("t.value", filters.tags)
+    if tag is None:
         return None
-    return (
-        "EXISTS (SELECT 1 FROM json_each(coalesce(i.tags, '[]')) t "
-        f"WHERE t.value IN ({_placeholders(tags)}))",
-        list(tags),
-    )
+    return f"EXISTS (SELECT 1 FROM json_each(coalesce(i.tags, '[]')) t WHERE {tag[0]})", tag[1]
 
 
 def _locations_clause(filters: SearchFilters) -> _Clause | None:
-    # Both sides lowercase in SQL, so the folding rule is the same on each.
-    locations = filters.locations
-    if not locations:
-        return None
-    return f"lower(i.location) IN ({_placeholders(locations, 'lower(?)')})", list(locations)
+    return _in_clause("i.location", filters.locations, fold_case=True)
 
 
 def _finishes_clause(filters: SearchFilters) -> _Clause | None:
-    finishes = filters.finishes
-    if not finishes:
-        return None
-    return f"i.finish IN ({_placeholders(finishes)})", list(finishes)
+    return _in_clause("i.finish", filters.finishes)
 
 
 def _conditions_clause(filters: SearchFilters) -> _Clause | None:
-    conditions = filters.conditions
-    if not conditions:
-        return None
-    return f"i.condition IN ({_placeholders(conditions)})", list(conditions)
+    return _in_clause("i.condition", filters.conditions)
 
 
 _CLAUSE_BUILDERS: tuple[Callable[[SearchFilters], _Clause | None], ...] = (
@@ -639,6 +644,29 @@ _CLAUSE_BUILDERS: tuple[Callable[[SearchFilters], _Clause | None], ...] = (
     _finishes_clause,
     _conditions_clause,
 )
+
+
+def _non_blank[T: str](values: tuple[T, ...]) -> tuple[T, ...]:
+    """Drop the empty and whitespace-only values; keep the rest unchanged."""
+    return tuple(value for value in values if value.strip())
+
+
+def _without_blank_values(filters: SearchFilters) -> SearchFilters:
+    """Drop blank values from every list filter.
+
+    A list left empty applies no filter, the same way a blank name or type does,
+    so ``?set=`` from an empty form field searches everything instead of nothing.
+    """
+    return replace(
+        filters,
+        set_codes=_non_blank(filters.set_codes),
+        colors=_non_blank(filters.colors),
+        color_identity=_non_blank(filters.color_identity),
+        tags=_non_blank(filters.tags),
+        locations=_non_blank(filters.locations),
+        finishes=_non_blank(filters.finishes),
+        conditions=_non_blank(filters.conditions),
+    )
 
 
 def _matching_cte(filters: SearchFilters) -> _Clause:
@@ -686,6 +714,9 @@ def search_folios(
     even when a lot filter picked it through just one lot, so ``available`` never
     exceeds ``quantity``.
 
+    Blank values in the list filters are ignored, so a list of only blanks
+    applies no filter.
+
     ``sort`` is ``added``, ``name``, ``set`` or ``quantity``. ``order`` defaults
     to newest or largest first for ``added`` and ``quantity`` and to A to Z for
     ``name`` and ``set``. Ties fall back to (scryfall_id, finish) ascending, so
@@ -698,7 +729,7 @@ def search_folios(
         raise ValueError(f"unknown sort order {order!r}")
     order_by = ", ".join(f"{expr} {direction}" for expr in _SORT_EXPRESSIONS[sort])
 
-    cte, params = _matching_cte(filters)
+    cte, params = _matching_cte(_without_blank_values(filters))
     total = conn.execute(f"{cte} SELECT COUNT(*) FROM matching", params).fetchone()[0]
     rows = conn.execute(
         f"{cte} {_FOLIO_SELECT} ORDER BY {order_by}, i.scryfall_id, i.finish LIMIT ? OFFSET ?",
