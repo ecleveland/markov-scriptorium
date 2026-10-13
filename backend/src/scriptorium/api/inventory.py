@@ -18,15 +18,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from scriptorium import inventory
 from scriptorium.db import connect
+from scriptorium.inventory import Color, SortKey, SortOrder
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 Finish = Literal["nonfoil", "foil", "etched"]
 Condition = Literal["NM", "LP", "MP", "HP", "DMG"]
-# Scryfall color letters plus C for colorless, as the search filters take them.
-Color = Literal["W", "U", "B", "R", "G", "C"]
-SortKey = Literal["added", "name", "set", "quantity"]
-SortOrder = Literal["asc", "desc"]
 
 
 class InventoryCreate(BaseModel):

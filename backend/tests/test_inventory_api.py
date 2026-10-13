@@ -465,6 +465,57 @@ def test_search_rejects_bad_params(params: dict[str, Any]) -> None:
     assert client.get("/inventory/search", params=params).status_code == 422
 
 
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"name": "helix"},
+        {"colors": "W"},
+        {"color_identity": "W"},
+        {"tag": "burn"},
+        {"location": "Box A"},
+        {"condition": "LP"},
+        {"limit": 1},
+        {"offset": 1},
+    ],
+)
+def test_search_forwards_each_filter_param(params: dict[str, Any]) -> None:
+    with closing(db.connect()) as conn:
+        _insert_card(conn, "plains-1", "Plains Walker", colors='["W"]', color_identity='["W"]')
+        # color_identity is "fits within", so colorless cards match W too. A blue
+        # card is what makes that case exclude something.
+        _insert_card(conn, "island-1", "Island Walker", colors='["U"]', color_identity='["U"]')
+        conn.commit()
+    _inscribe(scryfall_id="bolt-1", quantity=3, condition="LP", location="Box A", tags=["burn"])
+    _inscribe(scryfall_id="helix-1", finish="foil")
+    _inscribe(scryfall_id="1")
+    _inscribe(scryfall_id="plains-1")
+    _inscribe(scryfall_id="island-1")
+
+    unfiltered = client.get("/inventory/search").json()
+    resp = client.get("/inventory/search", params=params)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    if "limit" in params:
+        assert len(body["results"]) == 1
+    elif "offset" in params:
+        assert len(body["results"]) == unfiltered["total"] - 1
+    else:
+        assert 0 < body["total"] < unfiltered["total"]
+
+
+def test_search_forwards_sort_and_order() -> None:
+    _inscribe(scryfall_id="bolt-1")
+    _inscribe(scryfall_id="helix-1")
+    _inscribe(scryfall_id="1")
+
+    body = client.get("/inventory/search", params={"sort": "name", "order": "desc"}).json()
+
+    names = [r["card"]["name"] for r in body["results"]]
+    assert names[0] == max(names)
+    assert names == sorted(names, reverse=True)
+
+
 def test_search_route_not_shadowed_by_lot_id() -> None:
     """/inventory/search reaches the search, not the integer /{lot_id} lookup."""
     _inscribe()

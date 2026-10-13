@@ -32,7 +32,7 @@ import json
 import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from scriptorium.catalog import _escape_like
 from scriptorium.reservations import owned_sql, reserved_sql
@@ -449,6 +449,12 @@ def _card_display(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] 
 # --- search (VEG-227) --------------------------------------------------------
 
 
+# Scryfall color letters plus C for colorless, as the search filters take them.
+Color = Literal["W", "U", "B", "R", "G", "C"]
+SortKey = Literal["added", "name", "set", "quantity"]
+SortOrder = Literal["asc", "desc"]
+
+
 @dataclass(frozen=True)
 class SearchFilters:
     """Filters for :func:`search_folios`. An empty field means no filter.
@@ -462,8 +468,8 @@ class SearchFilters:
 
     name: str | None = None
     set_codes: tuple[str, ...] = ()
-    colors: tuple[str, ...] = ()
-    color_identity: tuple[str, ...] = ()
+    colors: tuple[Color, ...] = ()
+    color_identity: tuple[Color, ...] = ()
     type_line: str | None = None
     tags: tuple[str, ...] = ()
     locations: tuple[str, ...] = ()
@@ -666,8 +672,8 @@ def search_folios(
     conn: sqlite3.Connection,
     filters: SearchFilters,
     *,
-    sort: str = "added",
-    order: str | None = None,
+    sort: SortKey = "added",
+    order: SortOrder | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:

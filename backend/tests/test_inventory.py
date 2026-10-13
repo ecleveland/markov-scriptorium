@@ -1138,3 +1138,46 @@ def test_search_paginates_and_total_ignores_the_page(search_conn: sqlite3.Connec
     assert total == len(_ADDED_DESC)
     keys, _, total = _search(search_conn, finishes=("foil",), limit=1, offset=5)
     assert (keys, total) == ([], 2)
+
+
+def test_search_added_sort_uses_the_newest_lot_in_the_folio(
+    search_conn: sqlite3.Connection,
+) -> None:
+    oldest = _search(search_conn)[0][-1]
+    assert oldest == ("bolt-1", "nonfoil")
+
+    inventory.create_lot(search_conn, scryfall_id=oldest[0], finish=oldest[1])
+
+    assert _search(search_conn)[0][0] == oldest
+
+
+def test_search_color_identity_prefers_identity_over_colors(
+    search_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(
+        search_conn,
+        "signet-1",
+        "Rakdos Signet",
+        colors="[]",
+        color_identity='["B","R"]',
+    )
+    search_conn.commit()
+    inventory.create_lot(search_conn, scryfall_id="signet-1")
+
+    assert ("signet-1", "nonfoil") not in _search(search_conn, color_identity=("U",))[0]
+    assert ("signet-1", "nonfoil") in _search(search_conn, color_identity=("B", "R"))[0]
+
+
+def test_search_tags_are_per_finish(search_conn: sqlite3.Connection) -> None:
+    _, rows, _ = _search(search_conn)
+
+    assert rows[("bolt-1", "foil")]["tags"] == []
+    assert rows[("bolt-1", "nonfoil")]["tags"] == ["burn", "staple"]
+
+
+def test_search_rejects_unknown_sort_and_order(search_conn: sqlite3.Connection) -> None:
+    filters = inventory.SearchFilters()
+    with pytest.raises(ValueError):
+        inventory.search_folios(search_conn, filters, sort="price")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        inventory.search_folios(search_conn, filters, order="sideways")  # type: ignore[arg-type]
