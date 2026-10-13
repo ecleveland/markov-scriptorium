@@ -1,4 +1,4 @@
-# 0022 The Index browse surface
+# 0022 The Index browse view
 
 **Status:** accepted (2026-10-13)
 
@@ -38,10 +38,12 @@ with the number of folios carrying it:
 Counts are not narrowed by the other active filters. True faceted counts need
 one aggregate per facet per request and the collection is small enough that
 discovering a value matters more than predicting its hit count. Volumes group
-case-insensitively with the first spelling as the label, because the search's
-`location` filter folds case and two checkboxes that filter identically would be
-a bug. Tags group exactly, because the tag filter is exact. Color, type, finish
-and condition are fixed vocabularies and ship with the frontend.
+case-insensitively under the alphabetically first spelling (SQL `MIN`), because
+the search's `location` filter folds case and two checkboxes that filter
+identically would be a bug. Tags group exactly, because the tag filter is exact.
+Blank and whitespace-only values are left out of both, as the search already
+treats them as no filter. Color, type, finish and condition are fixed
+vocabularies and ship with the frontend.
 
 **A tile opens a printing page at `/index/:scryfallId`.** A result is a folio,
 a (printing, finish), and may span several lots, while the existing detail page
@@ -92,9 +94,10 @@ outside the Catalog appeared. The Index tile is that consumer.
 
 - Price sort is still absent. The ticket lists it; 0021 deferred it to a
   `cards.price_*` join. The sort control offers date added, name, set and copies.
-- Every inventory write already invalidates `inventoryKeys.all`, so the search
-  and facets queries refresh after an inscription or an amendment with no new
-  wiring.
+- The Catalog and Tome writes invalidate `inventoryKeys.all`, which now covers
+  the search and facets queries too. Inscribe and the importers still use plain
+  `fetch` (0016) and invalidate nothing. The Index catches up anyway, because a
+  query is stale as soon as it resolves and refetches when the page mounts.
 - If a `volumes` table arrives ([VEG-279]), the facets endpoint's `locations`
   list becomes a read of that table and the sidebar's checkboxes do not change.
 - The E2E stubs now carry `/inventory/search` and `/inventory/facets`, filtered

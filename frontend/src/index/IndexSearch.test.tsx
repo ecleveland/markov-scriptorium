@@ -229,6 +229,24 @@ describe('IndexSearch', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('keeps the suggestions shut for a name the URL brought, until the reader types', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValue(named('Lightning Bolt', 'Lightning Helix'))
+    renderSearch('/index?name=li')
+
+    await waitFor(() => expect(searchMock).toHaveBeenCalled())
+    // Give the suggestions every chance to resolve and render.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(
+      screen.queryByRole('list', { name: 'Owned cards' }),
+    ).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Search the Index'), 'g')
+    expect(
+      await screen.findByRole('list', { name: 'Owned cards' }),
+    ).toBeInTheDocument()
+  })
+
   it('hides suggestions for the old text as soon as more is typed', async () => {
     const user = userEvent.setup()
     searchMock.mockResolvedValue(named('Lightning Bolt', 'Lightning Helix'))

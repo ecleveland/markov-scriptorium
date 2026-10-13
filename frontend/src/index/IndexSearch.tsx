@@ -25,7 +25,10 @@ export function IndexSearch() {
   const urlName = searchParams.get('name') ?? ''
 
   const [text, setText] = useState(urlName)
-  const [open, setOpen] = useState(true)
+  // Shut until the reader types. A name the URL brought back (Back from a
+  // printing) is not a question being asked. No blur handler closes it,
+  // because blur fires before the click on an option and would eat the pick.
+  const [open, setOpen] = useState(false)
   // When the URL's name changes from outside (Clear filters, Back), the input
   // follows it. A change this component wrote already matches the text.
   const [seenUrlName, setSeenUrlName] = useState(urlName)

@@ -28,6 +28,7 @@ import { FolioTable } from './FolioTable'
 import { FolioTile } from './FolioTile'
 import { IndexSearch } from './IndexSearch'
 import {
+  EMPTY_INDEX,
   isFiltered,
   readIndexParams,
   refine,
@@ -93,6 +94,16 @@ export function IndexPage() {
   const narrow = (change: IndexRefinement) => show(refine(state, change))
   const view = (next: IndexView) => show({ ...state, view: next })
   const goToPage = (next: number) => show({ ...state, page: next })
+  // Clearing drops what narrows the result, not how it is laid out.
+  const clear = () =>
+    navigate(
+      indexPath({
+        ...EMPTY_INDEX,
+        view: state.view,
+        sort: state.sort,
+        order: state.order,
+      }),
+    )
 
   const query = useQuery({
     queryKey: inventoryKeys.search(params),
@@ -178,7 +189,7 @@ export function IndexPage() {
           <Results
             query={query}
             state={state}
-            onClear={() => navigate('/index')}
+            onClear={clear}
             onPage={goToPage}
           />
         </div>
@@ -210,8 +221,12 @@ function Results({
   // The offset the rows on screen came from. `keepPreviousData` holds the old
   // page during a fetch, so the requested offset would misdescribe them.
   const { results, total, offset: shownOffset } = query.data
+  // A placeholder's total belongs to the previous request. It may not say
+  // nothing matches, and the pager may not page by it.
+  const stale = query.isPlaceholderData
 
   if (total === 0) {
+    if (stale) return <Consulting />
     return (
       <div className="index__none">
         <Notice role="status">
@@ -244,12 +259,15 @@ function Results({
       )}
       <nav className="index__pager" aria-label="Index pages">
         <Button
-          disabled={state.page <= 1}
+          disabled={stale || state.page <= 1}
           onClick={() => onPage(state.page - 1)}
         >
           Previous
         </Button>
-        <Button disabled={onLastPage} onClick={() => onPage(state.page + 1)}>
+        <Button
+          disabled={stale || onLastPage}
+          onClick={() => onPage(state.page + 1)}
+        >
           Next
         </Button>
       </nav>

@@ -1017,6 +1017,20 @@ def test_search_lists_conditions_locations_and_tags_sorted_and_distinct(
     assert (sol["conditions"], sol["locations"], sol["tags"]) == (["NM"], [], [])
 
 
+def test_search_locations_leave_out_null_and_blank(search_conn: sqlite3.Connection) -> None:
+    """A tile lists real volumes only, so it can say "unshelved" when none are left."""
+    inventory.create_lot(search_conn, scryfall_id="sol-1", location="")
+    inventory.create_lot(search_conn, scryfall_id="sol-1", location="  ")
+    inventory.create_lot(search_conn, scryfall_id="sol-1", location="Vault")
+    inventory.create_lot(search_conn, scryfall_id="coin-1", location="")
+
+    _, rows, _ = _search(search_conn)
+
+    # sol-1 now has lots at NULL, "", "  " and "Vault".
+    assert rows[("sol-1", "nonfoil")]["locations"] == ["Vault"]
+    assert rows[("coin-1", "nonfoil")]["locations"] == []
+
+
 def test_search_by_finish_and_condition_is_any_of(search_conn: sqlite3.Connection) -> None:
     keys, _, _ = _search(search_conn, finishes=("foil", "etched"))
     assert set(keys) == {("bolt-1", "foil"), ("izzet-1", "etched"), ("valki-1", "foil")}
@@ -1274,9 +1288,14 @@ def test_facets_tags_come_from_the_json_arrays(search_conn: sqlite3.Connection) 
 
 
 def test_facets_leave_out_blank_locations_and_tags(search_conn: sqlite3.Connection) -> None:
-    """A blank volume or tag can never be filtered on, so it gets no entry."""
+    """A blank volume or tag can never be filtered on, so it gets no entry.
+
+    Whitespace-only counts as blank, because the search drops those values too.
+    """
     inventory.create_lot(search_conn, scryfall_id="sol-1", location="")
+    inventory.create_lot(search_conn, scryfall_id="sphere-1", location="  ")
     inventory.create_lot(search_conn, scryfall_id="coin-1", tags=[""])
+    inventory.create_lot(search_conn, scryfall_id="izzet-1", tags=[" "])
 
     facets = inventory.list_facets(search_conn)
 

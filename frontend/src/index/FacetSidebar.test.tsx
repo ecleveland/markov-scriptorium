@@ -100,6 +100,56 @@ describe('FacetSidebar', () => {
     ).toBeChecked()
   })
 
+  it('checks a hand-typed set code in any case, without a stale copy', async () => {
+    const user = userEvent.setup()
+    facetsMock.mockResolvedValue(STOCKED)
+    const onRefine = renderSidebar(
+      readIndexParams(new URLSearchParams('set=LEA')),
+    )
+
+    const alpha = await screen.findByRole('checkbox', {
+      name: 'Limited Edition Alpha (LEA) 3 folios',
+    })
+    expect(alpha).toBeChecked()
+    expect(within(group('Set')).getAllByRole('checkbox')).toHaveLength(2)
+    expect(
+      screen.queryByRole('checkbox', { name: 'LEA 0 folios' }),
+    ).not.toBeInTheDocument()
+
+    await user.click(alpha)
+    expect(onRefine).toHaveBeenLastCalledWith({ sets: [] })
+  })
+
+  it('checks a Volume named in another case, without a stale copy', async () => {
+    const user = userEvent.setup()
+    facetsMock.mockResolvedValue(STOCKED)
+    const onRefine = renderSidebar({
+      ...EMPTY_INDEX,
+      locations: ['RED Binder'],
+    })
+
+    const binder = await screen.findByRole('checkbox', {
+      name: 'Red binder 2 folios',
+    })
+    expect(binder).toBeChecked()
+    expect(within(group('Volume')).getAllByRole('checkbox')).toHaveLength(1)
+
+    await user.click(binder)
+    expect(onRefine).toHaveBeenLastCalledWith({ locations: [] })
+  })
+
+  it('matches tags exactly, because the search does', async () => {
+    facetsMock.mockResolvedValue(STOCKED)
+    renderSidebar({ ...EMPTY_INDEX, tags: ['Trade'] })
+
+    expect(
+      await screen.findByRole('checkbox', { name: 'trade 1 folio' }),
+    ).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: 'Trade 0 folios' }),
+    ).toBeChecked()
+  })
+
   it('adds and removes facet values through the callback', async () => {
     const user = userEvent.setup()
     facetsMock.mockResolvedValue(STOCKED)

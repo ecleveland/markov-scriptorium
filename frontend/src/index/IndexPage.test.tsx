@@ -346,11 +346,70 @@ describe('IndexPage', () => {
     ).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Clear filters' }))
-    expect(where()).toBeEmptyDOMElement()
+    expect(where()).toHaveTextContent(/^\?view=list$/)
     expect(
       await screen.findByRole('link', { name: 'Lightning Bolt' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'etched' })).not.toBeChecked()
+  })
+
+  it('keeps the view, sort and order when the filters are cleared', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([], 0))
+    searchMock.mockResolvedValue(page([SOL_RING]))
+    renderIndex('/index?finish=etched&sort=name&order=desc&view=list')
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Clear filters' }),
+    )
+    expect(where()).toHaveTextContent(/^\?sort=name&order=desc&view=list$/)
+    await waitFor(() =>
+      expect(searchMock).toHaveBeenLastCalledWith(
+        {
+          sort: 'name',
+          order: 'desc',
+          limit: INDEX_PAGE_SIZE,
+          offset: 0,
+        },
+        expect.any(AbortSignal),
+      ),
+    )
+    const table = await screen.findByRole('table')
+    expect(
+      within(table).getByRole('link', { name: 'Sol Ring' }),
+    ).toBeInTheDocument()
+  })
+
+  it('consults the catalog instead of repeating "nothing matches" while a looser filter loads', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([], 0))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    renderIndex('/index?finish=etched')
+
+    await screen.findByText('Nothing in the Index matches these filters.')
+    await user.click(screen.getByRole('checkbox', { name: 'etched' }))
+
+    expect(
+      screen.queryByText('Nothing in the Index matches these filters.'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('Consulting the catalog…')).toBeInTheDocument()
+  })
+
+  it('holds the pager still while the next page loads', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([folio()], 60))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    renderIndex()
+
+    await user.click(await screen.findByRole('button', { name: 'Next' }))
+    expect(where()).toHaveTextContent(/^\?page=2$/)
+    // Page two of sixty has a page after it, but the total on hand is the
+    // previous request's, so neither button may act on it yet.
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
   })
 
   it('surfaces a read failure as an alert', async () => {

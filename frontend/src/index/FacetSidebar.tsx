@@ -33,6 +33,30 @@ function toggled<T>(list: readonly T[], value: T): T[] {
     : [...list, value]
 }
 
+/**
+ * How a facet compares a URL value with a facet value. The search folds case
+ * for sets and Volumes, so `?set=LEA` is the `lea` the facets list. Tags
+ * match exactly.
+ */
+type Fold = (value: string) => string
+const caseless: Fold = (value) => value.toLowerCase()
+const exact: Fold = (value) => value
+
+/**
+ * `toggled` under a fold. Unchecking takes out the URL's own spelling of the
+ * value, which may not be the facet's.
+ */
+function toggledFolded(
+  list: readonly string[],
+  value: string,
+  fold: Fold,
+): string[] {
+  const key = fold(value)
+  return list.some((item) => fold(item) === key)
+    ? list.filter((item) => fold(item) !== key)
+    : [...list, value]
+}
+
 interface FacetOption {
   value: string
   label: string
@@ -42,17 +66,21 @@ interface FacetOption {
 /**
  * Facet values plus any the URL checks that the facets no longer list (the
  * last copy left that Volume, say). Without them a stale filter could not be
- * unchecked.
+ * unchecked. A value the facets list under another case is not stale.
  */
 function withChecked(
   options: FacetOption[],
   checked: readonly string[],
   label: (value: string) => string,
+  fold: Fold,
 ): FacetOption[] {
-  const listed = new Set(options.map((option) => option.value))
-  const stale = checked
-    .filter((value) => !listed.has(value))
-    .map((value) => ({ value, label: label(value), folios: 0 }))
+  const listed = new Set(options.map((option) => fold(option.value)))
+  const stale: FacetOption[] = []
+  for (const value of checked) {
+    if (listed.has(fold(value))) continue
+    listed.add(fold(value))
+    stale.push({ value, label: label(value), folios: 0 })
+  }
   return [...options, ...stale]
 }
 
@@ -77,14 +105,17 @@ function FacetList({
   legend,
   options,
   checked,
+  fold,
   onToggle,
 }: {
   legend: string
   options: FacetOption[]
   checked: readonly string[]
+  fold: Fold
   onToggle: (value: string) => void
 }) {
   if (options.length === 0) return null
+  const checkedKeys = new Set(checked.map(fold))
   return (
     <fieldset className="facet">
       <legend>{legend}</legend>
@@ -92,7 +123,7 @@ function FacetList({
         {options.map((option) => (
           <Checkbox
             key={option.value}
-            checked={checked.includes(option.value)}
+            checked={checkedKeys.has(fold(option.value))}
             onChange={() => onToggle(option.value)}
           >
             {option.label}{' '}
@@ -136,9 +167,13 @@ function OwnedFacets({ state, onRefine }: FacetSidebarProps) {
           })),
           state.sets,
           (code) => code.toUpperCase(),
+          caseless,
         )}
         checked={state.sets}
-        onToggle={(code) => onRefine({ sets: toggled(state.sets, code) })}
+        fold={caseless}
+        onToggle={(code) =>
+          onRefine({ sets: toggledFolded(state.sets, code, caseless) })
+        }
       />
       <FacetList
         legend="Volume"
@@ -150,10 +185,14 @@ function OwnedFacets({ state, onRefine }: FacetSidebarProps) {
           })),
           state.locations,
           (value) => value,
+          caseless,
         )}
         checked={state.locations}
+        fold={caseless}
         onToggle={(value) =>
-          onRefine({ locations: toggled(state.locations, value) })
+          onRefine({
+            locations: toggledFolded(state.locations, value, caseless),
+          })
         }
       />
       <FacetList
@@ -166,9 +205,13 @@ function OwnedFacets({ state, onRefine }: FacetSidebarProps) {
           })),
           state.tags,
           (value) => value,
+          exact,
         )}
         checked={state.tags}
-        onToggle={(value) => onRefine({ tags: toggled(state.tags, value) })}
+        fold={exact}
+        onToggle={(value) =>
+          onRefine({ tags: toggledFolded(state.tags, value, exact) })
+        }
       />
     </>
   )
