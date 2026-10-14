@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useId } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, getBreakdown, getDeck, type BreakdownLine } from '../api'
-import { CardThumb } from '../catalog/CardThumb'
 import {
+  CardThumb,
   Consulting,
   Notice,
   PageHeader,

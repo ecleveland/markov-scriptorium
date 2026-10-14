@@ -38,6 +38,18 @@ test.describe('reflows at phone width', () => {
   const routes = [
     // The table arrives on its own fetch after the status chip, so wait for it
     // or the check measures the narrow loading line instead.
+    // The Index heading renders before its results do, so wait for the count.
+    {
+      path: '/index',
+      slug: 'index',
+      heading: 'The Index',
+      text: 'Showing 1 to 3 of 3 folios',
+    },
+    {
+      path: '/index/bolt-lea',
+      slug: 'index-printing',
+      heading: 'Lightning Bolt',
+    },
     { path: '/catalog', slug: 'catalog', table: true },
     { path: '/catalog/2', slug: 'catalog-detail', heading: 'Lightning Bolt' },
     { path: '/inscribe', slug: 'inscribe' },
@@ -46,7 +58,7 @@ test.describe('reflows at phone width', () => {
     { path: '/import/csv', slug: 'import-csv' },
   ]
 
-  for (const { path, slug, heading, table } of routes) {
+  for (const { path, slug, heading, table, text } of routes) {
     test(`${path} has no horizontal scroll at 375px`, async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 })
       await page.goto(path)
@@ -56,6 +68,9 @@ test.describe('reflows at phone width', () => {
       }
       if (table) {
         await expect(page.getByRole('table')).toBeVisible()
+      }
+      if (text) {
+        await expect(page.getByText(text)).toBeVisible()
       }
 
       const widths = await page.evaluate(() => ({

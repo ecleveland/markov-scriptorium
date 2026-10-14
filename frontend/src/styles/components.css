@@ -522,6 +522,36 @@ select.control {
   cursor: pointer;
 }
 
+/* ---- Card thumb ---------------------------------------------------------
+   Card art from the catalog's image_uris. --thumb for list rows, --full for a
+   detail plate or an Index tile. --empty is the placeholder for a card with
+   no art, in the card's own proportions. */
+
+.card-thumb {
+  display: block;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elevation-1);
+}
+
+.card-thumb--thumb {
+  width: 3rem;
+}
+
+.card-thumb--full {
+  width: 13rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
+}
+
+.card-thumb--empty {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 5 / 7;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
 /* ---- Printing chip -------------------------------------------------------
    Card thumbnail + "Set Name (SET) · #num", used inside listbox options. The
    art is decorative (alt="") so the option's name stays the printing text.

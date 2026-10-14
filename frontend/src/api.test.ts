@@ -7,6 +7,7 @@ import {
   getLot,
   inscribe,
   inscribeBulk,
+  listFacets,
   listInventory,
   ownedForPrinting,
   parseCsv,
@@ -21,6 +22,7 @@ import {
   updateSlot,
   parseDecklist,
   resolveDecklist,
+  searchFolios,
   searchPrintings,
   updateLot,
   type CardPrinting,
@@ -384,6 +386,72 @@ describe('ownedForPrinting', () => {
       '/api/inventory/card/a%2Fb',
       undefined,
     )
+  })
+})
+
+describe('searchFolios', () => {
+  it('repeats list params and sends the scalars it is given', async () => {
+    const fetchMock = mockFetch({ results: [], total: 0, limit: 24, offset: 0 })
+    const controller = new AbortController()
+    await searchFolios(
+      {
+        name: 'bolt',
+        finish: ['foil', 'etched'],
+        set: ['lea'],
+        sort: 'name',
+        order: 'asc',
+        limit: 24,
+        offset: 48,
+      },
+      controller.signal,
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/inventory/search?name=bolt&finish=foil&finish=etched&set=lea&sort=name&order=asc&limit=24&offset=48',
+      { signal: controller.signal },
+    )
+  })
+
+  it('leaves out undefined fields, blank strings and empty lists', async () => {
+    const fetchMock = mockFetch({ results: [], total: 0, limit: 50, offset: 0 })
+    await searchFolios({
+      name: '',
+      type: undefined,
+      colors: [],
+      tag: [],
+      condition: ['LP'],
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/inventory/search?condition=LP',
+      { signal: undefined },
+    )
+  })
+
+  it('asks for the bare path when no params are given', async () => {
+    const fetchMock = mockFetch({ results: [], total: 0, limit: 50, offset: 0 })
+    await searchFolios({})
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/search', {
+      signal: undefined,
+    })
+  })
+
+  it('encodes an ampersand in a name rather than splitting on it', async () => {
+    const fetchMock = mockFetch({ results: [], total: 0, limit: 50, offset: 0 })
+    await searchFolios({ name: 'Fire & Ice', color_identity: ['R', 'U'] })
+    const url = fetchMock.mock.calls[0][0] as string
+    expect(url).toBe(
+      '/api/inventory/search?name=Fire+%26+Ice&color_identity=R&color_identity=U',
+    )
+    const params = new URL(url, 'http://localhost').searchParams
+    expect(params.get('name')).toBe('Fire & Ice')
+  })
+})
+
+describe('listFacets', () => {
+  it('reads the facet values from the facets path', async () => {
+    const body = { sets: [], locations: [], tags: [] }
+    const fetchMock = mockFetch(body)
+    expect(await listFacets()).toEqual(body)
+    expect(fetchMock).toHaveBeenCalledWith('/api/inventory/facets', undefined)
   })
 })
 

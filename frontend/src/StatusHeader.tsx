@@ -42,7 +42,7 @@ export function StatusHeader() {
   return (
     <header className="scriptorium-header">
       <NavLink
-        to="/catalog"
+        to="/index"
         className="brand"
         aria-label="The Markov Scriptorium, home"
       >
@@ -54,6 +54,7 @@ export function StatusHeader() {
 
       <div className="scriptorium-header-end">
         <nav className="scriptorium-nav" aria-label="Primary">
+          <NavLink to="/index">Index</NavLink>
           <NavLink to="/catalog">Catalog</NavLink>
           <NavLink to="/tomes">Tomes</NavLink>
           <NavLink to="/inscribe">Inscribe</NavLink>

@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import type { InventoryLot } from '../api'
-import { CardThumb } from './CardThumb'
+import { CardThumb } from '../components'
 import { QuantityStepper } from './QuantityStepper'
 
 /** One owned lot as a row of the Catalog table. */

@@ -13,6 +13,7 @@ import {
 } from '../api'
 import {
   Button,
+  CardThumb,
   Consulting,
   Field,
   Input,
@@ -20,7 +21,6 @@ import {
   Select,
   Textarea,
 } from '../components'
-import { CardThumb } from './CardThumb'
 import { OwnershipSummary } from './OwnershipSummary'
 import { readQuantity } from './quantity'
 import { inventoryKeys } from './queryKeys'

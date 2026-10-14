@@ -536,3 +536,25 @@ def test_search_route_not_shadowed_by_lot_id() -> None:
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+def test_facets_returns_sets_locations_and_tags() -> None:
+    _inscribe(location="Box A", tags=["burn"])
+    _inscribe(location="box a", tags=["burn", "trade"])
+
+    resp = client.get("/inventory/facets")
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "sets": [{"set_code": "lea", "set_name": "Test Set", "folios": 1}],
+        "locations": [{"location": "Box A", "folios": 1}],
+        "tags": [{"tag": "burn", "folios": 1}, {"tag": "trade", "folios": 1}],
+    }
+
+
+def test_facets_route_not_shadowed_by_lot_id() -> None:
+    """/inventory/facets reaches the facets, not the integer /{lot_id} lookup."""
+    resp = client.get("/inventory/facets")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"sets": [], "locations": [], "tags": []}

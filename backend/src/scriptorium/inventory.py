@@ -506,14 +506,15 @@ _ORDER_KEYWORDS = {"asc": "ASC", "desc": "DESC"}
 
 # One row per matching folio. The CTE picks folios where any lot passes the
 # filters, then the outer query sums every lot of each of them, so a lot-level
-# filter never shrinks a folio's quantity or reservation.
+# filter never shrinks a folio's quantity or reservation. Blank locations are
+# left out of ``locations`` so a tile with none left can say it is unshelved.
 _FOLIO_SELECT = (
     "SELECT i.scryfall_id, i.finish, SUM(i.quantity) AS quantity, COUNT(*) AS lots, "
     "MAX(i.id) AS latest_id, "
     "json_group_array(DISTINCT i.condition) AS conditions, "
     "(SELECT json_group_array(DISTINCT il.location) FROM inventory il "
     "WHERE il.scryfall_id = i.scryfall_id AND il.finish = i.finish "
-    "AND il.location IS NOT NULL) AS locations, "
+    "AND il.location IS NOT NULL AND trim(il.location) != '') AS locations, "
     "(SELECT json_group_array(DISTINCT lt.value) FROM inventory it, json_each(it.tags) lt "
     "WHERE it.scryfall_id = i.scryfall_id AND it.finish = i.finish) AS tags, "
     + ", ".join(f"c.{col} AS card_{col}" for col in _CARD_DISPLAY_COLUMNS)
@@ -709,7 +710,7 @@ def search_folios(
 
     A folio is a (printing, finish). Each row has ``scryfall_id``, ``finish``,
     ``quantity`` and ``lots``, the sorted distinct ``conditions``, ``locations``
-    (NULL left out) and ``tags`` of its lots, the nested ``card``, and
+    (NULL and blank left out) and ``tags`` of its lots, the nested ``card``, and
     ``reserved`` and ``available``. All of these cover every lot of the folio,
     even when a lot filter picked it through just one lot, so ``available`` never
     exceeds ``quantity``.
@@ -736,3 +737,53 @@ def search_folios(
         [*params, limit, offset],
     ).fetchall()
     return [_row_to_folio(row) for row in rows], total
+
+
+# Counts distinct folios. SQLite's COUNT(DISTINCT ...) takes one expression, so
+# the (scryfall_id, finish) pair is joined into one string.
+_FOLIO_COUNT = "COUNT(DISTINCT i.scryfall_id || '|' || i.finish) AS folios"
+
+_FACET_QUERIES: dict[str, str] = {
+    # Grouped by code alone so each code is one entry, even if its cards
+    # disagree on the set name.
+    "sets": (
+        f"SELECT c.set_code, MIN(c.set_name) AS set_name, {_FOLIO_COUNT} FROM inventory i "
+        "JOIN cards c ON c.scryfall_id = i.scryfall_id "
+        "GROUP BY c.set_code ORDER BY c.set_code"
+    ),
+    # Grouped case-insensitively because the location filter folds case. A blank
+    # location is left out because the search treats a blank filter as no filter.
+    # SQLite's trim strips only spaces, where the search's str.strip also strips
+    # tabs and newlines. Nobody types those into a volume or tag, so spaces are
+    # close enough.
+    "locations": (
+        f"SELECT MIN(i.location) AS location, {_FOLIO_COUNT} FROM inventory i "
+        "WHERE i.location IS NOT NULL AND trim(i.location) != '' "
+        "GROUP BY lower(i.location) ORDER BY lower(i.location)"
+    ),
+    # Grouped by exact value because the tag filter matches exactly. A NULL
+    # tags column gives json_each no rows. Blank tags are left out for the same
+    # reason as blank locations.
+    "tags": (
+        f"SELECT t.value AS tag, {_FOLIO_COUNT} FROM inventory i, json_each(i.tags) t "
+        "WHERE trim(t.value) != '' "
+        "GROUP BY t.value ORDER BY t.value"
+    ),
+}
+
+
+def list_facets(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
+    """Return the values The Index can filter on, each with its folio count.
+
+    ``sets`` lists every owned set code once, with the MIN of its names.
+    ``locations`` lists every volume (NULL and blank left out, spellings that
+    differ only in case merged under the MIN spelling), and ``tags`` every tag
+    except the blank one. Blanks are left out because the search treats a blank
+    filter value as no filter. ``folios`` counts the distinct (printing, finish)
+    pairs with at least one lot carrying the value, so a folio split over two
+    lots counts once.
+    """
+    return {
+        facet: [dict(row) for row in conn.execute(sql).fetchall()]
+        for facet, sql in _FACET_QUERIES.items()
+    }

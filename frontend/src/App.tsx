@@ -5,6 +5,8 @@ import { StatusHeader } from './StatusHeader'
 import { Consulting } from './components'
 import { CatalogPage } from './catalog/CatalogPage'
 import { LotDetailPage } from './catalog/LotDetailPage'
+import { IndexPage } from './index/IndexPage'
+import { PrintingPage } from './index/PrintingPage'
 import { InscribePage } from './inscribe/InscribePage'
 import { BreakdownPage } from './tomes/BreakdownPage'
 import { TomeEditorPage } from './tomes/TomeEditorPage'
@@ -26,7 +28,9 @@ function App() {
       <StatusHeader />
       <main className="scriptorium">
         <Routes>
-          <Route path="/" element={<Navigate to="/catalog" replace />} />
+          <Route path="/" element={<Navigate to="/index" replace />} />
+          <Route path="/index" element={<IndexPage />} />
+          <Route path="/index/:scryfallId" element={<PrintingPage />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/:lotId" element={<LotDetailPage />} />
           <Route path="/tomes" element={<TomesPage />} />

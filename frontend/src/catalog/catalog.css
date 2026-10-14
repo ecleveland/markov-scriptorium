@@ -3,8 +3,8 @@
 
    Buttons, form controls, labels, and the one-line state messages come from
    the component layer (ADR 0017); what is left here is layout and the pieces
-   the Catalog owns alone, such as the table, the card thumb, and the quantity
-   stepper. */
+   the Catalog owns alone, such as the table and the quantity stepper. The
+   card thumb moved to the component layer with VEG-228. */
 
 .catalog,
 .lot-detail {
@@ -98,33 +98,6 @@
   gap: var(--space-3);
   justify-content: flex-end;
   margin-top: var(--space-5);
-}
-
-/* ---- Card art ----------------------------------------------------------- */
-
-.card-thumb {
-  display: block;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--elevation-1);
-}
-
-.card-thumb--thumb {
-  width: 3rem;
-}
-
-.card-thumb--full {
-  width: 13rem;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elevation-2);
-}
-
-.card-thumb--empty {
-  display: grid;
-  place-items: center;
-  aspect-ratio: 5 / 7;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  color: var(--text-faint);
 }
 
 /* ---- Quantity stepper --------------------------------------------------- */

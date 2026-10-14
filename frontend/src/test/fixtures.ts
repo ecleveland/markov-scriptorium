@@ -7,8 +7,10 @@ import type {
   CardPrinting,
   DeckListEntry,
   DeckSlot,
+  Facets,
   InventoryLot,
   OwnedForPrinting,
+  SearchFolio,
   SlotCard,
 } from '../api'
 
@@ -82,6 +84,33 @@ export function owned(
     across_printings: across(),
     ...overrides,
   }
+}
+
+/** A folio as GET /inventory/search returns it: one Alpha Bolt, unshelved. */
+export function folio(
+  overrides: Omit<Partial<SearchFolio>, 'card'> & {
+    card?: Partial<SearchFolio['card']>
+  } = {},
+): SearchFolio {
+  const { card, ...rest } = overrides
+  return {
+    scryfall_id: 'bolt-lea',
+    finish: 'nonfoil',
+    quantity: 1,
+    lots: 1,
+    conditions: ['NM'],
+    locations: [],
+    tags: [],
+    reserved: 0,
+    available: 1,
+    ...rest,
+    card: { ...lot().card, ...card },
+  }
+}
+
+/** GET /inventory/facets, empty unless the test fills a list in. */
+export function facets(overrides: Partial<Facets> = {}): Facets {
+  return { sets: [], locations: [], tags: [], ...overrides }
 }
 
 /** A Tome as GET /decks lists it. */

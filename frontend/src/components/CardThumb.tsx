@@ -1,7 +1,8 @@
-interface CardThumbProps {
+export interface CardThumbProps {
+  /** Scryfall's `image_uris`, or null when the catalog holds no art. */
   images: Record<string, string> | null
   name: string
-  /** `thumb` for list rows, `full` for the detail view's plate. */
+  /** `thumb` for list rows, `full` for a detail plate or an Index tile. */
   size?: 'thumb' | 'full'
 }
 

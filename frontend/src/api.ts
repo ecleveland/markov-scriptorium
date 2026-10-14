@@ -457,6 +457,99 @@ export async function ownedForPrinting(
   )
 }
 
+// --- The Index (VEG-227, VEG-228) ------------------------------------------
+
+/** Folios per page in The Index. Divides into 2, 3, 4 and 6 grid columns. */
+export const INDEX_PAGE_SIZE = 24
+
+/** Color filter values. `C` means colorless in both color parameters. */
+export const COLORS = ['W', 'U', 'B', 'R', 'G', 'C'] as const
+export type Color = (typeof COLORS)[number]
+
+/** Sort keys the search accepts. Price is not one yet (ADR 0021). */
+export const SORT_KEYS = ['added', 'name', 'set', 'quantity'] as const
+export type SortKey = (typeof SORT_KEYS)[number]
+export type SortOrder = 'asc' | 'desc'
+
+/**
+ * One folio (printing plus finish) as GET /inventory/search returns it. The
+ * lots of the folio collapse into one row, and every number on it counts the
+ * whole folio even when a filter matched only one of its lots.
+ */
+export interface SearchFolio {
+  scryfall_id: string
+  finish: Finish
+  quantity: number
+  lots: number
+  conditions: string[]
+  locations: string[]
+  tags: string[]
+  card: InventoryLot['card']
+  reserved: number
+  available: number
+}
+
+/**
+ * Query parameters for GET /inventory/search, named as the API names them.
+ * A list matches any of its values; different fields combine with AND.
+ * `color_identity` keeps cards whose identity fits within the colors given.
+ */
+export interface SearchParams {
+  name?: string
+  set?: string[]
+  colors?: Color[]
+  color_identity?: Color[]
+  type?: string
+  tag?: string[]
+  location?: string[]
+  finish?: Finish[]
+  condition?: Condition[]
+  sort?: SortKey
+  order?: SortOrder
+  limit?: number
+  offset?: number
+}
+
+export interface SearchFoliosResponse {
+  results: SearchFolio[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/** One page of owned folios matching `params`. */
+export async function searchFolios(
+  params: SearchParams,
+  signal?: AbortSignal,
+): Promise<SearchFoliosResponse> {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue
+    if (Array.isArray(value)) {
+      for (const item of value) query.append(key, item)
+    } else {
+      query.append(key, String(value))
+    }
+  }
+  const qs = query.toString()
+  return request<SearchFoliosResponse>(
+    qs === '' ? '/inventory/search' : `/inventory/search?${qs}`,
+    { signal },
+  )
+}
+
+/** The values each list facet can take, with how many folios carry each. */
+export interface Facets {
+  sets: { set_code: string; set_name: string; folios: number }[]
+  locations: { location: string; folios: number }[]
+  tags: { tag: string; folios: number }[]
+}
+
+/** Distinct owned sets, Volumes and tags, for The Index's filter sidebar. */
+export async function listFacets(): Promise<Facets> {
+  return request<Facets>('/inventory/facets')
+}
+
 // --- Tomes (VEG-223, VEG-224, VEG-225) -------------------------------------
 
 export const DECK_STATUSES = [
