@@ -14,7 +14,9 @@ section of ``tests/test_decks.py``, and the breakdown reference table there.
 This module covers the other four. Each test walks a Tome through its life with
 the production functions in :mod:`scriptorium.decks` and reads the folio's
 availability back through :mod:`scriptorium.inventory` after each step, so a
-write that stores the wrong value shows up as a wrong count.
+write that stores the wrong value shows up as a wrong count. The first two
+tests read the counts through the printing view, the lot and The Index search
+to show the three agree; the rest read the printing view alone.
 """
 
 from __future__ import annotations
@@ -204,7 +206,7 @@ def test_turning_claims_on_can_leave_the_folio_over_claimed(
 # --- slot writes in a claiming Tome -------------------------------------------
 
 
-def test_maybeboard_slots_never_reserve_through_the_write_path(
+def test_maybeboard_slot_reserves_only_once_moved_to_a_counted_board(
     catalog_conn: sqlite3.Connection,
 ) -> None:
     _lot(catalog_conn, "bolt-1", 4)
