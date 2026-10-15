@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { ApiError, ownedForPrinting } from '../api'
-import { LotRow } from '../catalog/LotRow'
+import { LotRow, type LotBack } from '../catalog/LotRow'
 import { OwnershipSummary } from '../catalog/OwnershipSummary'
 import { inventoryKeys } from '../catalog/queryKeys'
 import { CardThumb, Consulting, Notice } from '../components'
@@ -11,16 +11,23 @@ import './index.css'
 /**
  * One printing as the Index opens it: the card plate, copies per finish, every
  * lot of it as a Catalog row, and how much of the card the collection holds
- * across printings. Each row links on to the lot itself in the Catalog.
+ * across printings. Each row links on to the lot, which returns here.
  */
 export function PrintingPage() {
   const { scryfallId = '' } = useParams()
 
   // The Index hands its URL along in link state (see FolioTile); a printing
   // opened by URL has none and returns to the bare Index.
-  const { state } = useLocation()
+  const { pathname, state } = useLocation()
   const indexSearch = (state as { indexSearch?: string } | null)?.indexSearch
   const backTo = `/index${indexSearch ?? ''}`
+  // A lot opened from here returns here, carrying the Index view along so this
+  // page's own back link still reaches it.
+  const back: LotBack = {
+    to: pathname,
+    label: 'Back to the printing',
+    state: { indexSearch },
+  }
 
   // The same key OwnershipSummary reads, so the summary below costs no second
   // request.
@@ -112,7 +119,7 @@ export function PrintingPage() {
             </thead>
             <tbody>
               {lots.map((lot) => (
-                <LotRow key={lot.id} lot={lot} />
+                <LotRow key={lot.id} lot={lot} back={back} />
               ))}
             </tbody>
           </table>

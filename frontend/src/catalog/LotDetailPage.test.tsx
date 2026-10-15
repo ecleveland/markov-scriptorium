@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { lot, owned } from '../test/fixtures'
 import { renderWithQuery } from '../test/queryWrapper'
@@ -30,15 +30,34 @@ const updateMock = vi.mocked(updateLot)
 const deleteMock = vi.mocked(deleteLot)
 const ownedMock = vi.mocked(ownedForPrinting)
 
-function renderDetail(lotId = 7) {
+function PrintingLanded() {
+  const { pathname, state } = useLocation()
+  const indexSearch = (state as { indexSearch?: string } | null)?.indexSearch
+  return (
+    <p>
+      Landed on {pathname} {String(indexSearch ?? '')}
+    </p>
+  )
+}
+
+function renderDetail(
+  entry: string | { pathname: string; state: unknown } = '/catalog/7',
+) {
   return renderWithQuery(
-    <MemoryRouter initialEntries={[`/catalog/${lotId}`]}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/catalog" element={<p>The Catalog list</p>} />
         <Route path="/catalog/:lotId" element={<LotDetailPage />} />
+        <Route path="/index/:scryfallId" element={<PrintingLanded />} />
       </Routes>
     </MemoryRouter>,
   )
+}
+
+const PRINTING_BACK = {
+  to: '/index/bolt-lea',
+  label: 'Back to the printing',
+  state: { indexSearch: '?finish=foil' },
 }
 
 afterEach(() => vi.clearAllMocks())
@@ -266,6 +285,61 @@ describe('LotDetailPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('links back to the first Catalog page when opened by URL', async () => {
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(
+      await screen.findByRole('link', { name: '← Back to the Catalog' }),
+    ).toHaveAttribute('href', '/catalog')
+  })
+
+  it('links back to the Catalog page that opened it', async () => {
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail({
+      pathname: '/catalog/7',
+      state: { back: { to: '/catalog?page=2', label: 'Back to the Catalog' } },
+    })
+
+    expect(
+      await screen.findByRole('link', { name: '← Back to the Catalog' }),
+    ).toHaveAttribute('href', '/catalog?page=2')
+  })
+
+  it('links back to the printing that opened it, with its Index view', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail({ pathname: '/catalog/7', state: { back: PRINTING_BACK } })
+
+    await user.click(
+      await screen.findByRole('link', { name: '← Back to the printing' }),
+    )
+    expect(
+      screen.getByText('Landed on /index/bolt-lea ?finish=foil'),
+    ).toBeInTheDocument()
+  })
+
+  it('returns to the printing that opened it after a removal', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    deleteMock.mockResolvedValue(undefined)
+    renderDetail({ pathname: '/catalog/7', state: { back: PRINTING_BACK } })
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Remove from the collection',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Confirm removal' }))
+    expect(
+      await screen.findByText('Landed on /index/bolt-lea ?finish=foil'),
+    ).toBeInTheDocument()
+  })
+
   it('explains a lot that is gone instead of showing a broken page', async () => {
     getMock.mockRejectedValue(new ApiError('No inventory lot with id 7.', 404))
     ownedMock.mockResolvedValue(owned())
@@ -274,6 +348,43 @@ describe('LotDetailPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'No such folio' }),
     ).toBeInTheDocument()
+  })
+
+  it('links a gone lot back to the first Catalog page when opened by URL', async () => {
+    getMock.mockRejectedValue(new ApiError('No inventory lot with id 7.', 404))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    await screen.findByRole('heading', { name: 'No such folio' })
+    expect(
+      screen.getByRole('link', { name: 'Back to the Catalog' }),
+    ).toHaveAttribute('href', '/catalog')
+  })
+
+  it('links a gone lot back to the printing that opened it', async () => {
+    const user = userEvent.setup()
+    getMock.mockRejectedValue(new ApiError('No inventory lot with id 7.', 404))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail({ pathname: '/catalog/7', state: { back: PRINTING_BACK } })
+
+    await screen.findByRole('heading', { name: 'No such folio' })
+    await user.click(screen.getByRole('link', { name: 'Back to the printing' }))
+    expect(
+      screen.getByText('Landed on /index/bolt-lea ?finish=foil'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the way back to the printing when the lot cannot be read', async () => {
+    getMock.mockRejectedValue(new ApiError('database is locked', 500))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail({ pathname: '/catalog/7', state: { back: PRINTING_BACK } })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'database is locked',
+    )
+    expect(
+      screen.getByRole('link', { name: '← Back to the printing' }),
+    ).toHaveAttribute('href', '/index/bolt-lea')
   })
 
   it('treats a non-numeric lot id as no such folio, without calling the API', async () => {

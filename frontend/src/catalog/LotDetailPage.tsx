@@ -21,6 +21,7 @@ import {
   Select,
   Textarea,
 } from '../components'
+import type { LotBack } from './LotRow'
 import { OwnershipSummary } from './OwnershipSummary'
 import { readQuantity } from './quantity'
 import { inventoryKeys } from './queryKeys'
@@ -147,7 +148,7 @@ function LotEditor({ lot }: { lot: InventoryLot }) {
  * Deliberately not `window.confirm`: a native modal blocks the Playwright and
  * browser-automation harness (ADR 0015), and it can't be styled or tested.
  */
-function RemoveLot({ lot, backTo }: { lot: InventoryLot; backTo: string }) {
+function RemoveLot({ lot, back }: { lot: InventoryLot; back: LotBack }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
@@ -160,7 +161,7 @@ function RemoveLot({ lot, backTo }: { lot: InventoryLot; backTo: string }) {
       // alone would refetch an id that no longer exists and cache the 404.
       queryClient.removeQueries({ queryKey: inventoryKeys.lot(lot.id) })
       queryClient.invalidateQueries({ queryKey: inventoryKeys.all })
-      navigate(backTo)
+      navigate(back.to, { state: back.state })
     },
   })
 
@@ -208,12 +209,14 @@ export function LotDetailPage() {
   const id = Number(lotId)
   const valid = Number.isInteger(id) && id > 0
 
-  // The Catalog hands its page along in link state (see LotRow); a folio opened
-  // by URL has none, and falls back to the first page.
+  // The page that opened this folio hands along where to return in link state
+  // (see LotRow), with any state that page needs in turn. A folio opened by URL
+  // has none, and falls back to the Catalog's first page.
   const { state } = useLocation()
-  const catalogSearch = (state as { catalogSearch?: string } | null)
-    ?.catalogSearch
-  const backTo = `/catalog${catalogSearch ?? ''}`
+  const back = (state as { back?: LotBack } | null)?.back ?? {
+    to: '/catalog',
+    label: 'Back to the Catalog',
+  }
 
   const query = useQuery({
     queryKey: inventoryKeys.lot(id),
@@ -223,7 +226,7 @@ export function LotDetailPage() {
   })
 
   if (!valid) {
-    return <NotFound />
+    return <NotFound back={back} />
   }
   if (query.isPending) {
     return (
@@ -234,10 +237,15 @@ export function LotDetailPage() {
   }
   if (query.isError) {
     if (query.error instanceof ApiError && query.error.status === 404) {
-      return <NotFound />
+      return <NotFound back={back} />
     }
     return (
       <section className="lot-detail">
+        <p className="lot-detail__back">
+          <Link to={back.to} state={back.state}>
+            ← {back.label}
+          </Link>
+        </p>
         <Notice tone="danger" role="alert">
           The folio could not be read. {query.error.message}
         </Notice>
@@ -250,7 +258,9 @@ export function LotDetailPage() {
   return (
     <section className="lot-detail">
       <p className="lot-detail__back">
-        <Link to={backTo}>← Back to the Catalog</Link>
+        <Link to={back.to} state={back.state}>
+          ← {back.label}
+        </Link>
       </p>
 
       <header className="lot-detail__head">
@@ -298,18 +308,22 @@ export function LotDetailPage() {
 
       <LotEditor key={lot.id} lot={lot} />
       <OwnershipSummary scryfallId={lot.scryfall_id} />
-      <RemoveLot lot={lot} backTo={backTo} />
+      <RemoveLot lot={lot} back={back} />
     </section>
   )
 }
 
-function NotFound() {
+function NotFound({ back }: { back: LotBack }) {
   return (
     <section className="lot-detail">
       <h1>No such folio</h1>
       <p>
         That inventory record is not in the catalog. It may already have been
-        removed. <Link to="/catalog">Back to the Catalog</Link>.
+        removed.{' '}
+        <Link to={back.to} state={back.state}>
+          {back.label}
+        </Link>
+        .
       </p>
     </section>
   )
