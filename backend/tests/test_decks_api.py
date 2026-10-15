@@ -492,3 +492,48 @@ def test_integrity_error_fallbacks_never_500(monkeypatch: pytest.MonkeyPatch) ->
 
     assert client.post(cards_url, json={"scryfall_id": "bolt-1"}).status_code == 404
     assert client.patch(slot_url, json={"quantity": 2}).status_code == 404
+
+
+# --- reservation lifecycle (VEG-226) ------------------------------------------
+
+
+def _bolt_lot(quantity: int = 4) -> int:
+    """POST a lot of Lightning Bolt and return its id, asserting a 201."""
+    resp = client.post("/inventory", json={"scryfall_id": "bolt-1", "quantity": quantity})
+    assert resp.status_code == 201, resp.text
+    lot_id: int = resp.json()["id"]
+    return lot_id
+
+
+def _lot_folio(lot_id: int) -> dict[str, Any]:
+    resp = client.get(f"/inventory/{lot_id}")
+    assert resp.status_code == 200, resp.text
+    folio: dict[str, Any] = resp.json()["folio"]
+    return folio
+
+
+def test_patch_claims_toggle_moves_the_folio_counts() -> None:
+    lot_id = _bolt_lot()
+    deck = _create()
+    _add(deck["id"], quantity=3)
+    assert _lot_folio(lot_id) == {"owned": 4, "reserved": 3, "available": 1}
+
+    resp = client.patch(f"/decks/{deck['id']}", json={"claims_cards": False})
+    assert resp.status_code == 200, resp.text
+    assert _lot_folio(lot_id) == {"owned": 4, "reserved": 0, "available": 4}
+
+    resp = client.patch(f"/decks/{deck['id']}", json={"claims_cards": True})
+    assert resp.status_code == 200, resp.text
+    assert _lot_folio(lot_id) == {"owned": 4, "reserved": 3, "available": 1}
+
+
+def test_delete_slot_returns_copies_to_the_pool() -> None:
+    lot_id = _bolt_lot()
+    deck = _create()
+    slot = _add(deck["id"], quantity=3)
+    assert _lot_folio(lot_id) == {"owned": 4, "reserved": 3, "available": 1}
+
+    resp = client.delete(f"/decks/{deck['id']}/cards/{slot['id']}")
+
+    assert resp.status_code == 204
+    assert _lot_folio(lot_id) == {"owned": 4, "reserved": 0, "available": 4}
