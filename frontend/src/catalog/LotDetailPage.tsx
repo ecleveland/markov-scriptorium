@@ -226,7 +226,7 @@ export function LotDetailPage() {
   })
 
   if (!valid) {
-    return <NotFound />
+    return <NotFound back={back} />
   }
   if (query.isPending) {
     return (
@@ -237,10 +237,15 @@ export function LotDetailPage() {
   }
   if (query.isError) {
     if (query.error instanceof ApiError && query.error.status === 404) {
-      return <NotFound />
+      return <NotFound back={back} />
     }
     return (
       <section className="lot-detail">
+        <p className="lot-detail__back">
+          <Link to={back.to} state={back.state}>
+            ← {back.label}
+          </Link>
+        </p>
         <Notice tone="danger" role="alert">
           The folio could not be read. {query.error.message}
         </Notice>
@@ -308,13 +313,17 @@ export function LotDetailPage() {
   )
 }
 
-function NotFound() {
+function NotFound({ back }: { back: LotBack }) {
   return (
     <section className="lot-detail">
       <h1>No such folio</h1>
       <p>
         That inventory record is not in the catalog. It may already have been
-        removed. <Link to="/catalog">Back to the Catalog</Link>.
+        removed.{' '}
+        <Link to={back.to} state={back.state}>
+          {back.label}
+        </Link>
+        .
       </p>
     </section>
   )
