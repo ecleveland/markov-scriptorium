@@ -85,7 +85,8 @@ test('opens a printing, follows a lot, and comes back to the filtered Index', as
     .click()
   await expect(page).toHaveURL(/\/catalog\/3$/)
 
-  await page.goBack()
+  await page.getByRole('link', { name: 'Back to the printing' }).click()
+  await expect(page).toHaveURL(/\/index\/bolt-2x2$/)
   await page.getByRole('link', { name: 'Back to the Index' }).click()
   await expect(page).toHaveURL(/\/index\?finish=foil$/)
   await expect(

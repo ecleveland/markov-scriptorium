@@ -16,12 +16,26 @@ import { ApiError, ownedForPrinting } from '../api'
 const ownedMock = vi.mocked(ownedForPrinting)
 
 function Landed() {
-  const { pathname, search } = useLocation()
+  const { pathname, search, state } = useLocation()
+  // Loosely typed: a lot page reads `back`, the Index reads nothing.
+  const back = (
+    state as {
+      back?: { to: string; label: string; state?: { indexSearch?: string } }
+    } | null
+  )?.back
   return (
-    <p>
-      Landed on {pathname}
-      {search}
-    </p>
+    <>
+      <p>
+        Landed on {pathname}
+        {search}
+      </p>
+      {back && (
+        <p>
+          Back to {back.to} as {back.label} with{' '}
+          {back.state?.indexSearch ?? 'no search'}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -142,6 +156,28 @@ describe('PrintingPage', () => {
     )
     expect(
       screen.getByText('Landed on /index?finish=foil&page=2'),
+    ).toBeInTheDocument()
+  })
+
+  it('hands each lot a way back here that keeps the Index view', async () => {
+    const user = userEvent.setup()
+    ownedMock.mockResolvedValue(TWO_LOTS)
+    renderPrinting({
+      pathname: '/index/bolt-lea',
+      state: { indexSearch: '?finish=foil&page=2' },
+    })
+
+    const lots = await screen.findByRole('region', {
+      name: 'Lots of this printing',
+    })
+    await user.click(
+      within(lots).getAllByRole('link', { name: 'Lightning Bolt' })[0],
+    )
+    expect(screen.getByText('Landed on /catalog/7')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Back to /index/bolt-lea as Back to the printing with ?finish=foil&page=2',
+      ),
     ).toBeInTheDocument()
   })
 
