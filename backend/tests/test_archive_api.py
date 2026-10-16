@@ -138,6 +138,18 @@ def test_post_backup_500_on_generic_backup_error(monkeypatch: pytest.MonkeyPatch
     assert resp.json()["detail"] == "backup copy failed: boom"
 
 
+def test_post_backup_500_detail_names_the_os_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def read_only(*args: object, **kwargs: object) -> tuple[int, str]:
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr("scriptorium.archive.tempfile.mkstemp", read_only)
+
+    resp = client.post("/archive/backups")
+
+    assert resp.status_code == 500
+    assert "read-only" in resp.json()["detail"]
+
+
 def test_export_csv_is_attachment() -> None:
     resp = client.get("/archive/export.csv")
 

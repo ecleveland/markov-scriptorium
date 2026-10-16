@@ -231,12 +231,23 @@ def take_backup(reason: Reason, *, now: datetime | None = None) -> Backup:
     """Copy the catalog to a new timestamped file, verify it, then prune old copies.
 
     Raises BackupBusyError when a writer holds the catalog, and BackupError when
-    the copy fails, the file fails ``quick_check``, or a backup with the same
-    filename already exists. A failed backup leaves no file behind.
+    the copy fails, the file fails ``quick_check``, a backup with the same
+    filename already exists, or the backups folder cannot be written. A failed
+    backup leaves no file behind.
     """
     _probe_write_lock()
 
     moment = (now or datetime.now(UTC)).astimezone(UTC)
+    try:
+        return _seal(reason, moment)
+    except OSError as exc:
+        # A read-only or full backups folder. Mapping it here keeps the API's
+        # 500 detail and the startup log naming the backup, not the migration.
+        raise BackupError(f"could not write the backup: {exc}") from exc
+
+
+def _seal(reason: Reason, moment: datetime) -> Backup:
+    """Copy, verify and publish one backup, then prune. File errors propagate."""
     with closing(connect()) as src:
         version = int(src.execute("PRAGMA user_version").fetchone()[0])
         filename = f"scriptorium-{moment.strftime(_STAMP_FORMAT)}-v{version}-{reason}.db"
@@ -266,14 +277,15 @@ def take_backup(reason: Reason, *, now: datetime | None = None) -> Backup:
         finally:
             tmp.unlink(missing_ok=True)
 
-    prune_backups()
+    size_bytes = final.stat().st_size
+    prune_backups(protect=final)
     return Backup(
         filename=filename,
         path=str(final),
         reason=reason,
         created_at=moment.strftime(_ISO_FORMAT),
         schema_version=version,
-        size_bytes=final.stat().st_size,
+        size_bytes=size_bytes,
     )
 
 
@@ -304,8 +316,13 @@ def list_backups() -> list[Backup]:
     return sorted(found, key=lambda backup: backup.filename, reverse=True)
 
 
-def prune_backups() -> list[Path]:
-    """Delete backups beyond each pool's keep count, oldest first; return them."""
+def prune_backups(*, protect: Path | None = None) -> list[Path]:
+    """Delete backups beyond each pool's keep count, oldest first; return them.
+
+    ``protect`` counts toward its pool's keep but is never deleted. take_backup
+    passes the copy it just wrote. If the clock is behind older stamps, that
+    copy sorts oldest, and the pool then holds one more than the keep count.
+    """
     backups = list_backups()
     removed: list[Path] = []
     for reason in _REASONS:
@@ -313,6 +330,8 @@ def prune_backups() -> list[Path]:
         pool = [backup for backup in backups if backup.reason == reason]
         for backup in reversed(pool[keep:]):
             path = Path(backup.path)
+            if protect is not None and path == protect:
+                continue
             path.unlink(missing_ok=True)
             removed.append(path)
     return removed

@@ -171,6 +171,48 @@ def test_backup_rejects_same_second_collision(seeded: Path) -> None:
         assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
 
 
+def test_unwritable_backups_dir_raises_backup_error(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def read_only(*args: object, **kwargs: object) -> tuple[int, str]:
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr("scriptorium.archive.tempfile.mkstemp", read_only)
+
+    with pytest.raises(BackupError, match="read-only") as caught:
+        archive.take_backup("manual", now=_STAMP)
+
+    assert not isinstance(caught.value, OSError)
+    assert list((seeded / "backups").iterdir()) == []
+
+
+def test_prune_never_deletes_the_copy_just_sealed(seeded: Path) -> None:
+    backups = archive.backups_dir()
+    future = [f"scriptorium-2030010{day}T000000Z-v6-manual.db" for day in range(1, 4)]
+    for name in future:
+        (backups / name).write_bytes(b"x")
+
+    # A clock behind the existing stamps makes the new copy the oldest by name.
+    backup = archive.take_backup("manual", now=datetime(2026, 1, 1, tzinfo=UTC))
+
+    assert Path(backup.path).is_file()
+    assert backup.size_bytes > 0
+    # The three newest by name stay, and the protected copy is the one extra.
+    assert sorted(p.name for p in backups.iterdir()) == sorted([*future, backup.filename])
+
+
+def test_take_backup_prunes_the_manual_pool_to_keep(seeded: Path) -> None:
+    backups = archive.backups_dir()
+    older = [f"scriptorium-2026010{day}T000000Z-v6-manual.db" for day in range(1, 4)]
+    for name in older:
+        (backups / name).write_bytes(b"x")
+
+    backup = archive.take_backup("manual", now=_STAMP)
+
+    # The new copy counts toward the keep of three, so the oldest goes.
+    assert sorted(p.name for p in backups.iterdir()) == sorted([*older[1:], backup.filename])
+
+
 def test_failed_quick_check_leaves_no_file(seeded: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(archive, "_verify", lambda path: "malformed")
 
