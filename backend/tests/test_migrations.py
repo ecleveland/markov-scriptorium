@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
@@ -471,3 +472,74 @@ def test_upkeep_loop_reseals_when_due(tmp_path: Path, monkeypatch: pytest.Monkey
 
     with TestClient(app):
         assert _wait_for(lambda: len(calls) >= 2, timeout=1.0)
+
+
+def test_upkeep_seals_the_daily_copy_before_the_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _current_catalog_with_lot(tmp_path, monkeypatch)
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "1")
+    from scriptorium import archive, main
+    from scriptorium.main import app
+
+    order: list[str] = []
+
+    def seal() -> archive.Backup | None:
+        order.append("seal")
+        return None
+
+    # The stub stands in for the real refresh, so no network is touched.
+    monkeypatch.setattr(archive, "seal_daily_if_due", seal)
+    monkeypatch.setattr(main, "_run_startup_refresh", lambda: order.append("refresh"))
+
+    with TestClient(app):
+        assert _wait_for(lambda: len(order) >= 2, timeout=2.0)
+
+    assert order == ["seal", "refresh"]
+
+
+def test_upkeep_loop_survives_an_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _current_catalog_with_lot(tmp_path, monkeypatch)
+    from scriptorium import archive, main
+    from scriptorium.main import app
+
+    calls: list[float] = []
+
+    def boom_once() -> archive.Backup | None:
+        calls.append(time.monotonic())
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return None
+
+    monkeypatch.setattr(main, "_UPKEEP_INTERVAL_SECONDS", 0.05)
+    monkeypatch.setattr(archive, "seal_daily_if_due", boom_once)
+
+    # Leaving the context awaits the cancelled task, so an exception that
+    # ended the loop would surface here and fail the test.
+    with TestClient(app) as client:
+        assert _wait_for(lambda: len(calls) >= 3, timeout=2.0)
+        assert client.get("/health").status_code == 200
+
+
+def test_lifespan_shutdown_cancels_the_upkeep_task_promptly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
+    from scriptorium import archive, main
+    from scriptorium.main import app, lifespan
+
+    monkeypatch.setattr(main, "_UPKEEP_INTERVAL_SECONDS", 0.05)
+    monkeypatch.setattr(archive, "seal_daily_if_due", lambda: None)
+
+    async def _enter_and_exit() -> None:
+        async with lifespan(app):
+            pass
+
+    started = time.monotonic()
+    asyncio.run(asyncio.wait_for(_enter_and_exit(), timeout=2))
+
+    # The lifespan swallows the CancelledError a timeout throws into its
+    # shutdown await, so wait_for can return without raising. The elapsed
+    # time still shows whether shutdown cancelled the task or waited it out.
+    assert time.monotonic() - started < 1.0
