@@ -36,10 +36,11 @@ def _attachment(extension: str) -> dict[str, str]:
 
 @router.get("/backups")
 def list_backups() -> dict[str, Any]:
-    """The backups directory, the manual keep count, and every backup, newest first."""
+    """The backups directory, both pools' keep counts, and every backup, newest first."""
     return {
         "directory": str(archive.backups_dir()),
         "keep": archive.manual_keep(),
+        "premigration_keep": archive.PREMIGRATION_KEEP,
         "backups": [asdict(backup) for backup in archive.list_backups()],
     }
 

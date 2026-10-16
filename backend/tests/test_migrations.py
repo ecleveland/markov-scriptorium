@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from scriptorium.migrations import (
     _MIGRATIONS_DIR,
     MigrationError,
+    _discover,
     apply_migrations,
     pending_migrations,
 )
@@ -196,20 +197,27 @@ def _backup_names(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.iterdir()) if directory.exists() else []
 
 
-def test_startup_seals_premigration_backup_when_user_data_and_pending(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _newest_version() -> int:
+    return max(version for version, _ in _discover(_MIGRATIONS_DIR))
+
+
+def _catalog_one_version_behind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
+    """Point the app at a tmp catalog missing only the newest shipped migration.
+
+    The catalog holds one lot, so startup sees user data and a pending
+    migration. Returns the catalog's version.
+    """
     db_file = tmp_path / "catalog.db"
     monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(db_file))
     monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
-    # Build a catalog at version 5 by applying only the shipped 0001..0005, so the
-    # real 0006 is genuinely pending when the app starts.
-    older = tmp_path / "migrations_v5"
+    newest = _newest_version()
+    older = tmp_path / "migrations_older"
     older.mkdir()
-    for path in sorted(_MIGRATIONS_DIR.glob("000[1-5]_*.sql")):
-        shutil.copy(path, older / path.name)
+    for version, path in _discover(_MIGRATIONS_DIR):
+        if version < newest:
+            shutil.copy(path, older / path.name)
     with closing(sqlite3.connect(db_file)) as conn:
-        assert apply_migrations(conn, older) == 5
+        version = apply_migrations(conn, older)
         conn.execute(
             "INSERT INTO cards (scryfall_id, name, set_code, set_name, collector_number,"
             " rarity, lang, layout)"
@@ -217,7 +225,14 @@ def test_startup_seals_premigration_backup_when_user_data_and_pending(
         )
         conn.execute("INSERT INTO inventory (scryfall_id) VALUES ('bolt-1')")
         conn.commit()
+    assert version < newest
+    return version
 
+
+def test_startup_seals_premigration_backup_when_user_data_and_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
     from scriptorium.main import app
 
     with TestClient(app):  # entering the context runs the lifespan startup
@@ -225,12 +240,31 @@ def test_startup_seals_premigration_backup_when_user_data_and_pending(
 
     names = _backup_names(tmp_path / "backups")
     assert len(names) == 1
-    assert names[0].endswith("-v5-premigration.db")
+    assert names[0].endswith(f"-v{older}-premigration.db")
     with closing(sqlite3.connect(tmp_path / "backups" / names[0])) as copy:
-        assert copy.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert copy.execute("PRAGMA user_version").fetchone()[0] == older
         assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
-    with closing(sqlite3.connect(db_file)) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+
+
+def test_startup_skips_premigration_backup_when_one_exists_for_the_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    # A copy left by an earlier start that then failed to migrate. Only its name
+    # is matched, so the content does not matter.
+    existing = f"scriptorium-20260101T000000Z-v{older}-premigration.db"
+    (tmp_path / "backups").mkdir()
+    (tmp_path / "backups" / existing).write_bytes(b"earlier copy")
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    assert _backup_names(tmp_path / "backups") == [existing]
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
 
 
 def test_startup_takes_no_backup_on_fresh_db(
@@ -245,4 +279,4 @@ def test_startup_takes_no_backup_on_fresh_db(
 
     assert _backup_names(tmp_path / "backups") == []
     with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()

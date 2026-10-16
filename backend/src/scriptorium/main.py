@@ -67,11 +67,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     with closing(connect()) as conn:
         # A schema change on a catalog holding the user's lots or Tomes gets a
         # backup first. If that backup fails, startup stops before migrating, so
-        # no schema change ever runs without a copy to return to.
+        # no schema change ever runs without a copy to return to. A copy already
+        # taken for this version is kept as is, so a migration that fails on
+        # every start does not prune the copy from before its first attempt.
         try:
             if pending_migrations(conn) and archive.has_user_data(conn):
-                backup = archive.take_backup("premigration")
-                logger.info("sealed a pre-migration backup at %s", backup.path)
+                current = int(conn.execute("PRAGMA user_version").fetchone()[0])
+                if archive.has_premigration_backup(current):
+                    logger.info(
+                        "a pre-migration backup of schema version %d exists; not sealing another",
+                        current,
+                    )
+                else:
+                    backup = archive.take_backup("premigration")
+                    logger.info("sealed a pre-migration backup at %s", backup.path)
             version = apply_migrations(conn)
             logger.info("catalog schema ready at version %d", version)
         except archive.BackupError:

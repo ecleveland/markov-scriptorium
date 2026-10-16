@@ -176,6 +176,107 @@ def test_failed_quick_check_leaves_no_file(seeded: Path, monkeypatch: pytest.Mon
     assert list((seeded / "backups").iterdir()) == []
 
 
+def test_same_second_backups_give_one_collision_and_one_valid_copy(seeded: Path) -> None:
+    first = archive.take_backup("manual", now=_STAMP)
+
+    with pytest.raises(archive.BackupCollisionError):
+        archive.take_backup("manual", now=_STAMP)
+
+    assert [p.name for p in (seeded / "backups").iterdir()] == [first.filename]
+    with closing(sqlite3.connect(first.path)) as copy:
+        assert copy.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
+
+
+def test_vanished_temp_file_fails_verification_instead_of_publishing_empty_copy(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Simulate a concurrent same-second backup that moved this attempt's temp
+    # file away before verification. Verifying must not create an empty file.
+    real_verify = archive._verify
+    seen: list[Path] = []
+
+    def vanish_then_verify(path: Path) -> str:
+        seen.append(path)
+        path.unlink()
+        return real_verify(path)
+
+    monkeypatch.setattr(archive, "_verify", vanish_then_verify)
+
+    with pytest.raises(BackupError):
+        archive.take_backup("manual", now=_STAMP)
+
+    [tmp] = seen
+    filename = "scriptorium-20261015T142233Z-v6-manual.db"
+    assert tmp.name.startswith(f".{filename}.")
+    assert tmp.name.endswith(".tmp")
+    assert tmp.name != f".{filename}.tmp"  # unique per attempt
+    assert list((seeded / "backups").iterdir()) == []
+
+
+def test_backup_verifies_when_the_catalog_path_has_uri_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    odd = tmp_path / "Volume #1 ? 100%"
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(odd / "catalog.db"))
+    with closing(db.connect()) as conn:
+        apply_migrations(conn)
+
+    backup = archive.take_backup("manual")
+
+    assert Path(backup.path).parent == odd / "backups"
+    assert Path(backup.path).is_file()
+    # SQLite would read "#" and "?" as URI syntax and open a truncated path
+    # read-write. Verifying a missing file there must raise and create nothing.
+    with pytest.raises(sqlite3.Error):
+        archive._verify(odd / "backups" / "missing.db")
+    assert [p.name for p in tmp_path.iterdir()] == [odd.name]
+
+
+def test_busy_limit_raises_on_21st_consecutive_busy() -> None:
+    limit = archive._BusyLimit()
+    for status in [sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED] * 10:
+        limit(status, 10, 20)
+
+    with pytest.raises(BackupBusyError):
+        limit(sqlite3.SQLITE_BUSY, 10, 20)
+
+
+def test_busy_limit_resets_after_a_step_that_copies() -> None:
+    limit = archive._BusyLimit()
+    for _ in range(20):
+        limit(sqlite3.SQLITE_BUSY, 10, 20)
+    limit(sqlite3.SQLITE_OK, 5, 20)
+
+    for _ in range(20):
+        limit(sqlite3.SQLITE_BUSY, 5, 20)  # 20 more after the reset, still under the cap
+
+
+def test_copy_that_stays_busy_raises_busy_and_leaves_no_file(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class AlwaysBusy:
+        def __call__(self, status: int, remaining: int, total: int) -> None:
+            raise BackupBusyError("still locked")
+
+    monkeypatch.setattr(archive, "_BusyLimit", AlwaysBusy)
+
+    with pytest.raises(BackupBusyError):
+        archive.take_backup("manual", now=_STAMP)
+
+    assert list((seeded / "backups").iterdir()) == []
+
+
+def test_has_premigration_backup_matches_reason_and_version(catalog: Path) -> None:
+    backups = archive.backups_dir()
+    (backups / "scriptorium-20260101T000000Z-v5-manual.db").write_bytes(b"x")
+    (backups / "scriptorium-20260101T000000Z-v4-premigration.db").write_bytes(b"x")
+    assert archive.has_premigration_backup(5) is False
+
+    (backups / "scriptorium-20260102T000000Z-v5-premigration.db").write_bytes(b"x")
+    assert archive.has_premigration_backup(5) is True
+
+
 def test_prune_keeps_manual_and_premigration_pools_separately(catalog: Path) -> None:
     backups = archive.backups_dir()
     manual = [f"scriptorium-2026101{day}T120000Z-v6-manual.db" for day in range(1, 6)]
@@ -303,6 +404,25 @@ def test_csv_round_trips_through_parse_csv(seeded: Path) -> None:
     assert [
         (e.scryfall_id, e.quantity, e.finish, e.condition, e.language) for e in result.entries
     ] == [tuple(lot) for lot in lots]
+
+
+def test_csv_round_trips_every_finish_and_condition(catalog: Path) -> None:
+    pairs = [
+        (finish, condition)
+        for finish in ("nonfoil", "foil", "etched")
+        for condition in ("NM", "LP", "MP", "HP", "DMG")
+    ]
+    with closing(db.connect()) as conn:
+        _insert_card(conn, "bolt-1", "Lightning Bolt")
+        for finish, condition in pairs:
+            _insert_lot(conn, "bolt-1", finish=finish, condition=condition)
+        conn.commit()
+        text = archive.export_csv(conn)
+
+    result = parse_csv(text)
+
+    assert result.problems == []
+    assert [(e.finish, e.condition) for e in result.entries] == pairs
 
 
 def test_csv_empty_collection_is_header_only(catalog: Path) -> None:

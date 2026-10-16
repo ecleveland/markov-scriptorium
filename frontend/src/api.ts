@@ -744,6 +744,8 @@ export interface BackupList {
   directory: string
   /** How many copies sealed by hand are retained. */
   keep: number
+  /** How many copies sealed before a migration are retained. */
+  premigration_keep: number
   /** Newest first. */
   backups: Backup[]
 }

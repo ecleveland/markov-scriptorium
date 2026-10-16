@@ -16,7 +16,12 @@ const listMock = vi.mocked(listBackups)
 const createMock = vi.mocked(createBackup)
 
 function backupList(backups: Backup[]) {
-  return { directory: '/tmp/scriptorium/backups', keep: 3, backups }
+  return {
+    directory: '/tmp/scriptorium/backups',
+    keep: 3,
+    premigration_keep: 2,
+    backups,
+  }
 }
 
 afterEach(() => vi.clearAllMocks())
@@ -96,7 +101,22 @@ describe('ArchivePage', () => {
 
     expect(
       screen.getByText(
-        'Copies rest in /tmp/scriptorium/backups. The newest 3 sealed by hand are kept, and the last two sealed before a migration. To restore one, follow the README.',
+        'Copies rest in /tmp/scriptorium/backups. The newest 3 sealed by hand are kept, and the newest 2 sealed before a migration. To restore one, follow the README.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('reads both retention counts from the list, not from the page', async () => {
+    listMock.mockResolvedValue({
+      ...backupList([backup()]),
+      keep: 7,
+      premigration_keep: 5,
+    })
+    renderWithQuery(<ArchivePage />)
+
+    expect(
+      await screen.findByText(
+        /The newest 7 sealed by hand are kept, and the newest 5 sealed before a migration\./,
       ),
     ).toBeInTheDocument()
   })
@@ -179,7 +199,7 @@ describe('ArchivePage', () => {
     expect(json).toHaveAttribute('download')
     expect(
       screen.getByText(
-        'The CSV reads back through the CSV import. The JSON carries every folio and every Tome.',
+        'The CSV reads back through the CSV import, though location, notes, tags, acquisition date and price are not imported yet. The JSON carries every folio and every Tome.',
       ),
     ).toBeInTheDocument()
   })

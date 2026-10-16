@@ -28,6 +28,7 @@ import json
 import os
 import re
 import sqlite3
+import tempfile
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -43,6 +44,11 @@ PREMIGRATION_KEEP = 2
 # The source's shared lock is released between steps, so a long copy never
 # blocks writers for its whole duration.
 BACKUP_PAGES = 1024
+# CPython sleeps this long between retries when a backup step finds the source
+# locked, and retries forever. _BusyLimit gives up after about five seconds.
+_BACKUP_SLEEP = 0.25
+_BUSY_LIMIT_SECONDS = 5.0
+_BUSY_STATUSES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
 
 Reason = Literal["manual", "premigration"]
 
@@ -172,9 +178,52 @@ def _probe_write_lock() -> None:
         raise BackupError(f"could not open the catalog for backup: {exc}") from exc
 
 
+def has_premigration_backup(version: int) -> bool:
+    """True if a pre-migration backup of schema ``version`` is already on disk.
+
+    Startup checks this so a migration that fails on every start does not take
+    a fresh copy each time and prune the one taken before the first attempt.
+    """
+    return any(
+        backup.reason == "premigration" and backup.schema_version == version
+        for backup in list_backups()
+    )
+
+
+class _BusyLimit:
+    """Backup progress callback that gives up when the source stays locked.
+
+    The probe catches a writer that is already running. This catches one that
+    starts mid-copy, such as a Scryfall refresh holding its import transaction.
+    Each locked step costs one ``_BACKUP_SLEEP``, so after about five seconds
+    of consecutive locked steps it raises BackupBusyError and the copy stops.
+    Any step that makes progress resets the count.
+    """
+
+    def __init__(self) -> None:
+        self.max_retries = round(_BUSY_LIMIT_SECONDS / _BACKUP_SLEEP)
+        self.consecutive = 0
+
+    def __call__(self, status: int, remaining: int, total: int) -> None:
+        if status not in _BUSY_STATUSES:
+            self.consecutive = 0
+            return
+        self.consecutive += 1
+        if self.consecutive > self.max_retries:
+            raise BackupBusyError(
+                "the catalog stayed locked by a writer during the backup; try again shortly"
+            )
+
+
 def _verify(path: Path) -> str:
-    """Run ``PRAGMA quick_check`` on a backup and return its first result row."""
-    with closing(sqlite3.connect(path)) as conn:
+    """Run ``PRAGMA quick_check`` on a backup and return its first result row.
+
+    The file is opened read-only, so a missing file raises instead of being
+    created empty and passing the check. ``as_uri`` percent-encodes the path,
+    because SQLite would otherwise read a "#" or "?" in it as URI syntax.
+    """
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as conn:
         return str(conn.execute("PRAGMA quick_check").fetchone()[0])
 
 
@@ -193,17 +242,24 @@ def take_backup(reason: Reason, *, now: datetime | None = None) -> Backup:
         filename = f"scriptorium-{moment.strftime(_STAMP_FORMAT)}-v{version}-{reason}.db"
         directory = backups_dir()
         final = directory / filename
-        tmp = directory / f".{filename}.tmp"
-        if final.exists() or tmp.exists():
+        if final.exists():
             raise BackupCollisionError(f"a backup named {filename} already exists")
 
+        # A temp file unique to this attempt, so two same-second backups never
+        # write into, verify, or publish each other's copy.
+        fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=f".{filename}.", suffix=".tmp")
+        os.close(fd)
+        tmp = Path(tmp_name)
         try:
             try:
                 with closing(sqlite3.connect(tmp)) as dest:
-                    src.backup(dest, pages=BACKUP_PAGES)
+                    src.backup(dest, pages=BACKUP_PAGES, progress=_BusyLimit(), sleep=_BACKUP_SLEEP)
             except sqlite3.Error as exc:
                 raise BackupError(f"backup copy failed: {exc}") from exc
-            result = _verify(tmp)
+            try:
+                result = _verify(tmp)
+            except sqlite3.Error as exc:
+                raise BackupError(f"backup could not be verified: {exc}") from exc
             if result != "ok":
                 raise BackupError(f"backup failed verification: {result}")
             os.replace(tmp, final)
@@ -308,8 +364,30 @@ def export_csv(conn: sqlite3.Connection) -> str:
 def export_json(conn: sqlite3.Connection, *, now: datetime | None = None) -> dict[str, Any]:
     """Every inventory lot and Tome, with its slots, as one JSON-ready document."""
     moment = (now or datetime.now(UTC)).astimezone(UTC)
-    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
 
+    # One read transaction over every query, so a write landing between them
+    # cannot leave a slot pointing at a Tome or lot from another moment.
+    conn.execute("BEGIN")
+    try:
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        inventory, tomes = _read_export(conn)
+        conn.commit()
+    finally:
+        if conn.in_transaction:
+            conn.rollback()
+
+    return {
+        "format": EXPORT_FORMAT,
+        "format_version": EXPORT_FORMAT_VERSION,
+        "exported_at": moment.strftime(_ISO_FORMAT),
+        "schema_version": version,
+        "inventory": inventory,
+        "tomes": tomes,
+    }
+
+
+def _read_export(conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read every lot and every Tome with its slots, for export_json."""
     inventory = [
         {
             "id": row["id"],
@@ -386,12 +464,4 @@ def export_json(conn: sqlite3.Connection, *, now: datetime | None = None) -> dic
             """
         )
     ]
-
-    return {
-        "format": EXPORT_FORMAT,
-        "format_version": EXPORT_FORMAT_VERSION,
-        "exported_at": moment.strftime(_ISO_FORMAT),
-        "schema_version": version,
-        "inventory": inventory,
-        "tomes": tomes,
-    }
+    return inventory, tomes

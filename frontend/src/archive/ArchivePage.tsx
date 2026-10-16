@@ -119,8 +119,9 @@ export function ArchivePage() {
         {query.data !== undefined && (
           <p className="archive__note archive__wrap">
             Copies rest in {query.data.directory}. The newest {query.data.keep}{' '}
-            sealed by hand are kept, and the last two sealed before a migration.
-            To restore one, follow the README.
+            sealed by hand are kept, and the newest{' '}
+            {query.data.premigration_keep} sealed before a migration. To restore
+            one, follow the README.
           </p>
         )}
       </Panel>
@@ -144,8 +145,9 @@ export function ArchivePage() {
           </li>
         </ul>
         <p className="archive__note">
-          The CSV reads back through the CSV import. The JSON carries every
-          folio and every Tome.
+          The CSV reads back through the CSV import, though location, notes,
+          tags, acquisition date and price are not imported yet. The JSON
+          carries every folio and every Tome.
         </p>
       </Panel>
     </section>

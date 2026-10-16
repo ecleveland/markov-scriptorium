@@ -750,7 +750,12 @@ export async function stubApi(page: Page): Promise<void> {
     }
 
     if (path === '/archive/backups' && method === 'GET') {
-      return json(route, { directory: BACKUP_DIRECTORY, keep: 3, backups })
+      return json(route, {
+        directory: BACKUP_DIRECTORY,
+        keep: 3,
+        premigration_keep: 2,
+        backups,
+      })
     }
 
     if (path === '/archive/backups' && method === 'POST') {

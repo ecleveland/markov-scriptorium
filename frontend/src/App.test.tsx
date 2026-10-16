@@ -65,6 +65,7 @@ vi.mocked(ownedForPrinting).mockRejectedValue(new ApiError('gone', 404))
 vi.mocked(listBackups).mockResolvedValue({
   directory: '/tmp/scriptorium/backups',
   keep: 3,
+  premigration_keep: 2,
   backups: [],
 })
 
