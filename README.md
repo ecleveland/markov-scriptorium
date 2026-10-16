@@ -74,11 +74,19 @@ It applies on the next startup. Migrations are forward-only — never edit a shi
 
 ### Backups and restore
 
-Backups are whole-file copies of the SQLite catalog. They land in a `backups/` folder beside the
-database file, so `data/backups/` by default, or next to the file named by `SCRIPTORIUM_DB_PATH`.
-The app takes one on its own at startup, before it applies migrations, but only when migrations
-are pending and the catalog already holds a lot or a Tome. If that backup fails, startup aborts
-and the app refuses to migrate unprotected. There is no timed backup yet (VEG-612).
+A backup is a copy of the SQLite catalog that holds the schema, every lot and Tome, and only the
+card rows those reference. Each copy is kilobytes to a few megabytes. Copies land in a `backups/`
+folder beside the database file, so `data/backups/` by default, or next to the file named by
+`SCRIPTORIUM_DB_PATH`.
+
+The app seals copies on its own in two cases:
+
+- **Before migrations.** When migrations are pending and the catalog already holds a lot or a
+  Tome, the app seals a copy first. If that fails, startup aborts and the app refuses to migrate
+  unprotected.
+- **Once a day at startup.** When the catalog holds a lot or a Tome and no daily copy is under 24
+  hours old, the app seals one after migrations. If that fails, the app logs it and keeps
+  starting.
 
 To take a copy by hand, open the Archive page and press "Seal a copy", or run:
 
@@ -89,12 +97,11 @@ curl -X POST http://127.0.0.1:8000/archive/backups
 If a Scryfall refresh is writing to the catalog, the request returns 409. Seal a copy once the
 refresh completes.
 
-Files are named `scriptorium-20261015T142233Z-v6-manual.db`. That is a UTC timestamp, the schema version,
-and the reason (`manual` or `premigration`). The app keeps the newest 3 manual copies and the
-newest 2 premigration copies, and deletes older ones that match that name pattern after each
-backup. Set `SCRIPTORIUM_BACKUP_KEEP` to change the manual count. With the real Scryfall catalog
-loaded each copy is about a gigabyte, so budget disk for 5 or more of them. In fast dev mode a
-copy is about 100 KB.
+Files are named `scriptorium-20261015T142233Z-v6-manual.db`. That is a UTC timestamp, the schema
+version, and the reason (`manual`, `premigration` or `startup`, which the Archive page labels
+"Daily"). The app keeps the newest 10 manual copies, 3 premigration copies and 7 daily copies,
+and deletes older ones that match that name pattern after each backup. Set
+`SCRIPTORIUM_BACKUP_KEEP` to change the manual count.
 
 The Archive page also offers two exports, sent as downloads to your own disk:
 
@@ -122,8 +129,12 @@ cp data/backups/<file> data/scriptorium.db
 ./dev.sh
 ```
 
-An older backup is migrated forward on startup. The Scryfall catalog inside the copy may be
-stale until the next refresh.
+An older backup is migrated forward on startup.
+
+The first start after a restore downloads the Scryfall catalog again, because a copy does not
+carry it. Until that finishes, Inscribe autocomplete and the unowned part of the Index are empty.
+Your owned cards, lots and Tomes are whole throughout. In fast dev mode, run
+`uv run python scripts/seed_dev.py` from `backend/` to bring the dev cards back.
 
 ### Code quality (pre-commit)
 
