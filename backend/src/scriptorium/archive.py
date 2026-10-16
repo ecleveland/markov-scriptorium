@@ -48,7 +48,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast, get_args
+from typing import Any, Literal, assert_never, cast, get_args
 
 from scriptorium.catalog import rebuild_name_index
 from scriptorium.db import connect, db_path
@@ -74,7 +74,8 @@ _BUSY_STATUSES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
 Reason = Literal["manual", "premigration", "daily"]
 
 _REASONS: tuple[Reason, ...] = get_args(Reason)
-_FILENAME = re.compile(rf"^scriptorium-(\d{{8}}T\d{{6}}Z)-v(\d+)-({'|'.join(_REASONS)})\.db$")
+_REASON_PATTERN = "|".join(re.escape(reason) for reason in _REASONS)
+_FILENAME = re.compile(rf"^scriptorium-(\d{{8}}T\d{{6}}Z)-v(\d+)-({_REASON_PATTERN})\.db$")
 _STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 _ISO_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 # How long the lock probe waits for a writer before reporting the catalog busy.
@@ -83,11 +84,12 @@ _PROBE_TIMEOUT = 1.0
 # restart loop on a failing migration whose rollback touches the catalog file.
 _FRESH_PREMIGRATION_SECONDS = 3600
 # A daily copy is due when no daily copy is younger than this.
-_DAILY_INTERVAL_SECONDS = 86400
+# One hour short of a day, because the upkeep loop checks once an hour. With a
+# full day, each copy would land up to an hour after the last, and the drift
+# would let a calendar day pass with no copy at all.
+_DAILY_INTERVAL_SECONDS = 86400 - 3600
 # Tables the shrink reads or trims. Older schemas may lack some of them.
-_SHRINK_TABLES = ("inventory", "deck_cards", "cards", "card_faces", "cards_fts", "scryfall_refresh")
-# Tables whose rows keep a printing in a shrunk copy.
-_REFERENCING_TABLES = ("inventory", "deck_cards")
+_SHRINK_TABLES = ("cards", "card_faces", "cards_fts", "scryfall_refresh")
 # Temp files older than this are leftovers from a crashed copy. A copy in
 # flight is far younger.
 _STALE_TEMP_SECONDS = 3600
@@ -176,11 +178,15 @@ def manual_keep() -> int:
 
 def _keep_for(reason: Reason) -> int:
     """How many backups of ``reason`` to keep. Only manual reads the env var."""
-    if reason == "manual":
-        return manual_keep()
-    if reason == "premigration":
-        return PREMIGRATION_KEEP
-    return DAILY_KEEP
+    match reason:
+        case "manual":
+            return manual_keep()
+        case "premigration":
+            return PREMIGRATION_KEEP
+        case "daily":
+            return DAILY_KEEP
+        case _:
+            assert_never(reason)
 
 
 def has_user_data(conn: sqlite3.Connection) -> bool:
@@ -231,6 +237,7 @@ def has_fresh_premigration_backup(version: int) -> bool:
     nothing has changed since, or when it was written within the last hour.
     The hour covers a migration that fails on every start, so a restart loop
     does not take a copy each time and prune the one from the first attempt.
+    A copy whose mtime is ahead of the clock never counts as within the hour.
     An older copy taken before new lots were inscribed does not count.
     """
     try:
@@ -239,19 +246,21 @@ def has_fresh_premigration_backup(version: int) -> bool:
         raise BackupError(f"could not read the catalog file: {exc}") from exc
     now = time.time()
     return any(
-        mtime >= catalog_mtime or now - mtime < _FRESH_PREMIGRATION_SECONDS
+        mtime >= catalog_mtime or 0 <= now - mtime < _FRESH_PREMIGRATION_SECONDS
         for _, mtime in _backup_mtimes("premigration", version)
     )
 
 
 def has_recent_daily_backup() -> bool:
-    """True if a daily copy was written within the last day.
+    """True if a daily copy was written in the last 23 hours.
 
-    The file's mtime decides, not the stamp in its name, so a clock that
-    jumped since the copy was named cannot skip or repeat the daily copy.
+    The file's mtime decides, not the stamp in its name. A copy whose mtime is
+    ahead of the clock, as after the clock moved back, does not count, so it
+    cannot hold off the next copy. A clock moved forward makes the latest copy
+    look old, so the next check seals one early.
     """
     now = time.time()
-    return any(now - mtime < _DAILY_INTERVAL_SECONDS for _, mtime in _backup_mtimes("daily"))
+    return any(0 <= now - mtime < _DAILY_INTERVAL_SECONDS for _, mtime in _backup_mtimes("daily"))
 
 
 def _backup_mtimes(reason: Reason, version: int | None = None) -> Iterator[tuple[Backup, float]]:
@@ -288,6 +297,10 @@ def seal_daily_if_due() -> Backup | None:
         if has_recent_daily_backup():
             return None
         backup = take_backup("daily")
+    except BackupBusyError as exc:
+        # A refresh holding the catalog is expected, so no traceback.
+        logger.warning("daily backup failed; the app keeps running: %s", exc)
+        return None
     except (BackupError, sqlite3.Error):
         logger.exception("daily backup failed; the app keeps running")
         return None
@@ -330,23 +343,48 @@ def _existing_tables(conn: sqlite3.Connection, names: tuple[str, ...]) -> set[st
     return {row[0] for row in rows}
 
 
+def _quote(identifier: str) -> str:
+    """Quote a schema name for SQL, doubling any double quote inside it."""
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _card_references(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """Return ``(table, column)`` for every foreign key into ``cards``, except faces.
+
+    Read from the schema, so a table a later migration adds keeps its printings
+    in a shrunk copy without a change here. Every ON DELETE action counts. The
+    importer's sweep skips CASCADE children, but a cascading user table still
+    needs its printings, or the shrink would delete its rows.
+    """
+    rows = conn.execute(
+        'SELECT m.name, p."from" FROM sqlite_master m '
+        "JOIN pragma_foreign_key_list(m.name) p "
+        "WHERE m.type = 'table' AND m.name <> 'card_faces' "
+        "AND p.\"table\" = 'cards' COLLATE NOCASE "
+        "ORDER BY m.name, p.id"
+    ).fetchall()
+    return [(str(table), str(column)) for table, column in rows]
+
+
 def _shrink(path: Path) -> None:
-    """Trim a fresh copy to the printings its lots and Tome slots reference.
+    """Trim a fresh copy to the printings that its other tables reference.
 
     Deletes every other card and its faces, rebuilds the name index over what
     is left, clears the refresh record, then runs VACUUM so the file gives the
     freed pages back. Faces are deleted explicitly rather than through the
-    cascade. A copy of an older schema may lack ``deck_cards`` or
-    ``inventory``, and a copy with neither keeps no cards at all.
+    cascade. The referencing tables come from the schema, so a copy of an
+    older schema without ``deck_cards`` or ``inventory`` works too, and a copy
+    with no referencing table keeps no cards at all.
     """
     try:
         with closing(sqlite3.connect(path)) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
             tables = _existing_tables(conn, _SHRINK_TABLES)
+            # Names come from the schema, not user input, and are quoted.
             referenced = " UNION ".join(
-                f"SELECT scryfall_id FROM {table}"
-                for table in _REFERENCING_TABLES
-                if table in tables
+                f"SELECT {_quote(column)} FROM {_quote(table)} WHERE {_quote(column)} IS NOT NULL"
+                for table, column in _card_references(conn)
             )
             unreferenced = f" WHERE scryfall_id NOT IN ({referenced})" if referenced else ""
             conn.execute("BEGIN")

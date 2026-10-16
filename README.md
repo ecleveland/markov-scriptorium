@@ -85,7 +85,7 @@ The app seals copies on its own in two cases:
   Tome, the app seals a copy first. If that fails, startup aborts and the app refuses to migrate
   unprotected.
 - **Once a day.** A background task seals a daily copy when the catalog holds a lot or a Tome and
-  none is under 24 hours old. It runs right after startup, before the Scryfall refresh, in the
+  none is under 23 hours old. It runs right after startup, before the Scryfall refresh, in the
   same background thread, and checks again every hour while the app runs. A server left up for
   days still gets one copy a day. Startup never waits for it, and a failure is logged.
 

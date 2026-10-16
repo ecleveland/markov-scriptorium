@@ -7,6 +7,7 @@ that a backup is a whole-file copy and left the shrink and the timed backup for
 later. This record shrinks each copy to the printings the user owns and adds a
 daily copy.
 
+[VEG-575]: https://linear.app/cleveland-family-enterprises/issue/VEG-575
 [VEG-612]: https://linear.app/cleveland-family-enterprises/issue/VEG-612
 
 ---
@@ -15,9 +16,13 @@ daily copy.
 
 **The backend shrinks the temp copy in place.** The stepped whole-file copy from
 0023 stays. After it and before the checks, the backend opens the temp copy with
-the real schema and deletes every `card_faces` and `cards` row that no
-`inventory` or `deck_cards` row references. A table missing from an older schema
-is skipped. It then rebuilds `cards_fts` with the same rebuild the importer
+the real schema and reads the foreign keys from it. Every table other than
+`card_faces` with a foreign key into `cards` keeps the printings it points at,
+whatever its on-delete action. Today those are `inventory` and `deck_cards`.
+The shrink deletes every `card_faces` and `cards` row that none of them
+references. That is the same protection the importer's sweep uses
+([0019](0019-importer-upsert-and-sweep.md), [VEG-575]). A table missing from an
+older schema is skipped. It then rebuilds `cards_fts` with the same rebuild the importer
 uses, empties `scryfall_refresh`, commits, and runs `VACUUM`. The copy keeps its
 `user_version`, every user table in full and every table's schema, so migrations
 and reads work on a restored copy.
@@ -41,7 +46,10 @@ itself, so the user triggers it with `POST /scryfall/refresh` or turns
 auto-refresh back on.
 
 **A third reason, `daily`, makes a timed copy.** A background task seals it when
-the catalog holds a lot or a Tome and no daily copy is under 24 hours old. It
+the catalog holds a lot or a Tome and no daily copy is recent. A copy counts as recent for 23 hours, not 24, because
+the hourly check would otherwise drift a copy later each day until a calendar
+day passed without one. A copy whose file time is in the future, after the clock
+moved back, does not count as recent. It
 runs first right after startup, before the Scryfall refresh and in the same
 background thread, so it never races the importer. It then checks again every
 hour while the app runs, so a server left up for days still gets one copy a day.
@@ -79,6 +87,8 @@ another place behind.
   a refresh runs.
 - A backup takes a little longer. The deletes, the FTS rebuild and the `VACUUM`
   on a gigabyte temp file take a few seconds to a minute on a slow disk.
+- A new table that references `cards` needs no change to the shrink, because
+  the shrink finds it in the schema.
 - Each backup still writes a full-size temp copy before it shrinks it. Sealing
   a copy needs free disk roughly equal to the catalog file, about a gigabyte
   with the real export, for the duration of the copy, plus `VACUUM` scratch

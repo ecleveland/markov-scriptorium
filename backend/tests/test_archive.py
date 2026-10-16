@@ -397,6 +397,29 @@ def test_has_recent_daily_backup_uses_mtime_within_a_day(catalog: Path) -> None:
     assert archive.has_recent_daily_backup() is False
 
 
+def test_has_recent_daily_backup_ignores_a_future_mtime(catalog: Path) -> None:
+    # A clock moved back leaves a copy that looks written in the future. It
+    # must not hold off the next daily copy.
+    daily = archive.backups_dir() / "scriptorium-20260101T000000Z-v6-daily.db"
+    daily.write_bytes(b"x")
+    _age(daily, -3600)
+
+    assert archive.has_recent_daily_backup() is False
+
+
+def test_has_fresh_premigration_backup_ignores_a_future_mtime_in_the_hour_window(
+    catalog: Path,
+) -> None:
+    copy = archive.backups_dir() / "scriptorium-20260101T000000Z-v5-premigration.db"
+    copy.write_bytes(b"x")
+    # The copy reads an hour ahead and the catalog two hours ahead, so the
+    # catalog looks changed since and only the hour window could count it.
+    _age(copy, -3600)
+    _age(db.db_path(), -2 * 3600)
+
+    assert archive.has_fresh_premigration_backup(5) is False
+
+
 def test_prune_failure_does_not_fail_the_backup(
     seeded: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -799,6 +822,66 @@ def test_seal_daily_if_due_logs_and_returns_none_on_error(
         assert archive.seal_daily_if_due() is None
     assert "database is locked" in caplog.text
     assert archive.list_backups() == []
+
+
+def test_shrink_keeps_printings_referenced_by_any_table_pointing_at_cards(
+    seeded: Path,
+) -> None:
+    # Stand-ins for a future migration. SET NULL would blank the row and
+    # CASCADE would delete it if the shrink dropped the card underneath.
+    with closing(db.connect()) as conn:
+        _insert_card(conn, "goblin-1", "Goblin Guide", collector_number="126")
+        conn.executescript(
+            """
+            CREATE TABLE scratch_refs (
+                id INTEGER PRIMARY KEY,
+                scryfall_id TEXT REFERENCES cards(scryfall_id) ON DELETE SET NULL
+            );
+            CREATE TABLE scratch_cascade (
+                id INTEGER PRIMARY KEY,
+                scryfall_id TEXT REFERENCES cards(scryfall_id) ON DELETE CASCADE
+            );
+            INSERT INTO scratch_refs (scryfall_id) VALUES ('elf-1'), (NULL);
+            INSERT INTO scratch_cascade (scryfall_id) VALUES ('goblin-1');
+            """
+        )
+        conn.commit()
+        assert sorted(archive._card_references(conn)) == [
+            ("deck_cards", "scryfall_id"),
+            ("inventory", "scryfall_id"),
+            ("scratch_cascade", "scryfall_id"),
+            ("scratch_refs", "scryfall_id"),
+        ]
+
+    backup = archive.take_backup("manual", now=_STAMP)
+
+    with closing(sqlite3.connect(backup.path)) as copy:
+        assert _ids(copy, "cards") == ["bolt-1", "elf-1", "goblin-1", "helix-1"]
+        assert copy.execute("SELECT id, scryfall_id FROM scratch_refs ORDER BY id").fetchall() == [
+            (1, "elf-1"),
+            (2, None),
+        ]
+        assert copy.execute("SELECT id, scryfall_id FROM scratch_cascade").fetchall() == [
+            (1, "goblin-1")
+        ]
+
+
+def test_seal_daily_if_due_logs_a_busy_catalog_as_a_warning(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def busy(reason: Reason) -> archive.Backup:
+        raise BackupBusyError("the catalog is busy with a write")
+
+    monkeypatch.setattr(archive, "take_backup", busy)
+
+    with caplog.at_level(logging.WARNING, logger="scriptorium"):
+        assert archive.seal_daily_if_due() is None
+
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert record.exc_info is None
+    assert "daily backup failed; the app keeps running" in record.getMessage()
+    assert "busy with a write" in record.getMessage()
 
 
 def test_restored_shrunk_copy_refreshes_and_keeps_owned_cards(seeded: Path, tmp_path: Path) -> None:
