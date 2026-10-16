@@ -267,6 +267,27 @@ def test_startup_skips_premigration_backup_when_one_exists_for_the_version(
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
 
 
+def test_startup_refuses_to_migrate_when_premigration_backup_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    # main.py imports the archive module itself, so patching its attribute here
+    # replaces the function the lifespan calls.
+    from scriptorium import archive
+    from scriptorium.main import app
+
+    def disk_full(reason: str) -> None:
+        raise archive.BackupError("disk full")
+
+    monkeypatch.setattr(archive, "take_backup", disk_full)
+
+    with pytest.raises(archive.BackupError, match="disk full"), TestClient(app):
+        pass
+
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == older
+
+
 def test_startup_takes_no_backup_on_fresh_db(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -95,6 +95,49 @@ def test_post_backup_409_while_write_lock_held(seeded_catalog: Path) -> None:
     assert client.get("/archive/backups").json()["backups"] == []
 
 
+def test_post_backup_retries_once_on_same_second_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backup = archive.Backup(
+        filename="scriptorium-20261015T142234Z-v6-manual.db",
+        path="/backups/scriptorium-20261015T142234Z-v6-manual.db",
+        reason="manual",
+        created_at="2026-10-15T14:22:34Z",
+        schema_version=6,
+        size_bytes=4096,
+    )
+    calls: list[str] = []
+    sleeps: list[float] = []
+
+    def collide_then_succeed(reason: archive.Reason) -> archive.Backup:
+        calls.append(reason)
+        if len(calls) == 1:
+            raise archive.BackupCollisionError("a backup with that name already exists")
+        return backup
+
+    monkeypatch.setattr(archive, "take_backup", collide_then_succeed)
+    monkeypatch.setattr("scriptorium.api.archive.time.sleep", sleeps.append)
+
+    resp = client.post("/archive/backups")
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["filename"] == backup.filename
+    assert calls == ["manual", "manual"]
+    assert sleeps == [1]
+
+
+def test_post_backup_500_on_generic_backup_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(reason: archive.Reason) -> archive.Backup:
+        raise archive.BackupError("backup copy failed: boom")
+
+    monkeypatch.setattr(archive, "take_backup", fail)
+
+    resp = client.post("/archive/backups")
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "backup copy failed: boom"
+
+
 def test_export_csv_is_attachment() -> None:
     resp = client.get("/archive/export.csv")
 

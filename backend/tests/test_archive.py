@@ -160,11 +160,15 @@ def test_backup_rejects_same_second_collision(seeded: Path) -> None:
     first = archive.take_backup("manual", now=_STAMP)
     before = Path(first.path).read_bytes()
 
-    with pytest.raises(BackupError):
+    with pytest.raises(archive.BackupCollisionError):
         archive.take_backup("manual", now=_STAMP)
 
+    # The first copy survives untouched and still reads as a valid catalog.
     assert Path(first.path).read_bytes() == before
     assert [p.name for p in (seeded / "backups").iterdir()] == [first.filename]
+    with closing(sqlite3.connect(first.path)) as copy:
+        assert copy.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
 
 
 def test_failed_quick_check_leaves_no_file(seeded: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -174,18 +178,6 @@ def test_failed_quick_check_leaves_no_file(seeded: Path, monkeypatch: pytest.Mon
         archive.take_backup("manual", now=_STAMP)
 
     assert list((seeded / "backups").iterdir()) == []
-
-
-def test_same_second_backups_give_one_collision_and_one_valid_copy(seeded: Path) -> None:
-    first = archive.take_backup("manual", now=_STAMP)
-
-    with pytest.raises(archive.BackupCollisionError):
-        archive.take_backup("manual", now=_STAMP)
-
-    assert [p.name for p in (seeded / "backups").iterdir()] == [first.filename]
-    with closing(sqlite3.connect(first.path)) as copy:
-        assert copy.execute("PRAGMA quick_check").fetchone()[0] == "ok"
-        assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
 
 
 def test_vanished_temp_file_fails_verification_instead_of_publishing_empty_copy(
@@ -289,6 +281,19 @@ def test_prune_keeps_manual_and_premigration_pools_separately(catalog: Path) -> 
     remaining = sorted(p.name for p in backups.iterdir())
     assert remaining == sorted([*manual[-3:], *premigration[-2:], "notes.txt"])
     assert sorted(p.name for p in removed) == sorted([*manual[:2], *premigration[:2]])
+
+
+def test_prune_honors_backup_keep_env(catalog: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(archive.BACKUP_KEEP_ENV, "4")
+    backups = archive.backups_dir()
+    manual = [f"scriptorium-2026101{day}T120000Z-v6-manual.db" for day in range(1, 7)]
+    for name in manual:
+        (backups / name).write_bytes(b"x")
+
+    removed = archive.prune_backups()
+
+    assert sorted(p.name for p in backups.iterdir()) == manual[-4:]
+    assert sorted(p.name for p in removed) == manual[:2]
 
 
 def test_manual_keep_reads_env_and_rejects_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -493,6 +498,18 @@ def test_json_shape_inventory_cards_and_tomes_with_slots(seeded: Path) -> None:
         },
     ]
     json.dumps(doc)  # the document must serialize as-is
+
+
+def test_json_export_tome_with_no_slots_has_empty_slots_list(seeded: Path) -> None:
+    with closing(db.connect()) as conn:
+        empty_id = _insert_tome(conn, "Unbound Tome")
+        conn.commit()
+        doc = archive.export_json(conn, now=_STAMP)
+
+    tomes = {tome["id"]: tome for tome in doc["tomes"]}
+    assert tomes[empty_id]["name"] == "Unbound Tome"
+    assert tomes[empty_id]["slots"] == []
+    assert len(tomes[1]["slots"]) == 2  # the seeded Tome keeps its own slots
 
 
 def test_json_empty_collection(catalog: Path) -> None:
