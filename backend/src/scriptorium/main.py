@@ -65,8 +65,10 @@ def _seal_daily_backup() -> None:
 def _run_background_upkeep() -> None:
     """The first upkeep pass: the daily backup, then the staleness-gated refresh.
 
-    Both run in this one thread, one after the other, so the backup never
-    races the importer for the catalog.
+    Both run in this one thread, and the daily copy goes first, so it never
+    overlaps the startup refresh. A later hourly pass can still land during a
+    manual refresh. Then the write-lock probe or the busy limit refuses the
+    copy, and the next pass tries again.
     """
     _seal_daily_backup()
     if _auto_refresh_enabled():
@@ -76,7 +78,11 @@ def _run_background_upkeep() -> None:
 
 
 async def _upkeep() -> None:
-    """Run the first upkeep pass, then check the daily backup every hour, forever."""
+    """Run the first upkeep pass, then check the daily backup every hour, forever.
+
+    An hourly check that meets a manual refresh holding the catalog is refused
+    and retried on the next pass, as _run_background_upkeep describes.
+    """
     await asyncio.to_thread(_run_background_upkeep)
     while True:
         await asyncio.sleep(_UPKEEP_INTERVAL_SECONDS)

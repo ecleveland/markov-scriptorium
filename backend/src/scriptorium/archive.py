@@ -370,16 +370,22 @@ def _card_references(conn: sqlite3.Connection) -> list[tuple[str, str]]:
 def _shrink(path: Path) -> None:
     """Trim a fresh copy to the printings that its other tables reference.
 
-    Deletes every other card and its faces, rebuilds the name index over what
-    is left, clears the refresh record, then runs VACUUM so the file gives the
-    freed pages back. Faces are deleted explicitly rather than through the
-    cascade. The referencing tables come from the schema, so a copy of an
+    Deletes every other card and its faces and clears the refresh record in
+    one transaction, runs VACUUM so the file gives the freed pages back, then
+    rebuilds the name index over the cards that are left. The rebuild comes
+    after VACUUM because ``cards`` has a TEXT primary key, so VACUUM may
+    renumber its rowids, and the external-content index is keyed on them.
+
+    Foreign keys stay off, the sqlite3 default. Every card deleted here is
+    unreferenced by construction and faces are deleted explicitly, so the
+    RESTRICT and CASCADE actions have nothing to do. ``_verify`` compares
+    ``foreign_key_check`` before and after, which catches a shrink that got
+    this wrong. The referencing tables come from the schema, so a copy of an
     older schema without ``deck_cards`` or ``inventory`` works too, and a copy
     with no referencing table keeps no cards at all.
     """
     try:
         with closing(sqlite3.connect(path)) as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
             tables = _existing_tables(conn, _SHRINK_TABLES)
             # Names come from the schema, not user input, and are quoted.
             referenced = " UNION ".join(
@@ -393,8 +399,6 @@ def _shrink(path: Path) -> None:
                     conn.execute(f"DELETE FROM card_faces{unreferenced}")
                 if "cards" in tables:
                     conn.execute(f"DELETE FROM cards{unreferenced}")
-                if "cards_fts" in tables:
-                    rebuild_name_index(conn)
                 if "scryfall_refresh" in tables:
                     conn.execute("DELETE FROM scryfall_refresh")
                 conn.execute("COMMIT")
@@ -403,6 +407,9 @@ def _shrink(path: Path) -> None:
                     conn.execute("ROLLBACK")
                 raise
             conn.execute("VACUUM")
+            if "cards_fts" in tables:
+                rebuild_name_index(conn)
+                conn.commit()
     except sqlite3.Error as exc:
         raise BackupError(f"backup could not be shrunk: {exc}") from exc
 

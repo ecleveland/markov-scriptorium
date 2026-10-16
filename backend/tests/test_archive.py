@@ -28,6 +28,7 @@ import pytest
 
 from scriptorium import archive, db, decks, inventory
 from scriptorium.archive import BackupBusyError, BackupError, Reason
+from scriptorium.catalog import rebuild_name_index
 from scriptorium.migrations import _MIGRATIONS_DIR, _discover, apply_migrations
 from scriptorium.onboarding.csv_import import parse_csv
 from scriptorium.scryfall.importer import import_bulk_file
@@ -683,6 +684,41 @@ def test_shrunk_copy_is_smaller_than_the_catalog(seeded: Path) -> None:
 
     catalog_size = db.db_path().stat().st_size
     assert backup.size_bytes < catalog_size / 4
+
+
+def test_shrink_rebuilds_the_name_index_after_vacuum(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # cards has a TEXT primary key, so VACUUM may renumber its rowids, and the
+    # external-content index is keyed on them. The rebuild must come after.
+    filler_text = "Whenever a Vampire enters the battlefield, " * 40
+    with closing(db.connect()) as conn:
+        for number in range(2000):
+            _insert_card(
+                conn,
+                f"filler-{number}",
+                f"Filler {number}",
+                collector_number=str(number),
+                oracle_text=filler_text,
+            )
+        conn.commit()
+    free_pages: list[int] = []
+
+    def recording_rebuild(conn: sqlite3.Connection) -> None:
+        free_pages.append(int(conn.execute("PRAGMA freelist_count").fetchone()[0]))
+        rebuild_name_index(conn)
+
+    monkeypatch.setattr("scriptorium.archive.rebuild_name_index", recording_rebuild)
+
+    backup = archive.take_backup("manual", now=_STAMP)
+
+    assert free_pages == [0]  # VACUUM already handed the deleted pages back
+    with closing(sqlite3.connect(backup.path)) as copy:
+        rows = copy.execute(
+            "SELECT c.scryfall_id FROM cards_fts f JOIN cards c ON c.rowid = f.rowid "
+            "WHERE cards_fts MATCH 'Lightning' ORDER BY c.scryfall_id"
+        ).fetchall()
+    assert rows == [("bolt-1",), ("helix-1",)]
 
 
 def test_shrunk_copy_serves_inventory_and_tomes(seeded: Path) -> None:
