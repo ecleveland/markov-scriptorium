@@ -46,6 +46,8 @@ run all hooks manually with `pre-commit run --all-files`.
   transitions the issue.
 - Stage only files relevant to the change; never `git add -A`; respect `.gitignore`.
 - Record real design decisions (schema, framework, library) as ADRs in `docs/decisions/`.
+- Never end a turn with verified work only in the working tree. If implementers or reviews are still running, commit what is green as a WIP commit on the branch and name what is outstanding in the final message.
+- PR comment replies are posted by the main session, not by subagents. Subagent `gh api` writes are blocked by auto mode.
 
 ## Review-sizing policy
 - **skip** — docs/config/comment-only, or ≲30 changed lines / ≤3 files, no risk triggers.
