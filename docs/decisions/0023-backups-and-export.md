@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-10-15)
 
+Amended by [0024](0024-shrunk-backups-and-daily-copies.md), which shrinks each copy to owned printings and adds daily copies.
+
 Resolves [VEG-281]. Decides how the catalog is copied, when the app does it on
 its own, what the two exports contain, and how a restore works. Builds on
 [0004](0004-schema-migrations.md), whose startup migration step is now the
@@ -27,7 +29,7 @@ creates a hidden `.scriptorium-<name>.<random>.tmp` file with
 `PRAGMA quick_check` on the copy and moves it into place with `os.replace`. A failed check deletes the temp
 file and the backup fails. That failure also tells the user the live file is
 corrupt, which is worth knowing before the next migration. Pruning sweeps temp
-files older than an hour, so an interrupted copy does not leak a gigabyte.
+files older than an hour, so an interrupted copy does not leak a full-size file.
 
 **A probe decides whether to start, and a refresh gets a 409.** Before copying,
 the backend runs `BEGIN IMMEDIATE` with a one-second timeout and releases it
@@ -47,8 +49,9 @@ version and the reason. The reasons are `manual` and `premigration`.
 copies stay, default 3. The newest 2 premigration copies stay. Pruning runs
 after each backup and deletes only files that match the backup filename
 pattern, so a stray file in the folder is safe. A prune that cannot delete an
-old file logs a warning, and the backup still succeeds. With the real Scryfall catalog
-loaded a copy is about a gigabyte. In fast dev mode it is about 100 KB.
+old file logs a warning, and the backup still succeeds. At the time, a copy was about a
+gigabyte with the real Scryfall catalog, and 0024 shrinks it. The pool sizes
+here are also replaced by 0024.
 
 **Startup takes a premigration backup, and a failure stops startup.** The
 backup runs before migrations, only when migrations are pending and the
@@ -57,8 +60,8 @@ The backup is also skipped when a copy of the current schema version is
 already on disk and is either newer than the catalog file or less than an hour
 old. That keeps a restart loop on a failing migration from taking a fresh copy
 every time, while a stale copy from weeks ago does not suppress a new one.
-If the backup fails, the app does not migrate. There is no time-based
-automatic backup yet, see [VEG-612].
+If the backup fails, the app does not migrate. At the time there was no
+time-based automatic backup. 0024 adds a daily one ([VEG-612]).
 
 **The CSV export is the Manabox layout plus five columns.** One row per lot,
 inventory only. The first ten columns are `Name, Set code, Set name, Collector
@@ -104,7 +107,8 @@ under the `/archive` prefix.
   the FTS table. Copies would be kilobytes, but it is about 300 lines of SQL
   that run for real only at disaster time. A restored ledger also leaves Inscribe
   autocomplete and the unowned catalog empty until a refresh succeeds. The cheap
-  form of the idea, shrinking a finished whole-file copy, is [VEG-612].
+  form of the idea, shrinking a finished whole-file copy, became [VEG-612] and
+  is decided in 0024.
 - **A single-step copy** with `pages=-1`. It holds the shared lock for the whole
   gigabyte and can push the importer's commit past its timeout.
 - **A `threading.Lock` shared with the refresh.** It protects only in-process
@@ -119,9 +123,9 @@ under the `/archive` prefix.
 
 ## Consequences
 
-- Each copy costs a full catalog of disk, about a gigabyte with real data, and
-  up to 5 copies stay. [VEG-612] covers shrinking a finished copy and adds
-  automatic daily backups.
+- At the time, each copy cost a full catalog of disk, about a gigabyte with real
+  data, and up to 5 copies stayed. 0024 supersedes those figures with shrunk
+  copies and daily backups ([VEG-612]).
 - The CSV carries five columns the import ignores until [VEG-614] lands. A
   round trip through the CSV import page loses Location, Notes, Tags, Acquired at
   and Price paid. The JSON export loses nothing.

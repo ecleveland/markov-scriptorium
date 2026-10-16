@@ -28,6 +28,9 @@ logger = logging.getLogger("scriptorium")
 # it on, so a fresh install keeps its catalog current without configuration.
 _AUTO_REFRESH_OFF = {"0", "false", "no", "off"}
 
+# How often the background upkeep checks whether the daily backup is due.
+_UPKEEP_INTERVAL_SECONDS: float = 3600
+
 
 def _auto_refresh_enabled() -> bool:
     """Whether to run the Scryfall refresh on startup (SCRIPTORIUM_AUTO_REFRESH)."""
@@ -47,6 +50,45 @@ def _run_startup_refresh() -> None:
         logger.exception("startup Scryfall refresh failed")
 
 
+def _seal_daily_backup() -> None:
+    """Seal the daily backup if it is due. Never raises.
+
+    seal_daily_if_due logs and swallows backup and SQLite errors itself. This
+    also catches anything else, so a bug cannot end the hourly upkeep loop.
+    """
+    try:
+        archive.seal_daily_if_due()
+    except Exception:
+        logger.exception("daily backup failed; the app keeps running")
+
+
+def _run_background_upkeep() -> None:
+    """The first upkeep pass: the daily backup, then the staleness-gated refresh.
+
+    Both run in this one thread, and the daily copy goes first, so it never
+    overlaps the startup refresh. A later hourly pass can still land during a
+    manual refresh. Then the write-lock probe or the busy limit refuses the
+    copy, and the next pass tries again.
+    """
+    _seal_daily_backup()
+    if _auto_refresh_enabled():
+        _run_startup_refresh()
+    else:
+        logger.info("auto-refresh disabled (SCRIPTORIUM_AUTO_REFRESH); skipping startup refresh")
+
+
+async def _upkeep() -> None:
+    """Run the first upkeep pass, then check the daily backup every hour, forever.
+
+    An hourly check that meets a manual refresh holding the catalog is refused
+    and retried on the next pass, as _run_background_upkeep describes.
+    """
+    await asyncio.to_thread(_run_background_upkeep)
+    while True:
+        await asyncio.sleep(_UPKEEP_INTERVAL_SECONDS)
+        await asyncio.to_thread(_seal_daily_backup)
+
+
 def _run_manual_refresh() -> None:
     """Forced (version-aware) refresh behind the manual trigger; failures logged.
 
@@ -63,7 +105,12 @@ def _run_manual_refresh() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Back up, migrate the catalog, then kick off a background refresh, before serving."""
+    """Back up and migrate the catalog, then start the background upkeep, before serving.
+
+    The upkeep task seals the daily backup when one is due, then runs the
+    startup refresh, then checks the daily backup again every hour. None of
+    it blocks startup, and a failure there is logged without stopping the app.
+    """
     with closing(connect()) as conn:
         # A schema change on a catalog holding the user's lots or Tomes gets a
         # backup first. If that backup fails, startup stops before migrating, so
@@ -90,22 +137,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.exception("catalog migration failed during startup")
             raise
 
-    # Run the refresh off the event loop (httpx + sqlite are blocking) and don't
-    # await it — startup must not wait on a ~500 MB download.
-    refresh_task: asyncio.Task[None] | None = None
-    if _auto_refresh_enabled():
-        refresh_task = asyncio.create_task(asyncio.to_thread(_run_startup_refresh))
-    else:
-        logger.info("auto-refresh disabled (SCRIPTORIUM_AUTO_REFRESH); skipping startup refresh")
+    # Run the upkeep off the event loop (httpx + sqlite are blocking) and don't
+    # await it — startup must not wait on a backup or a ~500 MB download.
+    upkeep_task = asyncio.create_task(_upkeep())
 
     try:
         yield
     finally:
-        if refresh_task is not None:
-            if not refresh_task.done():
-                refresh_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await refresh_task
+        if not upkeep_task.done():
+            upkeep_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await upkeep_task
 
 
 app = FastAPI(

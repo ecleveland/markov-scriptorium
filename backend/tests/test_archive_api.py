@@ -80,8 +80,9 @@ def test_post_backup_then_list_shows_it_with_directory_and_keep(seeded_catalog: 
     assert listed.status_code == 200
     body = listed.json()
     assert body["directory"] == str(seeded_catalog / "backups")
-    assert body["keep"] == 3
-    assert body["premigration_keep"] == 2
+    assert body["keep"] == 10
+    assert body["premigration_keep"] == 3
+    assert body["daily_keep"] == 7
     assert body["backups"] == [backup]
 
 

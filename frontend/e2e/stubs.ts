@@ -752,8 +752,9 @@ export async function stubApi(page: Page): Promise<void> {
     if (path === '/archive/backups' && method === 'GET') {
       return json(route, {
         directory: BACKUP_DIRECTORY,
-        keep: 3,
-        premigration_keep: 2,
+        keep: 10,
+        premigration_keep: 3,
+        daily_keep: 7,
         backups,
       })
     }

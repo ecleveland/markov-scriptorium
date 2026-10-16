@@ -23,6 +23,7 @@ import './archive.css'
 const REASON_LABELS: Record<BackupReason, string> = {
   manual: 'By hand',
   premigration: 'Before migration',
+  daily: 'Daily',
 }
 
 /** Decimal megabytes, as Finder and most file managers count them. */
@@ -119,9 +120,9 @@ export function ArchivePage() {
         {query.data !== undefined && (
           <p className="archive__note archive__wrap">
             Copies rest in {query.data.directory}. The newest {query.data.keep}{' '}
-            sealed by hand are kept, and the newest{' '}
-            {query.data.premigration_keep} sealed before a migration. To restore
-            one, follow the README.
+            sealed by hand are kept, the newest {query.data.premigration_keep}{' '}
+            sealed before a migration, and the newest {query.data.daily_keep}{' '}
+            daily copies. To restore one, follow the README.
           </p>
         )}
       </Panel>

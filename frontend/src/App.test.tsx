@@ -66,6 +66,7 @@ vi.mocked(listBackups).mockResolvedValue({
   directory: '/tmp/scriptorium/backups',
   keep: 3,
   premigration_keep: 2,
+  daily_keep: 7,
   backups: [],
 })
 

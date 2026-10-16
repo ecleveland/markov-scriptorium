@@ -1,15 +1,26 @@
-"""Backups and exports of the catalog (VEG-281, ADR 0023).
+"""Backups and exports of the catalog (VEG-281, VEG-612, ADRs 0023 and 0024).
 
 A backup is a timestamped copy of the SQLite file, written to a ``backups``
 directory beside the catalog. The copy goes through SQLite's online backup API,
-so it is consistent even while the app is serving reads. Backups come from two
-places, and each keeps its own pool of recent copies:
+so it is consistent even while the app is serving reads. Backups come from
+three places, and each keeps its own pool of recent copies:
 
 - ``manual`` copies are taken on request. The newest ``SCRIPTORIUM_BACKUP_KEEP``
-  (default 3) are kept.
+  (default 10) are kept.
 - ``premigration`` copies are taken at startup before pending migrations run on
-  a catalog that holds user data. The newest two are kept, so a run of manual
+  a catalog that holds user data. The newest three are kept, so a run of manual
   backups never pushes out the copy taken before a schema change.
+- ``daily`` copies are taken in the background, at most once a day, when the
+  catalog holds user data. The app checks after startup and then every hour,
+  so a server left running still seals one a day. The newest seven are kept.
+
+Each copy is shrunk before it is verified. Scryfall printings that no lot or
+Tome slot references are deleted from the copy, along with their faces, the
+name index is rebuilt over the cards that remain, and the refresh record is
+cleared. VACUUM then hands the freed pages back, so a copy holds the user's
+data and only the card rows it needs. A restored copy has no refresh record,
+so the app reads its catalog as stale and the next refresh fills the
+unreferenced printings back in. The live catalog is never shrunk.
 
 The filename carries everything a listing needs:
 ``scriptorium-<YYYYMMDDTHHMMSSZ>-v<schema version>-<reason>.db``. Files that do
@@ -31,19 +42,23 @@ import re
 import sqlite3
 import tempfile
 import time
+from collections import Counter
+from collections.abc import Iterator
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, assert_never, cast, get_args
 
-from scriptorium.db import db_path
+from scriptorium.catalog import rebuild_name_index
+from scriptorium.db import connect, db_path
 
 logger = logging.getLogger("scriptorium")
 
 BACKUP_KEEP_ENV = "SCRIPTORIUM_BACKUP_KEEP"
-DEFAULT_KEEP = 3
-PREMIGRATION_KEEP = 2
+DEFAULT_KEEP = 10
+PREMIGRATION_KEEP = 3
+DAILY_KEEP = 7
 # Pages copied per backup step. At SQLite's default 4 KB page size this is 4 MB.
 # The source's shared lock is released between steps, so a long copy never
 # blocks writers for its whole duration.
@@ -56,10 +71,11 @@ _BACKUP_SLEEP = 0.25
 _BUSY_LIMIT_SECONDS = 5.0
 _BUSY_STATUSES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
 
-Reason = Literal["manual", "premigration"]
+Reason = Literal["manual", "premigration", "daily"]
 
-_REASONS: tuple[Reason, ...] = ("manual", "premigration")
-_FILENAME = re.compile(r"^scriptorium-(\d{8}T\d{6}Z)-v(\d+)-(manual|premigration)\.db$")
+_REASONS: tuple[Reason, ...] = get_args(Reason)
+_REASON_PATTERN = "|".join(re.escape(reason) for reason in _REASONS)
+_FILENAME = re.compile(rf"^scriptorium-(\d{{8}}T\d{{6}}Z)-v(\d+)-({_REASON_PATTERN})\.db$")
 _STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 _ISO_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 # How long the lock probe waits for a writer before reporting the catalog busy.
@@ -67,6 +83,13 @@ _PROBE_TIMEOUT = 1.0
 # A pre-migration copy this young still counts as fresh, which covers a
 # restart loop on a failing migration whose rollback touches the catalog file.
 _FRESH_PREMIGRATION_SECONDS = 3600
+# A daily copy is due when no daily copy is younger than this.
+# One hour short of a day, because the upkeep loop checks once an hour. With a
+# full day, each copy would land up to an hour after the last, and the drift
+# would let a calendar day pass with no copy at all.
+_DAILY_INTERVAL_SECONDS = 86400 - 3600
+# Tables the shrink reads or trims. Older schemas may lack some of them.
+_SHRINK_TABLES = ("cards", "card_faces", "cards_fts", "scryfall_refresh")
 # Temp files older than this are leftovers from a crashed copy. A copy in
 # flight is far younger.
 _STALE_TEMP_SECONDS = 3600
@@ -139,7 +162,7 @@ def backups_dir() -> Path:
 
 
 def manual_keep() -> int:
-    """How many manual backups to keep. Reads SCRIPTORIUM_BACKUP_KEEP, default 3.
+    """How many manual backups to keep. Reads SCRIPTORIUM_BACKUP_KEEP, default 10.
 
     A value that is not a whole number, or is below 1, falls back to the
     default. Keeping zero copies would delete each backup as soon as it was
@@ -151,6 +174,19 @@ def manual_keep() -> int:
     except ValueError:
         return DEFAULT_KEEP
     return keep if keep >= 1 else DEFAULT_KEEP
+
+
+def _keep_for(reason: Reason) -> int:
+    """How many backups of ``reason`` to keep. Only manual reads the env var."""
+    match reason:
+        case "manual":
+            return manual_keep()
+        case "premigration":
+            return PREMIGRATION_KEEP
+        case "daily":
+            return DAILY_KEEP
+        case _:
+            assert_never(reason)
 
 
 def has_user_data(conn: sqlite3.Connection) -> bool:
@@ -201,6 +237,7 @@ def has_fresh_premigration_backup(version: int) -> bool:
     nothing has changed since, or when it was written within the last hour.
     The hour covers a migration that fails on every start, so a restart loop
     does not take a copy each time and prune the one from the first attempt.
+    A copy whose mtime is ahead of the clock never counts as within the hour.
     An older copy taken before new lots were inscribed does not count.
     """
     try:
@@ -208,8 +245,34 @@ def has_fresh_premigration_backup(version: int) -> bool:
     except OSError as exc:
         raise BackupError(f"could not read the catalog file: {exc}") from exc
     now = time.time()
+    return any(
+        mtime >= catalog_mtime or 0 <= now - mtime < _FRESH_PREMIGRATION_SECONDS
+        for _, mtime in _backup_mtimes("premigration", version)
+    )
+
+
+def has_recent_daily_backup() -> bool:
+    """True if a daily copy was written in the last 23 hours.
+
+    The file's mtime decides, not the stamp in its name. A copy whose mtime is
+    ahead of the clock, as after the clock moved back, does not count, so it
+    cannot hold off the next copy. A clock moved forward makes the latest copy
+    look old, so the next check seals one early.
+    """
+    now = time.time()
+    return any(0 <= now - mtime < _DAILY_INTERVAL_SECONDS for _, mtime in _backup_mtimes("daily"))
+
+
+def _backup_mtimes(reason: Reason, version: int | None = None) -> Iterator[tuple[Backup, float]]:
+    """Yield each backup of ``reason``, and of ``version`` if given, with its mtime.
+
+    A file pruned between the listing and the stat is skipped. Any other
+    stat failure raises BackupError.
+    """
     for backup in list_backups():
-        if backup.reason != "premigration" or backup.schema_version != version:
+        if backup.reason != reason:
+            continue
+        if version is not None and backup.schema_version != version:
             continue
         try:
             mtime = Path(backup.path).stat().st_mtime
@@ -217,9 +280,32 @@ def has_fresh_premigration_backup(version: int) -> bool:
             continue  # pruned since the listing
         except OSError as exc:
             raise BackupError(f"could not read the backups folder: {exc}") from exc
-        if mtime >= catalog_mtime or now - mtime < _FRESH_PREMIGRATION_SECONDS:
-            return True
-    return False
+        yield backup, mtime
+
+
+def seal_daily_if_due() -> Backup | None:
+    """Take the daily copy if the catalog holds user data and none is under a day old.
+
+    Returns the new copy, or None when no copy was due or the copy failed. A
+    failure is logged rather than raised, because this runs in the background
+    while the app serves requests. The next hourly check tries again.
+    """
+    try:
+        with closing(connect()) as conn:
+            if not has_user_data(conn):
+                return None
+        if has_recent_daily_backup():
+            return None
+        backup = take_backup("daily")
+    except BackupBusyError as exc:
+        # A refresh holding the catalog is expected, so no traceback.
+        logger.warning("daily backup failed; the app keeps running: %s", exc)
+        return None
+    except (BackupError, sqlite3.Error):
+        logger.exception("daily backup failed; the app keeps running")
+        return None
+    logger.info("sealed the daily backup at %s", backup.path)
+    return backup
 
 
 class _BusyLimit:
@@ -247,25 +333,141 @@ class _BusyLimit:
             )
 
 
-def _verify(path: Path) -> str:
-    """Run ``PRAGMA quick_check`` on a backup and return its first result row.
+def _existing_tables(conn: sqlite3.Connection, names: tuple[str, ...]) -> set[str]:
+    """The subset of ``names`` that exist as tables, read from one schema query."""
+    placeholders = ", ".join("?" for _ in names)
+    rows = conn.execute(
+        f"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ({placeholders})",
+        names,
+    )
+    return {row[0] for row in rows}
 
-    The file is opened read-only, so a missing file raises instead of being
-    created empty and passing the check. ``as_uri`` percent-encodes the path,
-    because SQLite would otherwise read a "#" or "?" in it as URI syntax.
+
+def _quote(identifier: str) -> str:
+    """Quote a schema name for SQL, doubling any double quote inside it."""
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _card_references(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """Return ``(table, column)`` for every foreign key into ``cards``, except faces.
+
+    Read from the schema, so a table a later migration adds keeps its printings
+    in a shrunk copy without a change here. Every ON DELETE action counts. The
+    importer's sweep skips CASCADE children, but a cascading user table still
+    needs its printings, or the shrink would delete its rows.
     """
-    uri = f"{path.resolve().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True)) as conn:
-        return str(conn.execute("PRAGMA quick_check").fetchone()[0])
+    rows = conn.execute(
+        'SELECT m.name, p."from" FROM sqlite_master m '
+        "JOIN pragma_foreign_key_list(m.name) p "
+        "WHERE m.type = 'table' AND m.name <> 'card_faces' "
+        "AND p.\"table\" = 'cards' COLLATE NOCASE "
+        "ORDER BY m.name, p.id"
+    ).fetchall()
+    return [(str(table), str(column)) for table, column in rows]
+
+
+def _shrink(path: Path) -> None:
+    """Trim a fresh copy to the printings that its other tables reference.
+
+    One transaction deletes every other card and its faces, clears the
+    refresh record, and empties the name index. VACUUM then hands every freed
+    page back, and with the index emptied first no dead index pages survive
+    it. The index is rebuilt after VACUUM, over the cards that are left. That
+    order matters because ``cards`` has a TEXT primary key, so VACUUM may
+    renumber its rowids, and the external-content index is keyed on them.
+
+    Foreign keys stay off, the sqlite3 default. Every card deleted here is
+    unreferenced by construction and faces are deleted explicitly, so the
+    RESTRICT and CASCADE actions have nothing to do. ``_verify`` compares
+    ``foreign_key_check`` before and after, which catches a shrink that got
+    this wrong. The referencing tables come from the schema, so a copy of an
+    older schema without ``deck_cards`` or ``inventory`` works too, and a copy
+    with no referencing table keeps no cards at all.
+    """
+    try:
+        with closing(sqlite3.connect(path)) as conn:
+            tables = _existing_tables(conn, _SHRINK_TABLES)
+            # Names come from the schema, not user input, and are quoted.
+            referenced = " UNION ".join(
+                f"SELECT {_quote(column)} FROM {_quote(table)} WHERE {_quote(column)} IS NOT NULL"
+                for table, column in _card_references(conn)
+            )
+            unreferenced = f" WHERE scryfall_id NOT IN ({referenced})" if referenced else ""
+            conn.execute("BEGIN")
+            try:
+                if "card_faces" in tables:
+                    conn.execute(f"DELETE FROM card_faces{unreferenced}")
+                if "cards" in tables:
+                    conn.execute(f"DELETE FROM cards{unreferenced}")
+                if "scryfall_refresh" in tables:
+                    conn.execute("DELETE FROM scryfall_refresh")
+                if "cards_fts" in tables:
+                    conn.execute("INSERT INTO cards_fts(cards_fts) VALUES('delete-all')")
+                conn.execute("COMMIT")
+            except BaseException:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
+            conn.execute("VACUUM")
+            if "cards_fts" in tables:
+                rebuild_name_index(conn)
+                conn.commit()
+    except sqlite3.Error as exc:
+        raise BackupError(f"backup could not be shrunk: {exc}") from exc
+
+
+def _open_read_only(path: Path) -> sqlite3.Connection:
+    """Open ``path`` read-only, so a missing file raises instead of being created.
+
+    ``as_uri`` percent-encodes the path, because SQLite would otherwise read a
+    "#" or "?" in it as URI syntax.
+    """
+    return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+
+
+def _count_violations(conn: sqlite3.Connection) -> Counter[tuple[str, str, int]]:
+    """Count ``PRAGMA foreign_key_check`` rows by child table, parent table and key.
+
+    The rowid is left out of the key because VACUUM may renumber rowids in a
+    table without an INTEGER PRIMARY KEY, such as ``card_faces``.
+    """
+    return Counter(
+        (str(table), str(parent), int(fkid))
+        for table, _rowid, parent, fkid in conn.execute("PRAGMA foreign_key_check")
+    )
+
+
+def _fk_violations(path: Path) -> Counter[tuple[str, str, int]]:
+    """The foreign key violations a fresh copy already holds, before the shrink."""
+    with closing(_open_read_only(path)) as conn:
+        return _count_violations(conn)
+
+
+def _verify(path: Path, baseline: Counter[tuple[str, str, int]]) -> str:
+    """Check a backup and return the first ``PRAGMA quick_check`` result row.
+
+    Also runs ``PRAGMA foreign_key_check`` and raises BackupError if the copy
+    holds a violation that ``baseline`` did not. Such a violation would mean
+    the shrink dropped a card that a lot or slot still needs. Violations the
+    catalog already had, such as an orphan lot written with foreign keys off,
+    are carried into the copy as they are and do not fail it.
+    """
+    with closing(_open_read_only(path)) as conn:
+        result = str(conn.execute("PRAGMA quick_check").fetchone()[0])
+        introduced = _count_violations(conn) - baseline
+        if introduced:
+            raise BackupError(f"backup failed foreign_key_check: {sorted(introduced)}")
+        return result
 
 
 def take_backup(reason: Reason, *, now: datetime | None = None) -> Backup:
-    """Copy the catalog to a new timestamped file, verify it, then prune old copies.
+    """Copy the catalog to a new timestamped file, shrink and verify it, then prune.
 
     Raises BackupBusyError when a writer holds the catalog, and BackupError when
-    the copy fails, the file fails ``quick_check``, a backup with the same
-    filename already exists, or the backups folder cannot be written. A failed
-    backup leaves no file behind.
+    the copy or the shrink fails, the file fails ``quick_check`` or
+    ``foreign_key_check``, a backup with the same filename already exists, or
+    the backups folder cannot be written. A failed backup leaves no file behind.
     """
     _probe_write_lock()
 
@@ -298,7 +500,7 @@ def _read_source_version(src: sqlite3.Connection) -> int:
 
 
 def _seal(reason: Reason, moment: datetime) -> Backup:
-    """Copy, verify and publish one backup. File errors propagate as OSError."""
+    """Copy, shrink, verify and publish one backup. File errors propagate as OSError."""
     # Not db.connect(): its five second busy timeout would stall the first
     # locked step before _BusyLimit starts counting. A backup needs neither
     # the row factory nor foreign keys.
@@ -322,7 +524,12 @@ def _seal(reason: Reason, moment: datetime) -> Backup:
             except sqlite3.Error as exc:
                 raise BackupError(f"backup copy failed: {exc}") from exc
             try:
-                result = _verify(tmp)
+                baseline = _fk_violations(tmp)
+            except sqlite3.Error as exc:
+                raise BackupError(f"backup could not be verified: {exc}") from exc
+            _shrink(tmp)
+            try:
+                result = _verify(tmp, baseline)
             except sqlite3.Error as exc:
                 raise BackupError(f"backup could not be verified: {exc}") from exc
             if result != "ok":
@@ -388,7 +595,7 @@ def prune_backups(*, protect: Path | None = None) -> list[Path]:
     backups = list_backups()
     removed: list[Path] = []
     for reason in _REASONS:
-        keep = manual_keep() if reason == "manual" else PREMIGRATION_KEEP
+        keep = _keep_for(reason)
         pool = [backup for backup in backups if backup.reason == reason]
         for backup in reversed(pool[keep:]):
             path = Path(backup.path)
