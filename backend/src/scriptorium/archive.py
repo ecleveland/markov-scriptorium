@@ -370,10 +370,11 @@ def _card_references(conn: sqlite3.Connection) -> list[tuple[str, str]]:
 def _shrink(path: Path) -> None:
     """Trim a fresh copy to the printings that its other tables reference.
 
-    Deletes every other card and its faces and clears the refresh record in
-    one transaction, runs VACUUM so the file gives the freed pages back, then
-    rebuilds the name index over the cards that are left. The rebuild comes
-    after VACUUM because ``cards`` has a TEXT primary key, so VACUUM may
+    One transaction deletes every other card and its faces, clears the
+    refresh record, and empties the name index. VACUUM then hands every freed
+    page back, and with the index emptied first no dead index pages survive
+    it. The index is rebuilt after VACUUM, over the cards that are left. That
+    order matters because ``cards`` has a TEXT primary key, so VACUUM may
     renumber its rowids, and the external-content index is keyed on them.
 
     Foreign keys stay off, the sqlite3 default. Every card deleted here is
@@ -401,6 +402,8 @@ def _shrink(path: Path) -> None:
                     conn.execute(f"DELETE FROM cards{unreferenced}")
                 if "scryfall_refresh" in tables:
                     conn.execute("DELETE FROM scryfall_refresh")
+                if "cards_fts" in tables:
+                    conn.execute("INSERT INTO cards_fts(cards_fts) VALUES('delete-all')")
                 conn.execute("COMMIT")
             except BaseException:
                 if conn.in_transaction:

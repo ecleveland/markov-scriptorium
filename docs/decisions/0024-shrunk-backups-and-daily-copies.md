@@ -22,8 +22,12 @@ whatever its on-delete action. Today those are `inventory` and `deck_cards`.
 The shrink deletes every `card_faces` and `cards` row that none of them
 references. That is the same protection the importer's sweep uses
 ([0019](0019-importer-upsert-and-sweep.md), [VEG-575]). A table missing from an
-older schema is skipped. It then rebuilds `cards_fts` with the same rebuild the importer
-uses, empties `scryfall_refresh`, commits, and runs `VACUUM`. The copy keeps its
+older schema is skipped. It then empties `scryfall_refresh`, empties the
+`cards_fts` index with `delete-all`, commits, and runs `VACUUM`. Last it rebuilds
+`cards_fts` with the same rebuild the importer uses, over the final rowids, and
+commits. `VACUUM` may renumber the implicit rowids of `cards`, so the index must
+be built after it, and emptying the index first means `VACUUM` leaves no dead
+index pages behind. The copy keeps its
 `user_version`, every user table in full and every table's schema, so migrations
 and reads work on a restored copy.
 

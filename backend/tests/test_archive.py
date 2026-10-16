@@ -686,11 +686,7 @@ def test_shrunk_copy_is_smaller_than_the_catalog(seeded: Path) -> None:
     assert backup.size_bytes < catalog_size / 4
 
 
-def test_shrink_rebuilds_the_name_index_after_vacuum(
-    seeded: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # cards has a TEXT primary key, so VACUUM may renumber its rowids, and the
-    # external-content index is keyed on them. The rebuild must come after.
+def test_shrunk_copy_has_a_correct_index_and_no_dead_pages(seeded: Path) -> None:
     filler_text = "Whenever a Vampire enters the battlefield, " * 40
     with closing(db.connect()) as conn:
         for number in range(2000):
@@ -701,24 +697,31 @@ def test_shrink_rebuilds_the_name_index_after_vacuum(
                 collector_number=str(number),
                 oracle_text=filler_text,
             )
+        rebuild_name_index(conn)  # the live catalog indexes every card
         conn.commit()
-    free_pages: list[int] = []
-
-    def recording_rebuild(conn: sqlite3.Connection) -> None:
-        free_pages.append(int(conn.execute("PRAGMA freelist_count").fetchone()[0]))
-        rebuild_name_index(conn)
-
-    monkeypatch.setattr("scriptorium.archive.rebuild_name_index", recording_rebuild)
 
     backup = archive.take_backup("manual", now=_STAMP)
 
-    assert free_pages == [0]  # VACUUM already handed the deleted pages back
+    catalog_size = db.db_path().stat().st_size
+    assert backup.size_bytes < catalog_size / 4
     with closing(sqlite3.connect(backup.path)) as copy:
-        rows = copy.execute(
-            "SELECT c.scryfall_id FROM cards_fts f JOIN cards c ON c.rowid = f.rowid "
-            "WHERE cards_fts MATCH 'Lightning' ORDER BY c.scryfall_id"
-        ).fetchall()
-    assert rows == [("bolt-1",), ("helix-1",)]
+        # No pages from the old full-catalog index survive on the freelist.
+        assert copy.execute("PRAGMA freelist_count").fetchone()[0] == 0
+        match = (
+            "SELECT c.name FROM cards_fts f JOIN cards c ON c.rowid = f.rowid "
+            "WHERE cards_fts MATCH ? ORDER BY c.name"
+        )
+        # The join only finds a card when the index holds its current rowid.
+        assert copy.execute(match, ("Lightning",)).fetchall() == [
+            ("Lightning Bolt",),
+            ("Lightning Helix",),
+        ]
+        assert copy.execute(match, ("Llanowar",)).fetchall() == []
+        cards = _count(copy, "cards")
+        assert _count(copy, "cards_fts") == cards
+        # A full scan of an external-content table reads the content table,
+        # so the docsize shadow table is what counts the index entries.
+        assert _count(copy, "cards_fts_docsize") == cards
 
 
 def test_shrunk_copy_serves_inventory_and_tomes(seeded: Path) -> None:
