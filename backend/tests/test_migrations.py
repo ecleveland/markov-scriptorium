@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import sqlite3
@@ -195,8 +196,11 @@ def test_pending_migrations_lists_only_unapplied(tmp_path: Path) -> None:
         assert pending_migrations(conn, migrations) == []
 
 
-def _backup_names(directory: Path) -> list[str]:
-    return sorted(p.name for p in directory.iterdir()) if directory.exists() else []
+def _backup_names(directory: Path, reason: str | None = None) -> list[str]:
+    if not directory.exists():
+        return []
+    suffix = f"-{reason}.db" if reason else ""
+    return sorted(p.name for p in directory.iterdir() if p.name.endswith(suffix))
 
 
 def _newest_version() -> int:
@@ -207,7 +211,8 @@ def _catalog_one_version_behind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     """Point the app at a tmp catalog missing only the newest shipped migration.
 
     The catalog holds one lot, so startup sees user data and a pending
-    migration. Returns the catalog's version.
+    migration. It also holds a refresh row, which backups drop. Returns the
+    catalog's version.
     """
     db_file = tmp_path / "catalog.db"
     monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(db_file))
@@ -226,9 +231,27 @@ def _catalog_one_version_behind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
             " VALUES ('bolt-1', 'Lightning Bolt', 'lea', 'Alpha', '1', 'common', 'en', 'normal')"
         )
         conn.execute("INSERT INTO inventory (scryfall_id) VALUES ('bolt-1')")
+        conn.execute("INSERT INTO scryfall_refresh (id, imported_at) VALUES (1, '2026-10-14')")
         conn.commit()
     assert version < newest
     return version
+
+
+def _current_catalog_with_lot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the app at a fully migrated tmp catalog holding one lot."""
+    db_file = tmp_path / "catalog.db"
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(db_file))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
+    with closing(sqlite3.connect(db_file)) as conn:
+        apply_migrations(conn)
+        conn.execute(
+            "INSERT INTO cards (scryfall_id, name, set_code, set_name, collector_number,"
+            " rarity, lang, layout)"
+            " VALUES ('bolt-1', 'Lightning Bolt', 'lea', 'Alpha', '1', 'common', 'en', 'normal')"
+        )
+        conn.execute("INSERT INTO inventory (scryfall_id) VALUES ('bolt-1')")
+        conn.commit()
+    return db_file
 
 
 def test_startup_seals_premigration_backup_when_user_data_and_pending(
@@ -240,12 +263,14 @@ def test_startup_seals_premigration_backup_when_user_data_and_pending(
     with TestClient(app):  # entering the context runs the lifespan startup
         pass
 
-    names = _backup_names(tmp_path / "backups")
+    names = _backup_names(tmp_path / "backups", "premigration")
     assert len(names) == 1
     assert names[0].endswith(f"-v{older}-premigration.db")
     with closing(sqlite3.connect(tmp_path / "backups" / names[0])) as copy:
         assert copy.execute("PRAGMA user_version").fetchone()[0] == older
         assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
+        assert copy.execute("SELECT scryfall_id FROM cards").fetchall() == [("bolt-1",)]
+        assert copy.execute("SELECT count(*) FROM scryfall_refresh").fetchone()[0] == 0
     with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
 
@@ -264,7 +289,7 @@ def test_startup_skips_premigration_backup_when_one_exists_for_the_version(
     with TestClient(app):
         pass
 
-    assert _backup_names(tmp_path / "backups") == [existing]
+    assert _backup_names(tmp_path / "backups", "premigration") == [existing]
     with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
 
@@ -285,7 +310,7 @@ def test_startup_reseals_when_premigration_copy_is_stale_and_catalog_changed(
     with TestClient(app):
         pass
 
-    names = _backup_names(tmp_path / "backups")
+    names = _backup_names(tmp_path / "backups", "premigration")
     assert len(names) == 2
     assert all(name.endswith(f"-v{older}-premigration.db") for name in names)
     assert existing in names
@@ -312,7 +337,7 @@ def test_startup_refuses_to_migrate_when_premigration_backup_fails(
         assert conn.execute("PRAGMA user_version").fetchone()[0] == older
 
 
-def test_startup_takes_no_backup_on_fresh_db(
+def test_startup_takes_no_daily_copy_on_fresh_db(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
@@ -324,4 +349,98 @@ def test_startup_takes_no_backup_on_fresh_db(
 
     assert _backup_names(tmp_path / "backups") == []
     with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+
+
+def test_startup_seals_a_daily_copy_after_migrating_when_user_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    backups = tmp_path / "backups"
+    [premigration] = _backup_names(backups, "premigration")
+    assert premigration.endswith(f"-v{older}-premigration.db")
+    [startup] = _backup_names(backups, "startup")
+    assert startup.endswith(f"-v{_newest_version()}-startup.db")
+    with closing(sqlite3.connect(backups / startup)) as copy:
+        assert copy.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+        assert copy.execute("SELECT scryfall_id FROM inventory").fetchall() == [("bolt-1",)]
+        assert copy.execute("SELECT count(*) FROM scryfall_refresh").fetchone()[0] == 0
+
+
+def test_startup_skips_daily_copy_when_one_is_under_a_day_old(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _current_catalog_with_lot(tmp_path, monkeypatch)
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    existing = backups / f"scriptorium-20260101T000000Z-v{_newest_version()}-startup.db"
+    existing.write_bytes(b"earlier copy")
+    an_hour_ago = time.time() - 3600
+    os.utime(existing, (an_hour_ago, an_hour_ago))
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    assert _backup_names(backups) == [existing.name]
+
+    # A day later the same start seals a fresh copy beside it.
+    a_day_ago = time.time() - 25 * 3600
+    os.utime(existing, (a_day_ago, a_day_ago))
+    with TestClient(app):
+        pass
+
+    names = _backup_names(backups, "startup")
+    assert len(names) == 2
+    assert existing.name in names
+
+
+def test_daily_copy_failure_does_not_abort_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _current_catalog_with_lot(tmp_path, monkeypatch)
+    from scriptorium import archive
+    from scriptorium.main import app
+
+    real_take_backup = archive.take_backup
+    reasons: list[str] = []
+
+    def fail_startup(reason: archive.Reason) -> archive.Backup:
+        reasons.append(reason)
+        if reason == "startup":
+            raise archive.BackupError("disk full")
+        return real_take_backup(reason)
+
+    monkeypatch.setattr(archive, "take_backup", fail_startup)
+
+    with caplog.at_level(logging.ERROR, logger="scriptorium"), TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+
+    assert reasons == ["startup"]
+    assert "daily backup failed" in caplog.text
+    assert _backup_names(tmp_path / "backups") == []
+
+
+def test_daily_copy_check_failure_does_not_abort_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    db_file = _current_catalog_with_lot(tmp_path, monkeypatch)
+    from scriptorium import archive
+    from scriptorium.main import app
+
+    def unreadable() -> bool:
+        raise archive.BackupError("no listing")
+
+    monkeypatch.setattr(archive, "has_recent_startup_backup", unreadable)
+
+    with caplog.at_level(logging.ERROR, logger="scriptorium"), TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+
+    assert "daily backup failed" in caplog.text
+    with closing(sqlite3.connect(db_file)) as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()

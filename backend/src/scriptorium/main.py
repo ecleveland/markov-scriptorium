@@ -63,7 +63,12 @@ def _run_manual_refresh() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Back up, migrate the catalog, then kick off a background refresh, before serving."""
+    """Back up, migrate, seal the daily copy, then start a background refresh.
+
+    The daily copy runs after migrating, so it is at the newest schema, and
+    before the refresh task starts, so it never races the importer for the
+    catalog. A failed daily copy is logged and the app starts anyway.
+    """
     with closing(connect()) as conn:
         # A schema change on a catalog holding the user's lots or Tomes gets a
         # backup first. If that backup fails, startup stops before migrating, so
@@ -89,6 +94,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("catalog migration failed during startup")
             raise
+
+        # One shrunk copy a day of a catalog holding the user's lots or Tomes.
+        # Reading the backups folder can fail too, so the age check sits inside
+        # the try and an unreadable folder never stops the app from starting.
+        if archive.has_user_data(conn):
+            try:
+                if not archive.has_recent_startup_backup():
+                    backup = archive.take_backup("startup")
+                    logger.info("sealed the daily backup at %s", backup.path)
+            except archive.BackupError:
+                logger.exception("daily backup failed; the app starts anyway")
 
     # Run the refresh off the event loop (httpx + sqlite are blocking) and don't
     # await it — startup must not wait on a ~500 MB download.

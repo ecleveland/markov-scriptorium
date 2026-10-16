@@ -49,7 +49,7 @@ def _attachment(extension: str) -> dict[str, str]:
 
 @router.get("/backups")
 def list_backups() -> dict[str, Any]:
-    """The backups directory, both pools' keep counts, and every backup, newest first."""
+    """The backups directory, each pool's keep count, and every backup, newest first."""
     try:
         directory = archive.backups_dir()
         backups = archive.list_backups()
@@ -59,6 +59,7 @@ def list_backups() -> dict[str, Any]:
         "directory": str(directory),
         "keep": archive.manual_keep(),
         "premigration_keep": archive.PREMIGRATION_KEEP,
+        "startup_keep": archive.STARTUP_KEEP,
         "backups": [asdict(backup) for backup in backups],
     }
 
