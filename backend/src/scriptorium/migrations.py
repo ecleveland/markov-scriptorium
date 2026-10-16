@@ -7,7 +7,9 @@ via SQLite's ``PRAGMA user_version``, so no bookkeeping table is needed.
 
 On startup the app applies every migration whose version is greater than the
 database's current ``user_version``, each wrapped in a transaction so a failing
-migration leaves the catalog untouched. Conventions:
+migration leaves the catalog untouched. :func:`pending_migrations` reports
+which versions would run, so startup can seal a backup first (VEG-281).
+Conventions:
 
 - Migrations are forward-only and never edited once shipped — add a new file.
 - Write plain DDL. A migration must **not** contain its own ``BEGIN`` /
@@ -59,6 +61,14 @@ def _has_transaction_control(sql: str) -> bool:
     """True if the SQL (ignoring ``--`` line comments) uses BEGIN/COMMIT/ROLLBACK."""
     without_comments = "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
     return _TXN_CONTROL.search(without_comments) is not None
+
+
+def pending_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = None) -> list[int]:
+    """Return the versions newer than the database's ``user_version``, in order."""
+    current = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    return [
+        version for version, _ in _discover(migrations_dir or _MIGRATIONS_DIR) if version > current
+    ]
 
 
 def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = None) -> int:

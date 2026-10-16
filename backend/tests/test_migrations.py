@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import sqlite3
+import time
 from contextlib import closing
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from scriptorium.migrations import MigrationError, apply_migrations
+from scriptorium.migrations import (
+    _MIGRATIONS_DIR,
+    MigrationError,
+    _discover,
+    apply_migrations,
+    pending_migrations,
+)
 
 
 def _write(migrations_dir: Path, name: str, sql: str) -> None:
@@ -169,3 +178,150 @@ def test_partial_failure_commits_earlier_then_resumes(tmp_path: Path) -> None:
             row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         assert {"a", "b"} <= tables
+
+
+def test_pending_migrations_lists_only_unapplied(tmp_path: Path) -> None:
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    _write(migrations, "0001_init.sql", "CREATE TABLE a (id INTEGER);")
+    _write(migrations, "0002_more.sql", "CREATE TABLE b (id INTEGER);")
+    _write(migrations, "0003_most.sql", "CREATE TABLE c (id INTEGER);")
+    _write(migrations, "notes.sql", "not a migration")
+
+    with closing(sqlite3.connect(tmp_path / "t.db")) as conn:
+        conn.executescript("CREATE TABLE a (id INTEGER); PRAGMA user_version = 1;")
+        assert pending_migrations(conn, migrations) == [2, 3]
+        apply_migrations(conn, migrations)
+        assert pending_migrations(conn, migrations) == []
+
+
+def _backup_names(directory: Path) -> list[str]:
+    return sorted(p.name for p in directory.iterdir()) if directory.exists() else []
+
+
+def _newest_version() -> int:
+    return max(version for version, _ in _discover(_MIGRATIONS_DIR))
+
+
+def _catalog_one_version_behind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
+    """Point the app at a tmp catalog missing only the newest shipped migration.
+
+    The catalog holds one lot, so startup sees user data and a pending
+    migration. Returns the catalog's version.
+    """
+    db_file = tmp_path / "catalog.db"
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(db_file))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
+    newest = _newest_version()
+    older = tmp_path / "migrations_older"
+    older.mkdir()
+    for version, path in _discover(_MIGRATIONS_DIR):
+        if version < newest:
+            shutil.copy(path, older / path.name)
+    with closing(sqlite3.connect(db_file)) as conn:
+        version = apply_migrations(conn, older)
+        conn.execute(
+            "INSERT INTO cards (scryfall_id, name, set_code, set_name, collector_number,"
+            " rarity, lang, layout)"
+            " VALUES ('bolt-1', 'Lightning Bolt', 'lea', 'Alpha', '1', 'common', 'en', 'normal')"
+        )
+        conn.execute("INSERT INTO inventory (scryfall_id) VALUES ('bolt-1')")
+        conn.commit()
+    assert version < newest
+    return version
+
+
+def test_startup_seals_premigration_backup_when_user_data_and_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    from scriptorium.main import app
+
+    with TestClient(app):  # entering the context runs the lifespan startup
+        pass
+
+    names = _backup_names(tmp_path / "backups")
+    assert len(names) == 1
+    assert names[0].endswith(f"-v{older}-premigration.db")
+    with closing(sqlite3.connect(tmp_path / "backups" / names[0])) as copy:
+        assert copy.execute("PRAGMA user_version").fetchone()[0] == older
+        assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+
+
+def test_startup_skips_premigration_backup_when_one_exists_for_the_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    # A copy left by an earlier start that then failed to migrate. Only its name
+    # is matched, so the content does not matter.
+    existing = f"scriptorium-20260101T000000Z-v{older}-premigration.db"
+    (tmp_path / "backups").mkdir()
+    (tmp_path / "backups" / existing).write_bytes(b"earlier copy")
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    assert _backup_names(tmp_path / "backups") == [existing]
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+
+
+def test_startup_reseals_when_premigration_copy_is_stale_and_catalog_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    # A copy from an earlier attempt two days ago. The catalog has gained lots
+    # since, so that copy no longer protects them.
+    existing = f"scriptorium-20260101T000000Z-v{older}-premigration.db"
+    (tmp_path / "backups").mkdir()
+    (tmp_path / "backups" / existing).write_bytes(b"earlier copy")
+    two_days_ago = time.time() - 2 * 86400
+    os.utime(tmp_path / "backups" / existing, (two_days_ago, two_days_ago))
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    names = _backup_names(tmp_path / "backups")
+    assert len(names) == 2
+    assert all(name.endswith(f"-v{older}-premigration.db") for name in names)
+    assert existing in names
+
+
+def test_startup_refuses_to_migrate_when_premigration_backup_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    # main.py imports the archive module itself, so patching its attribute here
+    # replaces the function the lifespan calls.
+    from scriptorium import archive
+    from scriptorium.main import app
+
+    def disk_full(reason: str) -> None:
+        raise archive.BackupError("disk full")
+
+    monkeypatch.setattr(archive, "take_backup", disk_full)
+
+    with pytest.raises(archive.BackupError, match="disk full"), TestClient(app):
+        pass
+
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == older
+
+
+def test_startup_takes_no_backup_on_fresh_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    assert _backup_names(tmp_path / "backups") == []
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()

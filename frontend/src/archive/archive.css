@@ -1,0 +1,76 @@
+/* The Muniment Room: sealed copies of the database and the exports (VEG-281).
+   Tokens only, per ADR 0014. Buttons, tags, notices and the seal come from the
+   component layer (ADR 0017); what is left here is layout and the table. */
+
+.archive {
+  max-width: 56rem;
+  margin: 0 auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.archive__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.archive__panel h2 {
+  margin: 0;
+}
+
+.archive__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Absolute paths and filenames have few break points, so let them break anywhere. */
+.archive__wrap {
+  overflow-wrap: anywhere;
+}
+
+/* Four short columns fit a phone, but scroll inside the panel if one ever does not. */
+.archive__scroll {
+  overflow-x: auto;
+}
+
+.archive__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.archive__table th {
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.archive__table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.archive__note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.archive__exports {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

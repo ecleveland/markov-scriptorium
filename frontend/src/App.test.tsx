@@ -25,6 +25,7 @@ vi.mock('./api', async (importOriginal) => {
     searchFolios: vi.fn(),
     listFacets: vi.fn(),
     ownedForPrinting: vi.fn(),
+    listBackups: vi.fn(),
   }
 })
 
@@ -35,6 +36,7 @@ import {
   getLot,
   listDecks,
   listFacets,
+  listBackups,
   listInventory,
   ownedForPrinting,
   searchFolios,
@@ -60,6 +62,12 @@ vi.mocked(searchFolios).mockResolvedValue({
 })
 vi.mocked(listFacets).mockResolvedValue({ sets: [], locations: [], tags: [] })
 vi.mocked(ownedForPrinting).mockRejectedValue(new ApiError('gone', 404))
+vi.mocked(listBackups).mockResolvedValue({
+  directory: '/tmp/scriptorium/backups',
+  keep: 3,
+  premigration_keep: 2,
+  backups: [],
+})
 
 function renderAt(path: string) {
   return renderWithQuery(
@@ -135,6 +143,14 @@ describe('App routing', () => {
       await screen.findByRole('heading', { name: 'No such Tome' }),
     ).toBeInTheDocument()
     await waitFor(() => expect(getBreakdown).toHaveBeenCalledWith(999))
+  })
+
+  it('renders the Muniment Room at /archive', async () => {
+    renderAt('/archive')
+    expect(
+      await screen.findByRole('heading', { name: 'The Muniment Room' }),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(listBackups).toHaveBeenCalled())
   })
 
   it('links the Index first in the primary nav, then the Catalog and the Tomes', () => {

@@ -17,6 +17,10 @@ import type { Page, Route } from '@playwright/test'
 // request, so a quantity changed in the Catalog shows up in the Index. The
 // search stub covers only the filters the specs use (see searchFolios below).
 //
+// The Muniment Room's sealed copies live in memory too: the list starts empty
+// and each seal adds one. The export links are never followed, so they have
+// no stub.
+//
 // Shapes mirror frontend/src/api.ts. Keep them in sync if the contracts change.
 
 /** A single catalog printing — enough fields for the Inscribe flow. */
@@ -166,6 +170,34 @@ interface SlotStub {
 }
 
 const STUB_TIMESTAMP = '2026-10-01T00:00:00Z'
+
+/** A sealed copy of the database, as GET /archive/backups lists it. */
+interface BackupStub {
+  filename: string
+  path: string
+  reason: 'manual' | 'premigration'
+  created_at: string
+  schema_version: number
+  size_bytes: number
+}
+
+const BACKUP_DIRECTORY = '/tmp/scriptorium/backups'
+
+/** A manual copy stamped `seconds` after a fixed instant, so names never collide. */
+function sealedCopy(seconds: number): BackupStub {
+  const created = new Date(Date.UTC(2026, 9, 15, 14, 22, seconds))
+  const iso = created.toISOString().replace(/\.\d{3}Z$/, 'Z')
+  const stamp = iso.replace(/[-:]/g, '')
+  const filename = `scriptorium-${stamp}-v6-manual.db`
+  return {
+    filename,
+    path: `${BACKUP_DIRECTORY}/${filename}`,
+    reason: 'manual',
+    created_at: iso,
+    schema_version: 6,
+    size_bytes: 245_760,
+  }
+}
 
 /** Display order of boards within a Tome. */
 const BOARD_RANK: Record<string, number> = {
@@ -414,8 +446,8 @@ function listFacets(lots: Map<number, LotStub>) {
 /**
  * Register a single `/api/**` handler covering the health probe, the Inscribe
  * read/write path, the Catalog's list, detail, amend and remove, the Index's
- * search and facets, and the Tome endpoints (deck CRUD, slot CRUD,
- * breakdown). Routes are
+ * search and facets, the Tome endpoints (deck CRUD, slot CRUD,
+ * breakdown), and the Muniment Room's sealed copies. Routes are
  * matched by pathname + method; anything unmatched gets a 404 so an unstubbed
  * call fails loudly instead of hitting the network.
  *
@@ -428,6 +460,7 @@ export async function stubApi(page: Page): Promise<void> {
   const slots = new Map<number, SlotStub>()
   let nextDeckId = 1
   let nextSlotId = 1
+  const backups: BackupStub[] = []
 
   const missingDeck = (route: Route, id: number) =>
     json(route, { detail: `No Tome with id ${id}.` }, 404)
@@ -714,6 +747,21 @@ export async function stubApi(page: Page): Promise<void> {
           needed: sum((line) => line.needed),
         },
       })
+    }
+
+    if (path === '/archive/backups' && method === 'GET') {
+      return json(route, {
+        directory: BACKUP_DIRECTORY,
+        keep: 3,
+        premigration_keep: 2,
+        backups,
+      })
+    }
+
+    if (path === '/archive/backups' && method === 'POST') {
+      const copy = sealedCopy(backups.length)
+      backups.unshift(copy)
+      return json(route, copy, 201)
     }
 
     return json(route, { detail: `Unstubbed ${method} ${path}` }, 404)

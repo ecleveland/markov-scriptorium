@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { StatusHeader } from './StatusHeader'
+import { ArchivePage } from './archive/ArchivePage'
 import { Consulting } from './components'
 import { CatalogPage } from './catalog/CatalogPage'
 import { LotDetailPage } from './catalog/LotDetailPage'
@@ -39,6 +40,7 @@ function App() {
           <Route path="/inscribe" element={<InscribePage />} />
           <Route path="/import/decklist" element={<DecklistPage />} />
           <Route path="/import/csv" element={<CsvImportPage />} />
+          <Route path="/archive" element={<ArchivePage />} />
           {Specimens && (
             <Route
               path="/specimens"

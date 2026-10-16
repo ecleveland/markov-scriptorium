@@ -60,6 +60,7 @@ export function StatusHeader() {
           <NavLink to="/inscribe">Inscribe</NavLink>
           <NavLink to="/import/decklist">Decklist</NavLink>
           <NavLink to="/import/csv">CSV</NavLink>
+          <NavLink to="/archive">Archive</NavLink>
         </nav>
         <p className="status" role="status" data-state={state}>
           <span className="status-dot" aria-hidden="true">

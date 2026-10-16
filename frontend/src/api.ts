@@ -721,3 +721,44 @@ export async function deleteSlot(
 export async function getBreakdown(deckId: number): Promise<Breakdown> {
   return request<Breakdown>(`/decks/${deckId}/breakdown`)
 }
+
+// --- Safekeeping (VEG-281) --------------------------------------------------
+
+/** Why a copy was sealed: by hand, or by the app before a schema migration. */
+export type BackupReason = 'manual' | 'premigration'
+
+/** One sealed copy of the database file. */
+export interface Backup {
+  /** Such as `scriptorium-20261015T142233Z-v6-manual.db`. */
+  filename: string
+  /** Absolute path on disk. */
+  path: string
+  reason: BackupReason
+  created_at: string
+  schema_version: number
+  size_bytes: number
+}
+
+export interface BackupList {
+  /** Absolute path of the folder the copies sit in. */
+  directory: string
+  /** How many copies sealed by hand are retained. */
+  keep: number
+  /** How many copies sealed before a migration are retained. */
+  premigration_keep: number
+  /** Newest first. */
+  backups: Backup[]
+}
+
+/** Plain links rather than fetches. The browser saves the attachment itself. */
+export const EXPORT_CSV_URL = '/api/archive/export.csv'
+export const EXPORT_JSON_URL = '/api/archive/export.json'
+
+export async function listBackups(): Promise<BackupList> {
+  return request<BackupList>('/archive/backups')
+}
+
+/** Seal a copy now. Answers 409 while a catalog refresh holds the database. */
+export async function createBackup(): Promise<Backup> {
+  return request<Backup>('/archive/backups', { method: 'POST' })
+}
