@@ -10,8 +10,9 @@ three places, and each keeps its own pool of recent copies:
 - ``premigration`` copies are taken at startup before pending migrations run on
   a catalog that holds user data. The newest three are kept, so a run of manual
   backups never pushes out the copy taken before a schema change.
-- ``startup`` copies are taken at startup after migrating, at most once a day,
-  when the catalog holds user data. The newest seven are kept.
+- ``daily`` copies are taken in the background, at most once a day, when the
+  catalog holds user data. The app checks after startup and then every hour,
+  so a server left running still seals one a day. The newest seven are kept.
 
 Each copy is shrunk before it is verified. Scryfall printings that no lot or
 Tome slot references are deleted from the copy, along with their faces, the
@@ -41,6 +42,8 @@ import re
 import sqlite3
 import tempfile
 import time
+from collections import Counter
+from collections.abc import Iterator
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,14 +51,14 @@ from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
 from scriptorium.catalog import rebuild_name_index
-from scriptorium.db import db_path
+from scriptorium.db import connect, db_path
 
 logger = logging.getLogger("scriptorium")
 
 BACKUP_KEEP_ENV = "SCRIPTORIUM_BACKUP_KEEP"
 DEFAULT_KEEP = 10
 PREMIGRATION_KEEP = 3
-STARTUP_KEEP = 7
+DAILY_KEEP = 7
 # Pages copied per backup step. At SQLite's default 4 KB page size this is 4 MB.
 # The source's shared lock is released between steps, so a long copy never
 # blocks writers for its whole duration.
@@ -68,7 +71,7 @@ _BACKUP_SLEEP = 0.25
 _BUSY_LIMIT_SECONDS = 5.0
 _BUSY_STATUSES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
 
-Reason = Literal["manual", "premigration", "startup"]
+Reason = Literal["manual", "premigration", "daily"]
 
 _REASONS: tuple[Reason, ...] = get_args(Reason)
 _FILENAME = re.compile(rf"^scriptorium-(\d{{8}}T\d{{6}}Z)-v(\d+)-({'|'.join(_REASONS)})\.db$")
@@ -79,8 +82,8 @@ _PROBE_TIMEOUT = 1.0
 # A pre-migration copy this young still counts as fresh, which covers a
 # restart loop on a failing migration whose rollback touches the catalog file.
 _FRESH_PREMIGRATION_SECONDS = 3600
-# Startup seals a daily copy only when no startup copy is younger than this.
-_STARTUP_INTERVAL_SECONDS = 86400
+# A daily copy is due when no daily copy is younger than this.
+_DAILY_INTERVAL_SECONDS = 86400
 # Tables the shrink reads or trims. Older schemas may lack some of them.
 _SHRINK_TABLES = ("inventory", "deck_cards", "cards", "card_faces", "cards_fts", "scryfall_refresh")
 # Tables whose rows keep a printing in a shrunk copy.
@@ -177,7 +180,7 @@ def _keep_for(reason: Reason) -> int:
         return manual_keep()
     if reason == "premigration":
         return PREMIGRATION_KEEP
-    return STARTUP_KEEP
+    return DAILY_KEEP
 
 
 def has_user_data(conn: sqlite3.Connection) -> bool:
@@ -235,29 +238,32 @@ def has_fresh_premigration_backup(version: int) -> bool:
     except OSError as exc:
         raise BackupError(f"could not read the catalog file: {exc}") from exc
     now = time.time()
-    for backup in list_backups():
-        if backup.reason != "premigration" or backup.schema_version != version:
-            continue
-        try:
-            mtime = Path(backup.path).stat().st_mtime
-        except FileNotFoundError:
-            continue  # pruned since the listing
-        except OSError as exc:
-            raise BackupError(f"could not read the backups folder: {exc}") from exc
-        if mtime >= catalog_mtime or now - mtime < _FRESH_PREMIGRATION_SECONDS:
-            return True
-    return False
+    return any(
+        mtime >= catalog_mtime or now - mtime < _FRESH_PREMIGRATION_SECONDS
+        for _, mtime in _backup_mtimes("premigration", version)
+    )
 
 
-def has_recent_startup_backup() -> bool:
-    """True if a startup copy was written within the last day.
+def has_recent_daily_backup() -> bool:
+    """True if a daily copy was written within the last day.
 
     The file's mtime decides, not the stamp in its name, so a clock that
     jumped since the copy was named cannot skip or repeat the daily copy.
     """
     now = time.time()
+    return any(now - mtime < _DAILY_INTERVAL_SECONDS for _, mtime in _backup_mtimes("daily"))
+
+
+def _backup_mtimes(reason: Reason, version: int | None = None) -> Iterator[tuple[Backup, float]]:
+    """Yield each backup of ``reason``, and of ``version`` if given, with its mtime.
+
+    A file pruned between the listing and the stat is skipped. Any other
+    stat failure raises BackupError.
+    """
     for backup in list_backups():
-        if backup.reason != "startup":
+        if backup.reason != reason:
+            continue
+        if version is not None and backup.schema_version != version:
             continue
         try:
             mtime = Path(backup.path).stat().st_mtime
@@ -265,9 +271,28 @@ def has_recent_startup_backup() -> bool:
             continue  # pruned since the listing
         except OSError as exc:
             raise BackupError(f"could not read the backups folder: {exc}") from exc
-        if now - mtime < _STARTUP_INTERVAL_SECONDS:
-            return True
-    return False
+        yield backup, mtime
+
+
+def seal_daily_if_due() -> Backup | None:
+    """Take the daily copy if the catalog holds user data and none is under a day old.
+
+    Returns the new copy, or None when no copy was due or the copy failed. A
+    failure is logged rather than raised, because this runs in the background
+    while the app serves requests. The next hourly check tries again.
+    """
+    try:
+        with closing(connect()) as conn:
+            if not has_user_data(conn):
+                return None
+        if has_recent_daily_backup():
+            return None
+        backup = take_backup("daily")
+    except (BackupError, sqlite3.Error):
+        logger.exception("daily backup failed; the app keeps running")
+        return None
+    logger.info("sealed the daily backup at %s", backup.path)
+    return backup
 
 
 class _BusyLimit:
@@ -344,22 +369,47 @@ def _shrink(path: Path) -> None:
         raise BackupError(f"backup could not be shrunk: {exc}") from exc
 
 
-def _verify(path: Path) -> str:
-    """Check a backup and return the first ``PRAGMA quick_check`` result row.
+def _open_read_only(path: Path) -> sqlite3.Connection:
+    """Open ``path`` read-only, so a missing file raises instead of being created.
 
-    Also runs ``PRAGMA foreign_key_check`` and raises BackupError on the first
-    row that points at a missing parent, which would mean the shrink dropped
-    a card that a lot or slot still needs. The file is opened read-only, so a
-    missing file raises instead of being created empty and passing the check.
     ``as_uri`` percent-encodes the path, because SQLite would otherwise read a
     "#" or "?" in it as URI syntax.
     """
-    uri = f"{path.resolve().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True)) as conn:
+    return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+
+
+def _count_violations(conn: sqlite3.Connection) -> Counter[tuple[str, str, int]]:
+    """Count ``PRAGMA foreign_key_check`` rows by child table, parent table and key.
+
+    The rowid is left out of the key because VACUUM may renumber rowids in a
+    table without an INTEGER PRIMARY KEY, such as ``card_faces``.
+    """
+    return Counter(
+        (str(table), str(parent), int(fkid))
+        for table, _rowid, parent, fkid in conn.execute("PRAGMA foreign_key_check")
+    )
+
+
+def _fk_violations(path: Path) -> Counter[tuple[str, str, int]]:
+    """The foreign key violations a fresh copy already holds, before the shrink."""
+    with closing(_open_read_only(path)) as conn:
+        return _count_violations(conn)
+
+
+def _verify(path: Path, baseline: Counter[tuple[str, str, int]]) -> str:
+    """Check a backup and return the first ``PRAGMA quick_check`` result row.
+
+    Also runs ``PRAGMA foreign_key_check`` and raises BackupError if the copy
+    holds a violation that ``baseline`` did not. Such a violation would mean
+    the shrink dropped a card that a lot or slot still needs. Violations the
+    catalog already had, such as an orphan lot written with foreign keys off,
+    are carried into the copy as they are and do not fail it.
+    """
+    with closing(_open_read_only(path)) as conn:
         result = str(conn.execute("PRAGMA quick_check").fetchone()[0])
-        row = conn.execute("PRAGMA foreign_key_check").fetchone()
-        if row is not None:
-            raise BackupError(f"backup failed foreign_key_check: {row}")
+        introduced = _count_violations(conn) - baseline
+        if introduced:
+            raise BackupError(f"backup failed foreign_key_check: {sorted(introduced)}")
         return result
 
 
@@ -425,9 +475,13 @@ def _seal(reason: Reason, moment: datetime) -> Backup:
                     src.backup(dest, pages=BACKUP_PAGES, progress=_BusyLimit(), sleep=_BACKUP_SLEEP)
             except sqlite3.Error as exc:
                 raise BackupError(f"backup copy failed: {exc}") from exc
+            try:
+                baseline = _fk_violations(tmp)
+            except sqlite3.Error as exc:
+                raise BackupError(f"backup could not be verified: {exc}") from exc
             _shrink(tmp)
             try:
-                result = _verify(tmp)
+                result = _verify(tmp, baseline)
             except sqlite3.Error as exc:
                 raise BackupError(f"backup could not be verified: {exc}") from exc
             if result != "ok":

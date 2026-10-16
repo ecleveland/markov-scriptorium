@@ -2,7 +2,7 @@
 
 **Status:** accepted (2026-10-15)
 
-Amended by [0024](0024-shrunk-backups-and-daily-copies.md), which shrinks each copy to owned printings and adds daily startup copies.
+Amended by [0024](0024-shrunk-backups-and-daily-copies.md), which shrinks each copy to owned printings and adds daily copies.
 
 Resolves [VEG-281]. Decides how the catalog is copied, when the app does it on
 its own, what the two exports contain, and how a restore works. Builds on

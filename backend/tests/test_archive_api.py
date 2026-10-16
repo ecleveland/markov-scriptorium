@@ -82,7 +82,7 @@ def test_post_backup_then_list_shows_it_with_directory_and_keep(seeded_catalog: 
     assert body["directory"] == str(seeded_catalog / "backups")
     assert body["keep"] == 10
     assert body["premigration_keep"] == 3
-    assert body["startup_keep"] == 7
+    assert body["daily_keep"] == 7
     assert body["backups"] == [backup]
 
 

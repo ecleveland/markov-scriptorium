@@ -17,6 +17,7 @@ import os
 import sqlite3
 import tempfile
 import time
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import closing
 from datetime import UTC, datetime
@@ -233,7 +234,7 @@ def test_take_backup_prunes_the_manual_pool_to_keep(seeded: Path) -> None:
 
 
 def test_failed_quick_check_leaves_no_file(seeded: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(archive, "_verify", lambda path: "malformed")
+    monkeypatch.setattr(archive, "_verify", lambda path, baseline: "malformed")
 
     with pytest.raises(BackupError, match="malformed"):
         archive.take_backup("manual", now=_STAMP)
@@ -249,10 +250,10 @@ def test_vanished_temp_file_fails_verification_instead_of_publishing_empty_copy(
     real_verify = archive._verify
     seen: list[Path] = []
 
-    def vanish_then_verify(path: Path) -> str:
+    def vanish_then_verify(path: Path, baseline: Counter[tuple[str, str, int]]) -> str:
         seen.append(path)
         path.unlink()
-        return real_verify(path)
+        return real_verify(path, baseline)
 
     monkeypatch.setattr(archive, "_verify", vanish_then_verify)
 
@@ -282,7 +283,7 @@ def test_backup_verifies_when_the_catalog_path_has_uri_characters(
     # SQLite would read "#" and "?" as URI syntax and open a truncated path
     # read-write. Verifying a missing file there must raise and create nothing.
     with pytest.raises(sqlite3.Error):
-        archive._verify(odd / "backups" / "missing.db")
+        archive._verify(odd / "backups" / "missing.db", Counter())
     assert [p.name for p in tmp_path.iterdir()] == [odd.name]
 
 
@@ -377,23 +378,23 @@ def test_has_fresh_premigration_backup_matches_reason_version_and_age(catalog: P
     assert archive.has_fresh_premigration_backup(5) is True  # catalog unchanged since
 
 
-def test_has_recent_startup_backup_uses_mtime_within_a_day(catalog: Path) -> None:
+def test_has_recent_daily_backup_uses_mtime_within_a_day(catalog: Path) -> None:
     backups = archive.backups_dir()
-    assert archive.has_recent_startup_backup() is False
+    assert archive.has_recent_daily_backup() is False
 
     manual = backups / "scriptorium-20260101T000000Z-v6-manual.db"
     manual.write_bytes(b"x")
     _age(manual, 2 * 3600)
-    assert archive.has_recent_startup_backup() is False  # only startup copies count
+    assert archive.has_recent_daily_backup() is False  # only daily copies count
 
     # The stamp in the name is old. The file's mtime decides.
-    startup = backups / "scriptorium-20200101T000000Z-v6-startup.db"
-    startup.write_bytes(b"x")
-    _age(startup, 2 * 3600)
-    assert archive.has_recent_startup_backup() is True
+    daily = backups / "scriptorium-20200101T000000Z-v6-daily.db"
+    daily.write_bytes(b"x")
+    _age(daily, 2 * 3600)
+    assert archive.has_recent_daily_backup() is True
 
-    _age(startup, 25 * 3600)
-    assert archive.has_recent_startup_backup() is False
+    _age(daily, 25 * 3600)
+    assert archive.has_recent_daily_backup() is False
 
 
 def test_prune_failure_does_not_fail_the_backup(
@@ -475,21 +476,21 @@ def test_prune_keeps_three_pools_with_new_defaults(catalog: Path) -> None:
     backups = archive.backups_dir()
     manual = [f"scriptorium-202610{day:02d}T120000Z-v6-manual.db" for day in range(1, 13)]
     premigration = [f"scriptorium-2026090{day}T120000Z-v5-premigration.db" for day in range(1, 6)]
-    startup = [f"scriptorium-2026080{day}T120000Z-v6-startup.db" for day in range(1, 10)]
-    for name in [*manual, *premigration, *startup, "notes.txt"]:
+    daily = [f"scriptorium-2026080{day}T120000Z-v6-daily.db" for day in range(1, 10)]
+    for name in [*manual, *premigration, *daily, "notes.txt"]:
         (backups / name).write_bytes(b"x")
 
     removed = archive.prune_backups()
 
     remaining = sorted(p.name for p in backups.iterdir())
-    assert remaining == sorted([*manual[-10:], *premigration[-3:], *startup[-7:], "notes.txt"])
-    assert sorted(p.name for p in removed) == sorted([*manual[:2], *premigration[:2], *startup[:2]])
+    assert remaining == sorted([*manual[-10:], *premigration[-3:], *daily[-7:], "notes.txt"])
+    assert sorted(p.name for p in removed) == sorted([*manual[:2], *premigration[:2], *daily[:2]])
 
 
 def test_reasons_regex_and_pools_derive_from_the_literal(catalog: Path) -> None:
     backups = archive.backups_dir()
     reasons: tuple[Reason, ...] = get_args(Reason)
-    assert set(reasons) == {"manual", "premigration", "startup"}
+    assert set(reasons) == {"manual", "premigration", "daily"}
     for reason in reasons:
         names = [f"scriptorium-202601{day:02d}T000000Z-v6-{reason}.db" for day in range(1, 13)]
         assert all(archive._FILENAME.match(name) for name in names), reason
@@ -533,7 +534,7 @@ def test_manual_keep_reads_env_and_rejects_garbage(monkeypatch: pytest.MonkeyPat
     # The env var governs only the manual pool.
     monkeypatch.setenv(archive.BACKUP_KEEP_ENV, "2")
     assert archive._keep_for("premigration") == archive.PREMIGRATION_KEEP == 3
-    assert archive._keep_for("startup") == archive.STARTUP_KEEP == 7
+    assert archive._keep_for("daily") == archive.DAILY_KEEP == 7
 
 
 def test_busy_source_raises_backup_busy_error(seeded: Path) -> None:
@@ -743,6 +744,61 @@ def test_foreign_key_check_failure_fails_the_backup(
         archive.take_backup("manual", now=_STAMP)
 
     assert list((seeded / "backups").iterdir()) == []
+
+
+def test_preexisting_fk_violation_does_not_fail_the_backup(seeded: Path) -> None:
+    # An orphan lot from an external edit or an old import run with foreign
+    # keys off. The shrink did not cause it, so it must not block every backup.
+    with closing(sqlite3.connect(db.db_path())) as conn:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        orphan = _insert_lot(conn, "ghost-1", quantity=2)
+        conn.commit()
+
+    backup = archive.take_backup("manual", now=_STAMP)
+
+    with closing(sqlite3.connect(backup.path)) as copy:
+        assert copy.execute(
+            "SELECT scryfall_id, quantity FROM inventory WHERE id = ?", (orphan,)
+        ).fetchall() == [("ghost-1", 2)]
+        assert _ids(copy, "cards") == ["bolt-1", "helix-1"]
+
+
+def test_seal_daily_if_due_seals_once_a_day_when_user_data(seeded: Path) -> None:
+    backup = archive.seal_daily_if_due()
+
+    assert backup is not None
+    assert backup.reason == "daily"
+    assert Path(backup.path).is_file()
+    assert archive.seal_daily_if_due() is None  # one already under a day old
+    assert [b.filename for b in archive.list_backups()] == [backup.filename]
+
+
+def test_seal_daily_if_due_skips_a_catalog_without_user_data(catalog: Path) -> None:
+    assert archive.seal_daily_if_due() is None
+    assert archive.list_backups() == []
+
+
+def test_seal_daily_if_due_logs_and_returns_none_on_error(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def unreadable() -> bool:
+        raise BackupError("no listing")
+
+    def locked(conn: sqlite3.Connection) -> bool:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(archive, "has_recent_daily_backup", unreadable)
+    with caplog.at_level(logging.ERROR, logger="scriptorium"):
+        assert archive.seal_daily_if_due() is None
+    assert "daily backup failed; the app keeps running" in caplog.text
+    assert "no listing" in caplog.text
+
+    caplog.clear()
+    monkeypatch.setattr(archive, "has_user_data", locked)
+    with caplog.at_level(logging.ERROR, logger="scriptorium"):
+        assert archive.seal_daily_if_due() is None
+    assert "database is locked" in caplog.text
+    assert archive.list_backups() == []
 
 
 def test_restored_shrunk_copy_refreshes_and_keeps_owned_cards(seeded: Path, tmp_path: Path) -> None:

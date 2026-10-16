@@ -59,7 +59,7 @@ def list_backups() -> dict[str, Any]:
         "directory": str(directory),
         "keep": archive.manual_keep(),
         "premigration_keep": archive.PREMIGRATION_KEEP,
-        "startup_keep": archive.STARTUP_KEEP,
+        "daily_keep": archive.DAILY_KEEP,
         "backups": [asdict(backup) for backup in backups],
     }
 

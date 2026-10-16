@@ -84,9 +84,10 @@ The app seals copies on its own in two cases:
 - **Before migrations.** When migrations are pending and the catalog already holds a lot or a
   Tome, the app seals a copy first. If that fails, startup aborts and the app refuses to migrate
   unprotected.
-- **Once a day at startup.** When the catalog holds a lot or a Tome and no daily copy is under 24
-  hours old, the app seals one after migrations. If that fails, the app logs it and keeps
-  starting.
+- **Once a day.** A background task seals a daily copy when the catalog holds a lot or a Tome and
+  none is under 24 hours old. It runs right after startup, before the Scryfall refresh, in the
+  same background thread, and checks again every hour while the app runs. A server left up for
+  days still gets one copy a day. Startup never waits for it, and a failure is logged.
 
 To take a copy by hand, open the Archive page and press "Seal a copy", or run:
 
@@ -98,10 +99,14 @@ If a Scryfall refresh is writing to the catalog, the request returns 409. Seal a
 refresh completes.
 
 Files are named `scriptorium-20261015T142233Z-v6-manual.db`. That is a UTC timestamp, the schema
-version, and the reason (`manual`, `premigration` or `startup`, which the Archive page labels
+version, and the reason (`manual`, `premigration` or `daily`, which the Archive page labels
 "Daily"). The app keeps the newest 10 manual copies, 3 premigration copies and 7 daily copies,
 and deletes older ones that match that name pattern after each backup. Set
 `SCRIPTORIUM_BACKUP_KEEP` to change the manual count.
+
+Each backup first writes a full-size temp copy and then shrinks it. Sealing a copy needs free
+disk roughly equal to the catalog file, about a gigabyte with the real Scryfall export, plus
+scratch space for `VACUUM`, even though the finished copy is small.
 
 The Archive page also offers two exports, sent as downloads to your own disk:
 
@@ -131,10 +136,17 @@ cp data/backups/<file> data/scriptorium.db
 
 An older backup is migrated forward on startup.
 
-The first start after a restore downloads the Scryfall catalog again, because a copy does not
-carry it. Until that finishes, Inscribe autocomplete and the unowned part of the Index are empty.
-Your owned cards, lots and Tomes are whole throughout. In fast dev mode, run
-`uv run python scripts/seed_dev.py` from `backend/` to bring the dev cards back.
+The first start after a restore downloads the Scryfall catalog again when auto-refresh is on,
+because a copy does not carry it. Until that finishes, Inscribe autocomplete and the unowned part
+of the Index are empty. Your owned cards, lots and Tomes are whole throughout. If
+`SCRIPTORIUM_AUTO_REFRESH=0`, start the download yourself or turn auto-refresh back on:
+
+```
+curl -X POST http://127.0.0.1:8000/scryfall/refresh
+```
+
+In fast dev mode, run `uv run python scripts/seed_dev.py` from `backend/` to bring the dev cards
+back instead.
 
 ### Code quality (pre-commit)
 

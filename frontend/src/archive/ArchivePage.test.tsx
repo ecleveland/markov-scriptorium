@@ -20,7 +20,7 @@ function backupList(backups: Backup[]) {
     directory: '/tmp/scriptorium/backups',
     keep: 3,
     premigration_keep: 2,
-    startup_keep: 7,
+    daily_keep: 7,
     backups,
   }
 }
@@ -76,8 +76,8 @@ describe('ArchivePage', () => {
       size_bytes: 30_000,
     })
     const daily = backup({
-      filename: 'scriptorium-20260930T060000Z-v5-startup.db',
-      reason: 'startup',
+      filename: 'scriptorium-20260930T060000Z-v5-daily.db',
+      reason: 'daily',
       created_at: '2026-09-30T06:00:00Z',
       schema_version: 5,
     })
@@ -121,7 +121,7 @@ describe('ArchivePage', () => {
       ...backupList([backup()]),
       keep: 7,
       premigration_keep: 5,
-      startup_keep: 9,
+      daily_keep: 9,
     })
     renderWithQuery(<ArchivePage />)
 

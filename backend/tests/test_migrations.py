@@ -7,6 +7,7 @@ import os
 import shutil
 import sqlite3
 import time
+from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 
@@ -352,95 +353,121 @@ def test_startup_takes_no_daily_copy_on_fresh_db(
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
 
 
-def test_startup_seals_a_daily_copy_after_migrating_when_user_data(
+def _wait_for(condition: Callable[[], bool], timeout: float = 5.0) -> bool:
+    """Poll ``condition`` until it holds or ``timeout`` seconds pass."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.02)
+    return condition()
+
+
+def _record_daily_seals(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    """Wrap archive.seal_daily_if_due so a test can see each call's result."""
+    from scriptorium import archive
+
+    real = archive.seal_daily_if_due
+    results: list[object] = []
+
+    def recording() -> archive.Backup | None:
+        backup = real()
+        results.append(backup)
+        return backup
+
+    monkeypatch.setattr(archive, "seal_daily_if_due", recording)
+    return results
+
+
+def test_daily_copy_is_sealed_in_the_background_after_startup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    backups = tmp_path / "backups"
     from scriptorium.main import app
 
     with TestClient(app):
-        pass
+        assert _wait_for(lambda: len(_backup_names(backups, "daily")) == 1)
 
-    backups = tmp_path / "backups"
     [premigration] = _backup_names(backups, "premigration")
     assert premigration.endswith(f"-v{older}-premigration.db")
-    [startup] = _backup_names(backups, "startup")
-    assert startup.endswith(f"-v{_newest_version()}-startup.db")
-    with closing(sqlite3.connect(backups / startup)) as copy:
+    [daily] = _backup_names(backups, "daily")
+    assert daily.endswith(f"-v{_newest_version()}-daily.db")
+    with closing(sqlite3.connect(backups / daily)) as copy:
         assert copy.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
         assert copy.execute("SELECT scryfall_id FROM inventory").fetchall() == [("bolt-1",)]
         assert copy.execute("SELECT count(*) FROM scryfall_refresh").fetchone()[0] == 0
 
 
-def test_startup_skips_daily_copy_when_one_is_under_a_day_old(
+def _aged_daily_copy(tmp_path: Path, seconds: float) -> Path:
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    existing = backups / f"scriptorium-20260101T000000Z-v{_newest_version()}-daily.db"
+    existing.write_bytes(b"earlier copy")
+    then = time.time() - seconds
+    os.utime(existing, (then, then))
+    return existing
+
+
+def test_daily_copy_skipped_when_one_is_under_a_day_old(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _current_catalog_with_lot(tmp_path, monkeypatch)
-    backups = tmp_path / "backups"
-    backups.mkdir()
-    existing = backups / f"scriptorium-20260101T000000Z-v{_newest_version()}-startup.db"
-    existing.write_bytes(b"earlier copy")
-    an_hour_ago = time.time() - 3600
-    os.utime(existing, (an_hour_ago, an_hour_ago))
+    existing = _aged_daily_copy(tmp_path, 3600)
+    results = _record_daily_seals(monkeypatch)
     from scriptorium.main import app
 
     with TestClient(app):
-        pass
+        assert _wait_for(lambda: len(results) >= 1)
 
-    assert _backup_names(backups) == [existing.name]
+    assert results[0] is None
+    assert _backup_names(existing.parent) == [existing.name]
 
-    # A day later the same start seals a fresh copy beside it.
-    a_day_ago = time.time() - 25 * 3600
-    os.utime(existing, (a_day_ago, a_day_ago))
+
+def test_daily_copy_retaken_after_a_day(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _current_catalog_with_lot(tmp_path, monkeypatch)
+    existing = _aged_daily_copy(tmp_path, 25 * 3600)
+    from scriptorium.main import app
+
     with TestClient(app):
-        pass
+        assert _wait_for(lambda: len(_backup_names(existing.parent, "daily")) == 2)
 
-    names = _backup_names(backups, "startup")
-    assert len(names) == 2
-    assert existing.name in names
+    assert existing.name in _backup_names(existing.parent, "daily")
 
 
-def test_daily_copy_failure_does_not_abort_startup(
+def test_daily_copy_failure_keeps_the_app_running(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     _current_catalog_with_lot(tmp_path, monkeypatch)
     from scriptorium import archive
     from scriptorium.main import app
 
-    real_take_backup = archive.take_backup
-    reasons: list[str] = []
+    def disk_full(reason: archive.Reason) -> archive.Backup:
+        raise archive.BackupError("disk full")
 
-    def fail_startup(reason: archive.Reason) -> archive.Backup:
-        reasons.append(reason)
-        if reason == "startup":
-            raise archive.BackupError("disk full")
-        return real_take_backup(reason)
-
-    monkeypatch.setattr(archive, "take_backup", fail_startup)
+    monkeypatch.setattr(archive, "take_backup", disk_full)
 
     with caplog.at_level(logging.ERROR, logger="scriptorium"), TestClient(app) as client:
+        assert _wait_for(lambda: "daily backup failed; the app keeps running" in caplog.text)
         assert client.get("/health").status_code == 200
 
-    assert reasons == ["startup"]
-    assert "daily backup failed" in caplog.text
+    assert "disk full" in caplog.text
     assert _backup_names(tmp_path / "backups") == []
 
 
-def test_daily_copy_check_failure_does_not_abort_startup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    db_file = _current_catalog_with_lot(tmp_path, monkeypatch)
-    from scriptorium import archive
+def test_upkeep_loop_reseals_when_due(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _current_catalog_with_lot(tmp_path, monkeypatch)
+    from scriptorium import archive, main
     from scriptorium.main import app
 
-    def unreadable() -> bool:
-        raise archive.BackupError("no listing")
+    calls: list[float] = []
 
-    monkeypatch.setattr(archive, "has_recent_startup_backup", unreadable)
+    def counting() -> archive.Backup | None:
+        calls.append(time.monotonic())
+        return None
 
-    with caplog.at_level(logging.ERROR, logger="scriptorium"), TestClient(app) as client:
-        assert client.get("/health").status_code == 200
+    monkeypatch.setattr(main, "_UPKEEP_INTERVAL_SECONDS", 0.05)
+    monkeypatch.setattr(archive, "seal_daily_if_due", counting)
 
-    assert "daily backup failed" in caplog.text
-    with closing(sqlite3.connect(db_file)) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+    with TestClient(app):
+        assert _wait_for(lambda: len(calls) >= 2, timeout=1.0)
