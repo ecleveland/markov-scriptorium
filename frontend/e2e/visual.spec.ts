@@ -56,6 +56,7 @@ test.describe('reflows at phone width', () => {
     { path: '/tomes', slug: 'tomes', heading: 'The Tomes' },
     { path: '/import/decklist', slug: 'import-decklist' },
     { path: '/import/csv', slug: 'import-csv' },
+    { path: '/archive', slug: 'archive', heading: 'The Muniment Room' },
   ]
 
   for (const { path, slug, heading, table, text } of routes) {

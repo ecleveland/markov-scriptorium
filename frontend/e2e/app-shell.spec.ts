@@ -24,6 +24,7 @@ test('renders the brand mark, nav, and a healthy status chip', async ({
   await expect(page.getByRole('link', { name: 'Inscribe' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Decklist' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'CSV' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Archive' })).toBeVisible()
 
   // Health probe is stubbed ok → the status chip reports the catalog is up.
   await expect(page.locator('.status')).toContainText(/catalog ok/i)

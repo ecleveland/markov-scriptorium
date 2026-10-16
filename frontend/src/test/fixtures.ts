@@ -3,6 +3,7 @@
 
 import type {
   AcrossPrintings,
+  Backup,
   BreakdownLine,
   CardPrinting,
   DeckListEntry,
@@ -111,6 +112,19 @@ export function folio(
 /** GET /inventory/facets, empty unless the test fills a list in. */
 export function facets(overrides: Partial<Facets> = {}): Facets {
   return { sets: [], locations: [], tags: [], ...overrides }
+}
+
+/** A sealed copy as GET /archive/backups lists it. */
+export function backup(overrides: Partial<Backup> = {}): Backup {
+  return {
+    filename: 'scriptorium-20261015T142233Z-v6-manual.db',
+    path: '/tmp/scriptorium/backups/scriptorium-20261015T142233Z-v6-manual.db',
+    reason: 'manual',
+    created_at: '2026-10-15T14:22:33Z',
+    schema_version: 6,
+    size_bytes: 2_400_000,
+    ...overrides,
+  }
 }
 
 /** A Tome as GET /decks lists it. */

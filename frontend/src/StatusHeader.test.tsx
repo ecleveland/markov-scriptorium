@@ -58,6 +58,10 @@ describe('StatusHeader', () => {
       'href',
       '/import/csv',
     )
+    expect(screen.getByRole('link', { name: 'Archive' })).toHaveAttribute(
+      'href',
+      '/archive',
+    )
   })
 
   it('marks the link for the current route as active', () => {
