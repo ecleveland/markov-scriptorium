@@ -20,6 +20,7 @@ function backupList(backups: Backup[]) {
     directory: '/tmp/scriptorium/backups',
     keep: 3,
     premigration_keep: 2,
+    startup_keep: 7,
     backups,
   }
 }
@@ -74,7 +75,13 @@ describe('ArchivePage', () => {
       schema_version: 5,
       size_bytes: 30_000,
     })
-    listMock.mockResolvedValue(backupList([byHand, premigration]))
+    const daily = backup({
+      filename: 'scriptorium-20260930T060000Z-v5-startup.db',
+      reason: 'startup',
+      created_at: '2026-09-30T06:00:00Z',
+      schema_version: 5,
+    })
+    listMock.mockResolvedValue(backupList([byHand, premigration, daily]))
     renderWithQuery(<ArchivePage />)
 
     const table = await screen.findByRole('table', { name: 'Backups' })
@@ -83,7 +90,7 @@ describe('ArchivePage', () => {
       .map((cell) => cell.textContent)
     expect(headers).toEqual(['Sealed', 'Reason', 'Schema', 'Size'])
 
-    const [, first, second] = within(table).getAllByRole('row')
+    const [, first, second, third] = within(table).getAllByRole('row')
     const firstCells = within(first).getAllByRole('cell')
     expect(firstCells[0]).toHaveTextContent(
       new Date('2026-10-15T14:22:33Z').toLocaleString(),
@@ -99,24 +106,28 @@ describe('ArchivePage', () => {
     expect(secondCells[2]).toHaveTextContent('v5')
     expect(secondCells[3]).toHaveTextContent('< 0.1 MB')
 
+    const thirdCells = within(third).getAllByRole('cell')
+    expect(within(thirdCells[1]).getByText('Daily')).toHaveClass('tag')
+
     expect(
       screen.getByText(
-        'Copies rest in /tmp/scriptorium/backups. The newest 3 sealed by hand are kept, and the newest 2 sealed before a migration. To restore one, follow the README.',
+        'Copies rest in /tmp/scriptorium/backups. The newest 3 sealed by hand are kept, the newest 2 sealed before a migration, and the newest 7 daily copies. To restore one, follow the README.',
       ),
     ).toBeInTheDocument()
   })
 
-  it('reads both retention counts from the list, not from the page', async () => {
+  it('reads every retention count from the list, not from the page', async () => {
     listMock.mockResolvedValue({
       ...backupList([backup()]),
       keep: 7,
       premigration_keep: 5,
+      startup_keep: 9,
     })
     renderWithQuery(<ArchivePage />)
 
     expect(
       await screen.findByText(
-        /The newest 7 sealed by hand are kept, and the newest 5 sealed before a migration\./,
+        /The newest 7 sealed by hand are kept, the newest 5 sealed before a migration, and the newest 9 daily copies\./,
       ),
     ).toBeInTheDocument()
   })

@@ -724,8 +724,11 @@ export async function getBreakdown(deckId: number): Promise<Breakdown> {
 
 // --- Safekeeping (VEG-281) --------------------------------------------------
 
-/** Why a copy was sealed: by hand, or by the app before a schema migration. */
-export type BackupReason = 'manual' | 'premigration'
+/**
+ * Why a copy was sealed. By hand, by the app before a schema migration, or by
+ * the app once a day at startup.
+ */
+export type BackupReason = 'manual' | 'premigration' | 'startup'
 
 /** One sealed copy of the database file. */
 export interface Backup {
@@ -746,6 +749,8 @@ export interface BackupList {
   keep: number
   /** How many copies sealed before a migration are retained. */
   premigration_keep: number
+  /** How many daily startup copies are retained. */
+  startup_keep: number
   /** Newest first. */
   backups: Backup[]
 }

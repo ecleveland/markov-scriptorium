@@ -754,6 +754,7 @@ export async function stubApi(page: Page): Promise<void> {
         directory: BACKUP_DIRECTORY,
         keep: 3,
         premigration_keep: 2,
+        startup_keep: 7,
         backups,
       })
     }
