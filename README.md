@@ -72,6 +72,59 @@ backend/migrations/0002_add_card_table.sql
 
 It applies on the next startup. Migrations are forward-only — never edit a shipped migration; add a new one.
 
+### Backups and restore
+
+Backups are whole-file copies of the SQLite catalog. They land in a `backups/` folder beside the
+database file, so `data/backups/` by default, or next to the file named by `SCRIPTORIUM_DB_PATH`.
+The app takes one on its own at startup, before it applies migrations, but only when migrations
+are pending and the catalog already holds a lot or a Tome. If that backup fails, startup aborts
+and the app refuses to migrate unprotected. There is no timed backup yet (VEG-612).
+
+To take a copy by hand, open the Archive page and press "Seal a copy", or run:
+
+```
+curl -X POST http://127.0.0.1:8000/archive/backups
+```
+
+If a Scryfall refresh is writing to the catalog, the request returns 409. Seal a copy once the
+refresh completes.
+
+Files are named `scriptorium-20261015T142233Z-v6-manual.db`: a UTC timestamp, the schema version,
+and the reason (`manual` or `premigration`). The app keeps the newest 3 manual copies and the
+newest 2 premigration copies, and deletes older ones that match that name pattern after each
+backup. Set `SCRIPTORIUM_BACKUP_KEEP` to change the manual count. With the real Scryfall catalog
+loaded each copy is about a gigabyte, so budget disk for 5 or more of them. In fast dev mode a
+copy is about 100 KB.
+
+The Archive page also offers two exports, sent as downloads to your own disk:
+
+- **CSV** (`/archive/export.csv`) has one row per lot in the Manabox column layout, plus
+  Location, Notes, Tags, Acquired at and Price paid. It reads back through the CSV import page.
+  The import drops those last five columns until VEG-614 lands.
+- **JSON** (`/archive/export.json`) is the full record: every lot, and every Tome with its
+  slots, with card names and set codes beside each Scryfall ID. You can read it without Scryfall
+  or this app.
+
+Restore is manual, because it overwrites the live catalog (VEG-613 proposes a guarded command).
+Run these steps from the repo root, replacing `<file>` with the backup you chose:
+
+```sh
+# 1. Stop the backend: ./stop.sh, or Ctrl-C in its terminal.
+# 2. Optionally check the copy. It should print "ok".
+sqlite3 data/backups/<file> "PRAGMA quick_check"
+# 3. Move the live file aside.
+mv data/scriptorium.db data/scriptorium.db.bak
+# 4. Remove a stale journal if one exists.
+rm -f data/scriptorium.db-journal
+# 5. Copy the backup into place.
+cp data/backups/<file> data/scriptorium.db
+# 6. Start the app again.
+./dev.sh
+```
+
+An older backup is migrated forward on startup. The Scryfall catalog inside the copy may be
+stale until the next refresh.
+
 ### Code quality (pre-commit)
 
 Lint, format, and type checks run automatically on commit via [pre-commit](https://pre-commit.com/). Enable the git hook once per clone:
