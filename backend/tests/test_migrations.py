@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -9,7 +10,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from scriptorium.migrations import MigrationError, apply_migrations
+from scriptorium.migrations import (
+    _MIGRATIONS_DIR,
+    MigrationError,
+    apply_migrations,
+    pending_migrations,
+)
 
 
 def _write(migrations_dir: Path, name: str, sql: str) -> None:
@@ -169,3 +175,74 @@ def test_partial_failure_commits_earlier_then_resumes(tmp_path: Path) -> None:
             row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         assert {"a", "b"} <= tables
+
+
+def test_pending_migrations_lists_only_unapplied(tmp_path: Path) -> None:
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    _write(migrations, "0001_init.sql", "CREATE TABLE a (id INTEGER);")
+    _write(migrations, "0002_more.sql", "CREATE TABLE b (id INTEGER);")
+    _write(migrations, "0003_most.sql", "CREATE TABLE c (id INTEGER);")
+    _write(migrations, "notes.sql", "not a migration")
+
+    with closing(sqlite3.connect(tmp_path / "t.db")) as conn:
+        conn.executescript("CREATE TABLE a (id INTEGER); PRAGMA user_version = 1;")
+        assert pending_migrations(conn, migrations) == [2, 3]
+        apply_migrations(conn, migrations)
+        assert pending_migrations(conn, migrations) == []
+
+
+def _backup_names(directory: Path) -> list[str]:
+    return sorted(p.name for p in directory.iterdir()) if directory.exists() else []
+
+
+def test_startup_seals_premigration_backup_when_user_data_and_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_file = tmp_path / "catalog.db"
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(db_file))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
+    # Build a catalog at version 5 by applying only the shipped 0001..0005, so the
+    # real 0006 is genuinely pending when the app starts.
+    older = tmp_path / "migrations_v5"
+    older.mkdir()
+    for path in sorted(_MIGRATIONS_DIR.glob("000[1-5]_*.sql")):
+        shutil.copy(path, older / path.name)
+    with closing(sqlite3.connect(db_file)) as conn:
+        assert apply_migrations(conn, older) == 5
+        conn.execute(
+            "INSERT INTO cards (scryfall_id, name, set_code, set_name, collector_number,"
+            " rarity, lang, layout)"
+            " VALUES ('bolt-1', 'Lightning Bolt', 'lea', 'Alpha', '1', 'common', 'en', 'normal')"
+        )
+        conn.execute("INSERT INTO inventory (scryfall_id) VALUES ('bolt-1')")
+        conn.commit()
+
+    from scriptorium.main import app
+
+    with TestClient(app):  # entering the context runs the lifespan startup
+        pass
+
+    names = _backup_names(tmp_path / "backups")
+    assert len(names) == 1
+    assert names[0].endswith("-v5-premigration.db")
+    with closing(sqlite3.connect(tmp_path / "backups" / names[0])) as copy:
+        assert copy.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
+    with closing(sqlite3.connect(db_file)) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+
+
+def test_startup_takes_no_backup_on_fresh_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    assert _backup_names(tmp_path / "backups") == []
+    with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6

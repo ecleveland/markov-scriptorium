@@ -12,12 +12,14 @@ from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI
 
+from scriptorium import archive
+from scriptorium.api.archive import router as archive_router
 from scriptorium.api.cards import router as cards_router
 from scriptorium.api.decks import router as decks_router
 from scriptorium.api.inventory import router as inventory_router
 from scriptorium.api.onboarding import router as onboarding_router
 from scriptorium.db import connect, healthcheck
-from scriptorium.migrations import apply_migrations
+from scriptorium.migrations import apply_migrations, pending_migrations
 from scriptorium.scryfall.refresh import is_stale, maybe_refresh, read_status, refresh_catalog
 
 logger = logging.getLogger("scriptorium")
@@ -61,11 +63,20 @@ def _run_manual_refresh() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Migrate the catalog, then kick off a background refresh, before serving."""
+    """Back up, migrate the catalog, then kick off a background refresh, before serving."""
     with closing(connect()) as conn:
+        # A schema change on a catalog holding the user's lots or Tomes gets a
+        # backup first. If that backup fails, startup stops before migrating, so
+        # no schema change ever runs without a copy to return to.
         try:
+            if pending_migrations(conn) and archive.has_user_data(conn):
+                backup = archive.take_backup("premigration")
+                logger.info("sealed a pre-migration backup at %s", backup.path)
             version = apply_migrations(conn)
             logger.info("catalog schema ready at version %d", version)
+        except archive.BackupError:
+            logger.exception("pre-migration backup failed; refusing to migrate")
+            raise
         except Exception:
             logger.exception("catalog migration failed during startup")
             raise
@@ -95,6 +106,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(archive_router)
 app.include_router(cards_router)
 app.include_router(decks_router)
 app.include_router(inventory_router)
