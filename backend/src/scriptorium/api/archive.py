@@ -9,8 +9,10 @@ or JSON. Everything stays on local disk.
 
 from __future__ import annotations
 
+import sqlite3
 import time
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -28,6 +30,17 @@ _BUSY_DETAIL = (
 )
 
 
+@contextmanager
+def _busy_catalog_as_409() -> Iterator[None]:
+    """Turn a read blocked by a writer, such as a Scryfall refresh, into a 409."""
+    try:
+        yield
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc):
+            raise HTTPException(status_code=409, detail=_BUSY_DETAIL) from exc
+        raise
+
+
 def _attachment(extension: str) -> dict[str, str]:
     """A Content-Disposition header naming today's export file."""
     stamp = datetime.now(UTC).strftime("%Y%m%d")
@@ -37,11 +50,16 @@ def _attachment(extension: str) -> dict[str, str]:
 @router.get("/backups")
 def list_backups() -> dict[str, Any]:
     """The backups directory, both pools' keep counts, and every backup, newest first."""
+    try:
+        directory = archive.backups_dir()
+        backups = archive.list_backups()
+    except archive.BackupError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {
-        "directory": str(archive.backups_dir()),
+        "directory": str(directory),
         "keep": archive.manual_keep(),
         "premigration_keep": archive.PREMIGRATION_KEEP,
-        "backups": [asdict(backup) for backup in archive.list_backups()],
+        "backups": [asdict(backup) for backup in backups],
     }
 
 
@@ -66,7 +84,7 @@ def seal_backup() -> dict[str, Any]:
 @router.get("/export.csv")
 def export_csv() -> Response:
     """Download every inventory lot as a Manabox-style CSV."""
-    with closing(connect()) as conn:
+    with _busy_catalog_as_409(), closing(connect()) as conn:
         content = archive.export_csv(conn)
     return Response(
         content=content, media_type="text/csv; charset=utf-8", headers=_attachment("csv")
@@ -76,6 +94,6 @@ def export_csv() -> Response:
 @router.get("/export.json")
 def export_json() -> JSONResponse:
     """Download every inventory lot and Tome as one JSON document."""
-    with closing(connect()) as conn:
+    with _busy_catalog_as_409(), closing(connect()) as conn:
         document = archive.export_json(conn)
     return JSONResponse(document, headers=_attachment("json"))

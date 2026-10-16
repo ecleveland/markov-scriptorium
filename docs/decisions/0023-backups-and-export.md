@@ -22,32 +22,41 @@ another connection commits mid-way. A plain file copy can tear a page and
 misses the rollback journal.
 
 **The copy goes to a temp file, gets checked, then is renamed.** The backend
-writes a hidden `.scriptorium-<name>.tmp` file, runs `PRAGMA quick_check` on
-it, and moves it into place with `os.replace`. A failed check deletes the temp
+creates a hidden `.scriptorium-<name>.<random>.tmp` file with
+`tempfile.mkstemp`, so each attempt gets its own name. It runs
+`PRAGMA quick_check` on the copy and moves it into place with `os.replace`. A failed check deletes the temp
 file and the backup fails. That failure also tells the user the live file is
-corrupt, which is worth knowing before the next migration.
+corrupt, which is worth knowing before the next migration. Pruning sweeps temp
+files older than an hour, so an interrupted copy does not leak a gigabyte.
 
 **A probe decides whether to start, and a refresh gets a 409.** Before copying,
 the backend runs `BEGIN IMMEDIATE` with a one-second timeout and releases it
 at once. The importer holds that lock for most of a real refresh, so when the
 probe fails `POST /archive/backups` returns 409 with "The scribes are still
-transcribing the catalog. Seal a copy once the refresh completes." No lock
-object couples the backup to the refresh.
+transcribing the catalog. Seal a copy once the refresh completes." A writer
+that starts after the probe makes the copy give up after about five seconds of
+locked steps, which is also a 409. No lock object couples the backup to the
+refresh.
 
 **Backups live in a `backups/` folder beside the database file.** That is
 `data/backups/` by default, or next to `SCRIPTORIUM_DB_PATH`. A file is named
-`scriptorium-20261015T142233Z-v6-manual.db`: UTC stamp, schema version, reason.
-The reasons are `manual` and `premigration`.
+`scriptorium-20261015T142233Z-v6-manual.db`, which is a UTC stamp, the schema
+version and the reason. The reasons are `manual` and `premigration`.
 
 **Retention runs in two pools.** `SCRIPTORIUM_BACKUP_KEEP` sets how many manual
 copies stay, default 3. The newest 2 premigration copies stay. Pruning runs
 after each backup and deletes only files that match the backup filename
-pattern, so a stray file in the folder is safe. With the real Scryfall catalog
+pattern, so a stray file in the folder is safe. A prune that cannot delete an
+old file logs a warning, and the backup still succeeds. With the real Scryfall catalog
 loaded a copy is about a gigabyte. In fast dev mode it is about 100 KB.
 
 **Startup takes a premigration backup, and a failure stops startup.** The
 backup runs before migrations, only when migrations are pending and the
 catalog holds at least one lot or Tome. An empty catalog has nothing to lose.
+The backup is also skipped when a copy of the current schema version is
+already on disk and is either newer than the catalog file or less than an hour
+old. That keeps a restart loop on a failing migration from taking a fresh copy
+every time, while a stale copy from weeks ago does not suppress a new one.
 If the backup fails, the app does not migrate. There is no time-based
 automatic backup yet, see [VEG-612].
 
@@ -67,13 +76,14 @@ back through the CSV import page as a Manabox file ([VEG-415]).
 ```
 
 Each inventory entry has every lot column plus the card's name, set code, set
-name and collector number. Each Tome carries its slots: scryfall_id, name, set
-code, collector number, finish, board and quantity. A person can read it
+name and collector number. Each Tome carries its slots, each with scryfall_id, name,
+set code, collector number, finish, board and quantity. A person can read it
 without Scryfall or this app.
 
 **Exports download to the browser.** `GET /archive/export.csv` and
 `GET /archive/export.json` send attachments, so the browser writes them to the
-user's own disk. Nothing is uploaded anywhere.
+user's own disk. Nothing is uploaded anywhere. An export requested while a
+refresh holds the catalog returns the same 409 as a backup.
 
 **Restore stays manual.** There is no endpoint, because overwriting the live
 catalog is a destructive operation. The README lists the steps. [VEG-613]
@@ -82,7 +92,8 @@ proposes a guarded command.
 **The Archive page is the maintenance home.** Route `/archive`, nav entry
 "Archive", title "The Muniment Room", eyebrow "Safekeeping". It has a "Seal a
 copy" button, a table of sealed copies, and the two export links.
-`GET /archive/backups` returns `{directory, keep, backups}` for it. The code
+`GET /archive/backups` returns `{directory, keep, premigration_keep, backups}`,
+and the page reads both pool sizes from it. The code
 lives in `scriptorium/archive.py`, with the router in `scriptorium/api/archive.py`
 under the `/archive` prefix.
 
@@ -118,7 +129,7 @@ under the `/archive` prefix.
   live file, which is why the README has the user move it aside first.
 - [VEG-366] will move the data directory. The `backups/` folder is derived from
   the database path, so it follows with no change here.
-- Startup can now fail for a new reason: the premigration backup. The log names
+- Startup can now fail for a new reason, the premigration backup. The log names
   the failed step, and the live database is untouched. A "scribes are still
   transcribing" 409 on a manual backup is not a failure, only a request to wait.
 - The E2E stubs now carry `GET /archive/backups` and `POST /archive/backups`.

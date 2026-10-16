@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
+import time
 from contextlib import closing
 from pathlib import Path
 
@@ -265,6 +267,28 @@ def test_startup_skips_premigration_backup_when_one_exists_for_the_version(
     assert _backup_names(tmp_path / "backups") == [existing]
     with closing(sqlite3.connect(tmp_path / "catalog.db")) as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == _newest_version()
+
+
+def test_startup_reseals_when_premigration_copy_is_stale_and_catalog_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    older = _catalog_one_version_behind(tmp_path, monkeypatch)
+    # A copy from an earlier attempt two days ago. The catalog has gained lots
+    # since, so that copy no longer protects them.
+    existing = f"scriptorium-20260101T000000Z-v{older}-premigration.db"
+    (tmp_path / "backups").mkdir()
+    (tmp_path / "backups" / existing).write_bytes(b"earlier copy")
+    two_days_ago = time.time() - 2 * 86400
+    os.utime(tmp_path / "backups" / existing, (two_days_ago, two_days_ago))
+    from scriptorium.main import app
+
+    with TestClient(app):
+        pass
+
+    names = _backup_names(tmp_path / "backups")
+    assert len(names) == 2
+    assert all(name.endswith(f"-v{older}-premigration.db") for name in names)
+    assert existing in names
 
 
 def test_startup_refuses_to_migrate_when_premigration_backup_fails(

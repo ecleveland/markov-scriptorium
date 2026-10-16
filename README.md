@@ -89,7 +89,7 @@ curl -X POST http://127.0.0.1:8000/archive/backups
 If a Scryfall refresh is writing to the catalog, the request returns 409. Seal a copy once the
 refresh completes.
 
-Files are named `scriptorium-20261015T142233Z-v6-manual.db`: a UTC timestamp, the schema version,
+Files are named `scriptorium-20261015T142233Z-v6-manual.db`. That is a UTC timestamp, the schema version,
 and the reason (`manual` or `premigration`). The app keeps the newest 3 manual copies and the
 newest 2 premigration copies, and deletes older ones that match that name pattern after each
 backup. Set `SCRIPTORIUM_BACKUP_KEEP` to change the manual count. With the real Scryfall catalog
@@ -101,7 +101,7 @@ The Archive page also offers two exports, sent as downloads to your own disk:
 - **CSV** (`/archive/export.csv`) has one row per lot in the Manabox column layout, plus
   Location, Notes, Tags, Acquired at and Price paid. It reads back through the CSV import page.
   The import drops those last five columns until VEG-614 lands.
-- **JSON** (`/archive/export.json`) is the full record: every lot, and every Tome with its
+- **JSON** (`/archive/export.json`) is the full record. It holds every lot and every Tome with its
   slots, with card names and set codes beside each Scryfall ID. You can read it without Scryfall
   or this app.
 
@@ -109,13 +109,13 @@ Restore is manual, because it overwrites the live catalog (VEG-613 proposes a gu
 Run these steps from the repo root, replacing `<file>` with the backup you chose:
 
 ```sh
-# 1. Stop the backend: ./stop.sh, or Ctrl-C in its terminal.
+# 1. Stop the backend with ./stop.sh, or Ctrl-C in its terminal.
 # 2. Optionally check the copy. It should print "ok".
 sqlite3 data/backups/<file> "PRAGMA quick_check"
 # 3. Move the live file aside.
 mv data/scriptorium.db data/scriptorium.db.bak
-# 4. Remove a stale journal if one exists.
-rm -f data/scriptorium.db-journal
+# 4. Keep any journal with the file it belongs to.
+[ -f data/scriptorium.db-journal ] && mv data/scriptorium.db-journal data/scriptorium.db.bak-journal
 # 5. Copy the backup into place.
 cp data/backups/<file> data/scriptorium.db
 # 6. Start the app again.

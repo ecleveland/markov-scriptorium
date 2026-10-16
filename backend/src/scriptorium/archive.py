@@ -25,17 +25,21 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import os
 import re
 import sqlite3
 import tempfile
+import time
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from scriptorium.db import connect, db_path
+from scriptorium.db import db_path
+
+logger = logging.getLogger("scriptorium")
 
 BACKUP_KEEP_ENV = "SCRIPTORIUM_BACKUP_KEEP"
 DEFAULT_KEEP = 3
@@ -46,6 +50,8 @@ PREMIGRATION_KEEP = 2
 BACKUP_PAGES = 1024
 # CPython sleeps this long between retries when a backup step finds the source
 # locked, and retries forever. _BusyLimit gives up after about five seconds.
+# The source connection's busy timeout is this same short wait, so it adds
+# one sleep to the first locked step, not the default five seconds.
 _BACKUP_SLEEP = 0.25
 _BUSY_LIMIT_SECONDS = 5.0
 _BUSY_STATUSES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
@@ -58,6 +64,13 @@ _STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 _ISO_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 # How long the lock probe waits for a writer before reporting the catalog busy.
 _PROBE_TIMEOUT = 1.0
+# A pre-migration copy this young still counts as fresh, which covers a
+# restart loop on a failing migration whose rollback touches the catalog file.
+_FRESH_PREMIGRATION_SECONDS = 3600
+# Temp files older than this are leftovers from a crashed copy. A copy in
+# flight is far younger.
+_STALE_TEMP_SECONDS = 3600
+_TEMP_FILE = re.compile(r"^\.scriptorium-.*\.tmp(-journal)?$")
 
 _CSV_HEADER = [
     "Name",
@@ -118,7 +131,10 @@ class Backup:
 def backups_dir() -> Path:
     """The directory holding backups, beside the catalog file. Created if missing."""
     directory = db_path().parent / "backups"
-    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise BackupError(f"could not open the backups folder: {exc}") from exc
     return directory
 
 
@@ -178,16 +194,32 @@ def _probe_write_lock() -> None:
         raise BackupError(f"could not open the catalog for backup: {exc}") from exc
 
 
-def has_premigration_backup(version: int) -> bool:
-    """True if a pre-migration backup of schema ``version`` is already on disk.
+def has_fresh_premigration_backup(version: int) -> bool:
+    """True if a pre-migration copy of schema ``version`` still covers the catalog.
 
-    Startup checks this so a migration that fails on every start does not take
-    a fresh copy each time and prune the one taken before the first attempt.
+    A copy covers it when the copy is no older than the catalog file, so
+    nothing has changed since, or when it was written within the last hour.
+    The hour covers a migration that fails on every start, so a restart loop
+    does not take a copy each time and prune the one from the first attempt.
+    An older copy taken before new lots were inscribed does not count.
     """
-    return any(
-        backup.reason == "premigration" and backup.schema_version == version
-        for backup in list_backups()
-    )
+    try:
+        catalog_mtime = db_path().stat().st_mtime
+    except OSError as exc:
+        raise BackupError(f"could not read the catalog file: {exc}") from exc
+    now = time.time()
+    for backup in list_backups():
+        if backup.reason != "premigration" or backup.schema_version != version:
+            continue
+        try:
+            mtime = Path(backup.path).stat().st_mtime
+        except FileNotFoundError:
+            continue  # pruned since the listing
+        except OSError as exc:
+            raise BackupError(f"could not read the backups folder: {exc}") from exc
+        if mtime >= catalog_mtime or now - mtime < _FRESH_PREMIGRATION_SECONDS:
+            return True
+    return False
 
 
 class _BusyLimit:
@@ -239,17 +271,39 @@ def take_backup(reason: Reason, *, now: datetime | None = None) -> Backup:
 
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     try:
-        return _seal(reason, moment)
+        backup = _seal(reason, moment)
     except OSError as exc:
         # A read-only or full backups folder. Mapping it here keeps the API's
         # 500 detail and the startup log naming the backup, not the migration.
         raise BackupError(f"could not write the backup: {exc}") from exc
 
+    # The copy is sealed. Failing to tidy old copies must not undo that.
+    try:
+        prune_backups(protect=Path(backup.path))
+    except BackupError as exc:
+        logger.warning("could not prune old backups: %s", exc)
+    return backup
+
+
+def _read_source_version(src: sqlite3.Connection) -> int:
+    """The source's ``user_version``, mapping a held write lock to BackupBusyError."""
+    try:
+        return int(src.execute("PRAGMA user_version").fetchone()[0])
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc):
+            raise BackupBusyError(
+                "the catalog is busy with a write; try the backup again shortly"
+            ) from exc
+        raise BackupError(f"could not read the catalog for backup: {exc}") from exc
+
 
 def _seal(reason: Reason, moment: datetime) -> Backup:
-    """Copy, verify and publish one backup, then prune. File errors propagate."""
-    with closing(connect()) as src:
-        version = int(src.execute("PRAGMA user_version").fetchone()[0])
+    """Copy, verify and publish one backup. File errors propagate as OSError."""
+    # Not db.connect(): its five second busy timeout would stall the first
+    # locked step before _BusyLimit starts counting. A backup needs neither
+    # the row factory nor foreign keys.
+    with closing(sqlite3.connect(db_path(), timeout=_BACKUP_SLEEP)) as src:
+        version = _read_source_version(src)
         filename = f"scriptorium-{moment.strftime(_STAMP_FORMAT)}-v{version}-{reason}.db"
         directory = backups_dir()
         final = directory / filename
@@ -277,22 +331,25 @@ def _seal(reason: Reason, moment: datetime) -> Backup:
         finally:
             tmp.unlink(missing_ok=True)
 
-    size_bytes = final.stat().st_size
-    prune_backups(protect=final)
     return Backup(
         filename=filename,
         path=str(final),
         reason=reason,
         created_at=moment.strftime(_ISO_FORMAT),
         schema_version=version,
-        size_bytes=size_bytes,
+        size_bytes=final.stat().st_size,
     )
 
 
 def list_backups() -> list[Backup]:
     """Every backup in the backups directory, newest first."""
+    directory = backups_dir()
+    try:
+        paths = list(directory.iterdir())
+    except OSError as exc:
+        raise BackupError(f"could not read the backups folder: {exc}") from exc
     found: list[Backup] = []
-    for path in backups_dir().iterdir():
+    for path in paths:
         match = _FILENAME.match(path.name)
         if not match:
             continue
@@ -300,6 +357,8 @@ def list_backups() -> list[Backup]:
             size = path.stat().st_size
         except FileNotFoundError:
             continue  # pruned between the listing and the stat
+        except OSError as exc:
+            raise BackupError(f"could not read the backups folder: {exc}") from exc
         stamp, version, reason = match.groups()
         found.append(
             Backup(
@@ -322,7 +381,10 @@ def prune_backups(*, protect: Path | None = None) -> list[Path]:
     ``protect`` counts toward its pool's keep but is never deleted. take_backup
     passes the copy it just wrote. If the clock is behind older stamps, that
     copy sorts oldest, and the pool then holds one more than the keep count.
+    A file that cannot be removed is logged and skipped. Stale temp files from
+    crashed copies are swept first.
     """
+    _sweep_stale_temp_files(backups_dir())
     backups = list_backups()
     removed: list[Path] = []
     for reason in _REASONS:
@@ -332,8 +394,36 @@ def prune_backups(*, protect: Path | None = None) -> list[Path]:
             path = Path(backup.path)
             if protect is not None and path == protect:
                 continue
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("could not remove old backup %s: %s", path, exc)
+                continue
             removed.append(path)
+    return removed
+
+
+def _sweep_stale_temp_files(directory: Path) -> list[Path]:
+    """Remove temp files and their journals left by copies that never finished."""
+    try:
+        paths = list(directory.iterdir())
+    except OSError as exc:
+        raise BackupError(f"could not read the backups folder: {exc}") from exc
+    cutoff = time.time() - _STALE_TEMP_SECONDS
+    removed: list[Path] = []
+    for path in paths:
+        if not _TEMP_FILE.match(path.name):
+            continue
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+            path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("could not remove old backup %s: %s", path, exc)
+            continue
+        removed.append(path)
     return removed
 
 

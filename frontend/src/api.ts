@@ -750,7 +750,7 @@ export interface BackupList {
   backups: Backup[]
 }
 
-/** Plain links, not fetches: the browser saves the attachment itself. */
+/** Plain links rather than fetches. The browser saves the attachment itself. */
 export const EXPORT_CSV_URL = '/api/archive/export.csv'
 export const EXPORT_JSON_URL = '/api/archive/export.json'
 

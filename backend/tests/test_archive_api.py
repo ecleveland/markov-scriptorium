@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import sqlite3
+from collections.abc import Iterator
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -148,6 +149,40 @@ def test_post_backup_500_detail_names_the_os_error(monkeypatch: pytest.MonkeyPat
 
     assert resp.status_code == 500
     assert "read-only" in resp.json()["detail"]
+
+
+def test_get_backups_500_when_folder_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unreadable(self: Path) -> Iterator[Path]:
+        raise PermissionError("no listing")
+
+    monkeypatch.setattr(Path, "iterdir", unreadable)
+
+    resp = client.get("/archive/backups")
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "could not read the backups folder: no listing"
+
+
+def test_exports_409_while_catalog_is_exclusively_locked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fast_connect() -> sqlite3.Connection:
+        conn = sqlite3.connect(db.db_path(), timeout=0.2)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    monkeypatch.setattr("scriptorium.api.archive.connect", fast_connect)
+
+    with closing(sqlite3.connect(db.db_path())) as writer:
+        writer.execute("BEGIN EXCLUSIVE")  # blocks readers in rollback-journal mode
+        try:
+            responses = [client.get("/archive/export.csv"), client.get("/archive/export.json")]
+        finally:
+            writer.rollback()
+
+    for resp in responses:
+        assert resp.status_code == 409, resp.text
+        assert "scribes" in resp.json()["detail"]
 
 
 def test_export_csv_is_attachment() -> None:

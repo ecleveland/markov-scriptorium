@@ -10,7 +10,11 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
+import os
 import sqlite3
+import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import closing
 from datetime import UTC, datetime
@@ -295,20 +299,138 @@ def test_copy_that_stays_busy_raises_busy_and_leaves_no_file(
 
     monkeypatch.setattr(archive, "_BusyLimit", AlwaysBusy)
 
+    started = time.monotonic()
     with pytest.raises(BackupBusyError):
         archive.take_backup("manual", now=_STAMP)
 
+    assert time.monotonic() - started < 8
     assert list((seeded / "backups").iterdir()) == []
 
 
-def test_has_premigration_backup_matches_reason_and_version(catalog: Path) -> None:
+def test_writer_that_starts_mid_copy_stops_the_backup_near_the_busy_limit(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Shrink the limit to one second to keep the test fast. The source
+    # connection's own busy timeout must not add to it.
+    monkeypatch.setattr(archive, "_BUSY_LIMIT_SECONDS", 1.0)
+    real_mkstemp = tempfile.mkstemp
+    with closing(sqlite3.connect(db.db_path())) as writer:
+
+        def lock_then_mkstemp(*args: object, **kwargs: object) -> tuple[int, str]:
+            # Runs after the probe and the version read, just before the copy.
+            writer.execute("BEGIN EXCLUSIVE")
+            return real_mkstemp(*args, **kwargs)  # type: ignore[call-overload,no-any-return]
+
+        monkeypatch.setattr("scriptorium.archive.tempfile.mkstemp", lock_then_mkstemp)
+
+        started = time.monotonic()
+        try:
+            with pytest.raises(BackupBusyError):
+                archive.take_backup("manual", now=_STAMP)
+        finally:
+            writer.rollback()
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 3
+    assert list((seeded / "backups").iterdir()) == []
+
+
+def _age(path: Path, seconds: float) -> None:
+    """Set a file's mtime to ``seconds`` ago."""
+    then = time.time() - seconds
+    os.utime(path, (then, then))
+
+
+def test_has_fresh_premigration_backup_matches_reason_version_and_age(catalog: Path) -> None:
     backups = archive.backups_dir()
     (backups / "scriptorium-20260101T000000Z-v5-manual.db").write_bytes(b"x")
     (backups / "scriptorium-20260101T000000Z-v4-premigration.db").write_bytes(b"x")
-    assert archive.has_premigration_backup(5) is False
+    assert archive.has_fresh_premigration_backup(5) is False
 
-    (backups / "scriptorium-20260102T000000Z-v5-premigration.db").write_bytes(b"x")
-    assert archive.has_premigration_backup(5) is True
+    copy = backups / "scriptorium-20260102T000000Z-v5-premigration.db"
+    copy.write_bytes(b"x")
+    assert archive.has_fresh_premigration_backup(5) is True  # written within the hour
+
+    _age(copy, 2 * 86400)
+    assert archive.has_fresh_premigration_backup(5) is False  # catalog changed since
+
+    _age(db.db_path(), 3 * 86400)
+    assert archive.has_fresh_premigration_backup(5) is True  # catalog unchanged since
+
+
+def test_prune_failure_does_not_fail_the_backup(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    backups = archive.backups_dir()
+    older = [f"scriptorium-2026010{day}T000000Z-v6-manual.db" for day in range(1, 4)]
+    for name in older:
+        (backups / name).write_bytes(b"x")
+    real_unlink = Path.unlink
+
+    def stuck_unlink(self: Path, missing_ok: bool = False) -> None:
+        if self.name == older[0]:
+            raise PermissionError("read-only")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", stuck_unlink)
+
+    with caplog.at_level(logging.WARNING, logger="scriptorium"):
+        backup = archive.take_backup("manual", now=_STAMP)
+
+    assert Path(backup.path).is_file()
+    assert (backups / older[0]).exists()
+    assert "could not remove old backup" in caplog.text
+
+
+def test_unreadable_backups_folder_after_sealing_does_not_fail_the_backup(
+    seeded: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unreadable(self: Path) -> Iterator[Path]:
+        raise PermissionError("no listing")
+
+    monkeypatch.setattr(Path, "iterdir", unreadable)
+
+    backup = archive.take_backup("manual", now=_STAMP)
+
+    assert Path(backup.path).is_file()
+
+
+def test_prune_sweeps_temp_files_older_than_an_hour(catalog: Path) -> None:
+    backups = archive.backups_dir()
+    stale = backups / ".scriptorium-x.db.abc123.tmp"
+    stale_journal = backups / ".scriptorium-x.db.abc123.tmp-journal"
+    fresh = backups / ".scriptorium-y.db.def456.tmp"
+    unrelated = backups / ".other.tmp"
+    for path in (stale, stale_journal, fresh, unrelated):
+        path.write_bytes(b"x")
+    for path in (stale, stale_journal, unrelated):
+        _age(path, 2 * 3600)
+
+    archive.prune_backups()
+
+    assert not stale.exists()
+    assert not stale_journal.exists()
+    assert fresh.exists()  # an in-flight copy is younger than an hour
+    assert unrelated.exists()
+
+
+def test_list_backups_maps_unreadable_folder_to_backup_error(
+    catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unreadable(self: Path) -> Iterator[Path]:
+        raise PermissionError("no listing")
+
+    monkeypatch.setattr(Path, "iterdir", unreadable)
+    with pytest.raises(BackupError, match="could not read the backups folder: no listing"):
+        archive.list_backups()
+    monkeypatch.undo()
+
+    def unmakeable(self: Path, *args: object, **kwargs: object) -> None:
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(Path, "mkdir", unmakeable)
+    with pytest.raises(BackupError, match="backups folder: read-only"):
+        archive.backups_dir()
 
 
 def test_prune_keeps_manual_and_premigration_pools_separately(catalog: Path) -> None:
