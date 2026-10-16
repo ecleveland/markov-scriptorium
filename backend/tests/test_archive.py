@@ -349,6 +349,10 @@ def test_has_fresh_premigration_backup_matches_reason_version_and_age(catalog: P
 
     copy = backups / "scriptorium-20260102T000000Z-v5-premigration.db"
     copy.write_bytes(b"x")
+    # Ten minutes old, with the catalog touched since, so only the hour window
+    # can count the copy as fresh.
+    _age(copy, 600)
+    os.utime(db.db_path(), None)
     assert archive.has_fresh_premigration_backup(5) is True  # written within the hour
 
     _age(copy, 2 * 86400)
