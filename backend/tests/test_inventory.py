@@ -1228,6 +1228,171 @@ def test_search_rejects_unknown_sort_and_order(search_conn: sqlite3.Connection) 
         inventory.search_folios(search_conn, filters, order="sideways")  # type: ignore[arg-type]
 
 
+def test_search_lot_filters_must_hold_on_one_lot(search_conn: sqlite3.Connection) -> None:
+    """Bolt has "staple" on one lot and "Volume I" on another, so it matches neither pair."""
+    assert _search(search_conn, tags=("staple",), locations=("Volume I",)) == ([], {}, 0)
+
+    keys, rows, total = _search(search_conn, tags=("burn",), locations=("Volume I",))
+
+    assert (keys, total) == ([("bolt-1", "nonfoil")], 1)
+    bolt = rows[("bolt-1", "nonfoil")]
+    assert (bolt["quantity"], bolt["lots"]) == (3, 2)
+
+
+def test_search_every_filter_at_once_narrows_to_one_folio(
+    search_conn: sqlite3.Connection,
+) -> None:
+    every: dict[str, Any] = {
+        "name": "bolt",
+        "set_codes": ("lea",),
+        "colors": ("R",),
+        "color_identity": ("R",),
+        "type_line": "instant",
+        "tags": ("burn",),
+        "locations": ("Volume I",),
+        "finishes": ("nonfoil",),
+        "conditions": ("NM",),
+    }
+    keys, _, total = _search(search_conn, **every)
+    assert (keys, total) == ([("bolt-1", "nonfoil")], 1)
+
+    # The foil lot has no tag, and the staple lot has no location.
+    assert _search(search_conn, **{**every, "finishes": ("foil",)}) == ([], {}, 0)
+    assert _search(search_conn, **{**every, "tags": ("staple",)}) == ([], {}, 0)
+
+
+def test_search_colors_contain_while_identity_fits_within(
+    search_conn: sqlite3.Connection,
+) -> None:
+    """The ticket's "contains red" against "exactly red", read under ADR 0021.
+
+    Identity means fits within, so colorless cards fit too. There is no exact mode.
+    """
+    bolts = {("bolt-1", "nonfoil"), ("bolt-1", "foil")}
+
+    contains, _, _ = _search(search_conn, colors=("R",))
+    fits, _, _ = _search(search_conn, color_identity=("R",))
+    both, _, _ = _search(search_conn, colors=("R",), color_identity=("R",))
+
+    assert set(contains) == bolts | {
+        ("helix-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("valki-1", "foil"),
+    }
+    assert set(fits) == bolts | {("sol-1", "nonfoil"), ("coin-1", "nonfoil")}
+    assert set(both) == bolts
+
+
+def test_search_name_reaches_the_back_face_and_spans_words(
+    search_conn: sqlite3.Connection,
+) -> None:
+    assert _search(search_conn, name="tibalt")[0] == [("valki-1", "foil")]
+    assert set(_search(search_conn, name="ing bo")[0]) == {
+        ("bolt-1", "nonfoil"),
+        ("bolt-1", "foil"),
+    }
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"name": "zzz"},
+        {"set_codes": ("xyz",)},
+        {"colors": ("G",)},
+        {"type_line": "sorcery"},
+        {"tags": ("trade",)},
+        {"locations": ("Volume IX",)},
+        # Every real finish and condition has a seed lot, so these two use
+        # values no lot holds.
+        {"finishes": ("glossy",)},
+        {"conditions": ("MINT",)},
+    ],
+)
+def test_search_a_value_no_folio_has_returns_nothing(
+    search_conn: sqlite3.Connection, filters: dict[str, Any]
+) -> None:
+    # color_identity is left out: colorless cards fit any identity, so no
+    # value can exclude every folio. The next test covers it.
+    assert _search(search_conn, **filters) == ([], {}, 0)
+
+
+def test_search_color_identity_no_folio_has_keeps_only_colorless(
+    search_conn: sqlite3.Connection,
+) -> None:
+    keys, _, total = _search(search_conn, color_identity=("G",))
+
+    assert (set(keys), total) == ({("sol-1", "nonfoil"), ("coin-1", "nonfoil")}, 2)
+
+
+@pytest.mark.parametrize("order", ["asc", "desc"])
+@pytest.mark.parametrize("sort", ["added", "name", "set", "quantity"])
+def test_search_pages_tile_the_result_under_every_sort(
+    search_conn: sqlite3.Connection, sort: inventory.SortKey, order: inventory.SortOrder
+) -> None:
+    """Quantity and set have ties, so this pins the (scryfall_id, finish) tiebreak."""
+    full, _, _ = _search(search_conn, sort=sort, order=order)
+    walked: list[tuple[str, str]] = []
+    totals: list[int] = []
+    offset = 0
+    while True:
+        page, _, total = _search(search_conn, sort=sort, order=order, limit=2, offset=offset)
+        totals.append(total)
+        if not page:
+            break
+        walked.extend(page)
+        offset += 2
+
+    assert walked == full
+    assert len(full) == len(_ALL_FOLIOS)
+    assert totals == [len(_ALL_FOLIOS)] * len(totals)
+
+
+def test_search_largest_page_returns_every_folio_once(search_conn: sqlite3.Connection) -> None:
+    keys, _, total = _search(search_conn, limit=200)
+
+    assert len(keys) == len(set(keys)) == total == len(_ALL_FOLIOS)
+    assert set(keys) == _ALL_FOLIOS
+
+
+def test_search_set_sort_orders_lettered_collector_numbers(
+    search_conn: sqlite3.Connection,
+) -> None:
+    """12a sorts after 12 and before 100: numeric first, then the text."""
+    for number in ("12", "12a", "100", "2"):
+        _insert_card(
+            search_conn,
+            f"ltr-{number}",
+            f"Ring Card {number}",
+            set_code="ltr",
+            collector_number=number,
+        )
+    search_conn.commit()
+    for number in ("12", "12a", "100", "2"):
+        inventory.create_lot(search_conn, scryfall_id=f"ltr-{number}")
+
+    keys, _, _ = _search(search_conn, set_codes=("ltr",), sort="set")
+
+    assert keys == [
+        ("ltr-2", "nonfoil"),
+        ("ltr-12", "nonfoil"),
+        ("ltr-12a", "nonfoil"),
+        ("ltr-100", "nonfoil"),
+    ]
+
+
+def test_search_sorts_after_filtering(search_conn: sqlite3.Connection) -> None:
+    keys, _, total = _search(search_conn, type_line="instant", sort="name")
+
+    assert keys == [
+        ("counter-1", "nonfoil"),
+        ("izzet-1", "etched"),
+        ("bolt-1", "foil"),
+        ("bolt-1", "nonfoil"),
+        ("helix-1", "nonfoil"),
+    ]
+    assert total == 5
+
+
 # --- list_facets (VEG-228) -------------------------------------------------
 
 
