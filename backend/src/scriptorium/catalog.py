@@ -144,7 +144,7 @@ def search_cards(
         ).fetchone()[0]
         rows = conn.execute(
             "SELECT * FROM cards WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
-            "ORDER BY name LIMIT ? OFFSET ?",
+            "ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",
             (like, limit, offset),
         ).fetchall()
 
@@ -176,7 +176,7 @@ def autocomplete_names(conn: sqlite3.Connection, query: str, *, limit: int = 10)
         like = f"{_escape_like(term)}%"
         rows = conn.execute(
             "SELECT DISTINCT name FROM cards WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
-            "ORDER BY name LIMIT ?",
+            "ORDER BY name COLLATE NOCASE LIMIT ?",
             (like, limit),
         ).fetchall()
 
