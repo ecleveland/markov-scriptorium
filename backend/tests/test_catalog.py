@@ -161,12 +161,17 @@ def test_search_no_match(catalog_conn: sqlite3.Connection) -> None:
 def test_search_fts_pages_tile_the_matches_under_tied_ranks(
     catalog_conn: sqlite3.Connection,
 ) -> None:
-    """Twelve names of one length rank alike, so only a tiebreak keeps pages apart."""
+    """Twelve names of one length rank alike, so only a tiebreak keeps pages in order.
+
+    The walk must match the one-page order, so pages agree with each other as well
+    as covering every match once.
+    """
     inserted = {f"goblin-{i}" for i in range(12)}
     for i in range(12):
         _insert_card(catalog_conn, f"goblin-{i}", f"Goblin Number {i:02d}")
     catalog.rebuild_name_index(catalog_conn)
     catalog_conn.commit()
+    one_page, _ = catalog.search_cards(catalog_conn, "obl", limit=12)
 
     walked: list[str] = []
     offset = 0
@@ -178,6 +183,7 @@ def test_search_fts_pages_tile_the_matches_under_tied_ranks(
         walked.extend(r["scryfall_id"] for r in page)
         offset += 5
 
+    assert walked == [r["scryfall_id"] for r in one_page]
     assert len(walked) == len(set(walked)) == 12
     assert set(walked) == inserted
 
@@ -192,7 +198,12 @@ def test_search_like_fallback_orders_by_name_ignoring_case(
     catalog_conn.commit()  # LIKE path reads `cards` directly; no rebuild needed
 
     results, _ = catalog.search_cards(catalog_conn, "li")
-    assert [r["name"] for r in results][0] == "lightning axe"
+    assert [r["name"] for r in results] == [
+        "lightning axe",
+        "Lightning Bolt",
+        "Lightning Bolt",
+        "Lightning Helix",
+    ]
 
 
 # --- autocomplete_names ----------------------------------------------------

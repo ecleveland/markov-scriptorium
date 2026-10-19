@@ -1229,7 +1229,10 @@ def test_search_rejects_unknown_sort_and_order(search_conn: sqlite3.Connection) 
 
 
 def test_search_lot_filters_must_hold_on_one_lot(search_conn: sqlite3.Connection) -> None:
-    """Bolt has "staple" on one lot and "Volume I" on another, so it matches neither pair."""
+    """Bolt has "staple" on one lot and "Volume I" on another, so the pair matches nothing.
+
+    "burn" with "Volume I" matches, through lot 1, which carries both.
+    """
     assert _search(search_conn, tags=("staple",), locations=("Volume I",)) == ([], {}, 0)
 
     keys, rows, total = _search(search_conn, tags=("burn",), locations=("Volume I",))
@@ -1256,7 +1259,7 @@ def test_search_every_filter_at_once_narrows_to_one_folio(
     keys, _, total = _search(search_conn, **every)
     assert (keys, total) == ([("bolt-1", "nonfoil")], 1)
 
-    # The foil lot has no tag, and the staple lot has no location.
+    # The foil lot fails on tag and location, and the staple lot on location and condition.
     assert _search(search_conn, **{**every, "finishes": ("foil",)}) == ([], {}, 0)
     assert _search(search_conn, **{**every, "tags": ("staple",)}) == ([], {}, 0)
 

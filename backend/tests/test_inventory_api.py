@@ -562,8 +562,14 @@ def test_search_route_orders_like_search_folios(
 
 def test_search_colors_and_color_identity_together_intersect() -> None:
     with closing(db.connect()) as conn:
-        conn.execute("UPDATE cards SET colors = '[\"R\"]' WHERE scryfall_id = 'bolt-1'")
-        conn.execute("UPDATE cards SET colors = '[\"R\",\"W\"]' WHERE scryfall_id = 'helix-1'")
+        conn.execute(
+            "UPDATE cards SET colors = '[\"R\"]', color_identity = '[\"R\"]' "
+            "WHERE scryfall_id = 'bolt-1'"
+        )
+        conn.execute(
+            'UPDATE cards SET colors = \'["R","W"]\', color_identity = \'["R","W"]\' '
+            "WHERE scryfall_id = 'helix-1'"
+        )
         _insert_card(conn, "plains-1", "Plains Walker", colors='["W"]', color_identity='["W"]')
         _insert_card(conn, "island-1", "Island Walker", colors='["U"]', color_identity='["U"]')
         conn.commit()
