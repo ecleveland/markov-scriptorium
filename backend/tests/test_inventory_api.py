@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from scriptorium import db
+from scriptorium import db, inventory
 from scriptorium.main import app
 from scriptorium.migrations import apply_migrations
 
@@ -536,6 +536,64 @@ def test_search_route_not_shadowed_by_lot_id() -> None:
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+@pytest.mark.parametrize("order", [None, "asc", "desc"])
+@pytest.mark.parametrize("sort", ["added", "name", "set", "quantity"])
+def test_search_route_orders_like_search_folios(
+    sort: inventory.SortKey, order: inventory.SortOrder | None
+) -> None:
+    _inscribe(scryfall_id="helix-1")
+    _inscribe(scryfall_id="bolt-1", quantity=3)
+    _inscribe(scryfall_id="1", quantity=2)
+    _inscribe(scryfall_id="bolt-1", finish="foil")
+    params = {"sort": sort} if order is None else {"sort": sort, "order": order}
+
+    body = client.get("/inventory/search", params=params).json()
+    with closing(db.connect()) as conn:
+        expected, _ = inventory.search_folios(
+            conn, inventory.SearchFilters(), sort=sort, order=order
+        )
+
+    assert [(r["scryfall_id"], r["finish"]) for r in body["results"]] == [
+        (r["scryfall_id"], r["finish"]) for r in expected
+    ]
+
+
+def test_search_colors_and_color_identity_together_intersect() -> None:
+    with closing(db.connect()) as conn:
+        conn.execute(
+            "UPDATE cards SET colors = '[\"R\"]', color_identity = '[\"R\"]' "
+            "WHERE scryfall_id = 'bolt-1'"
+        )
+        conn.execute(
+            'UPDATE cards SET colors = \'["R","W"]\', color_identity = \'["R","W"]\' '
+            "WHERE scryfall_id = 'helix-1'"
+        )
+        _insert_card(conn, "plains-1", "Plains Walker", colors='["W"]', color_identity='["W"]')
+        _insert_card(conn, "island-1", "Island Walker", colors='["U"]', color_identity='["U"]')
+        conn.commit()
+    for scryfall_id in ("bolt-1", "helix-1", "1", "plains-1", "island-1"):
+        _inscribe(scryfall_id=scryfall_id)
+
+    def ids(params: dict[str, str]) -> set[str]:
+        body = client.get("/inventory/search", params=params).json()
+        return {r["scryfall_id"] for r in body["results"]}
+
+    # Helix contains W but does not fit in it; the colorless "1" fits but has no W.
+    assert ids({"colors": "W"}) == {"plains-1", "helix-1"}
+    assert ids({"color_identity": "W"}) == {"plains-1", "1"}
+    assert ids({"colors": "W", "color_identity": "W"}) == {"plains-1"}
+
+
+def test_search_offset_past_the_end_is_empty_with_the_total() -> None:
+    _inscribe()
+    _inscribe(scryfall_id="helix-1")
+
+    resp = client.get("/inventory/search", params={"offset": 50})
+
+    assert resp.status_code == 200
+    assert (resp.json()["results"], resp.json()["total"]) == ([], 2)
 
 
 def test_facets_returns_sets_locations_and_tags() -> None:

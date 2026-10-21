@@ -132,8 +132,8 @@ def search_cards(
         rows = conn.execute(
             "SELECT c.* FROM cards c "
             "JOIN (SELECT rowid, rank FROM cards_fts WHERE cards_fts MATCH ? "
-            "      ORDER BY rank LIMIT ? OFFSET ?) m ON m.rowid = c.rowid "
-            "ORDER BY m.rank",
+            "      ORDER BY rank, rowid LIMIT ? OFFSET ?) m ON m.rowid = c.rowid "
+            "ORDER BY m.rank, c.rowid",
             (match, limit, offset),
         ).fetchall()
     else:
@@ -144,7 +144,7 @@ def search_cards(
         ).fetchone()[0]
         rows = conn.execute(
             "SELECT * FROM cards WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
-            "ORDER BY name LIMIT ? OFFSET ?",
+            "ORDER BY name COLLATE NOCASE, scryfall_id LIMIT ? OFFSET ?",
             (like, limit, offset),
         ).fetchall()
 
@@ -168,7 +168,7 @@ def autocomplete_names(conn: sqlite3.Connection, query: str, *, limit: int = 10)
         rows = conn.execute(
             "SELECT c.name FROM cards c "
             "JOIN (SELECT rowid, rank FROM cards_fts WHERE cards_fts MATCH ? "
-            "      ORDER BY rank LIMIT ?) m ON m.rowid = c.rowid "
+            "      ORDER BY rank, rowid LIMIT ?) m ON m.rowid = c.rowid "
             "GROUP BY c.name ORDER BY MIN(m.rank) LIMIT ?",
             (_fts_match(term), _AUTOCOMPLETE_SCAN_CAP, limit),
         ).fetchall()
@@ -176,7 +176,7 @@ def autocomplete_names(conn: sqlite3.Connection, query: str, *, limit: int = 10)
         like = f"{_escape_like(term)}%"
         rows = conn.execute(
             "SELECT DISTINCT name FROM cards WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
-            "ORDER BY name LIMIT ?",
+            "ORDER BY name COLLATE NOCASE LIMIT ?",
             (like, limit),
         ).fetchall()
 
