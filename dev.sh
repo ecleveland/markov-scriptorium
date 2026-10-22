@@ -5,7 +5,7 @@
 # Usage:
 #   ./dev.sh            Fast boot: seed a handful of cards, skip the Scryfall
 #                       download. Best for working on the app itself.
-#   ./dev.sh --full     Real catalog: download Scryfall bulk data (~500 MB) on
+#   ./dev.sh --full     Real catalog: download Scryfall bulk data (about 80 MB) on
 #                       startup instead of seeding. (alias: --refresh)
 #   ./dev.sh --help
 #
@@ -40,7 +40,7 @@ for port in 8000 5173; do
 done
 
 if [ "$FULL" -eq 1 ]; then
-  echo "Full mode: the backend will download Scryfall bulk data (~500 MB) on startup."
+  echo "Full mode: the backend will download Scryfall bulk data (about 80 MB) on startup."
   export SCRIPTORIUM_AUTO_REFRESH=1
 else
   echo "Fast mode: skipping the Scryfall download; seeding a handful of dev cards."

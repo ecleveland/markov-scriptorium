@@ -23,31 +23,35 @@ from scriptorium.scryfall.bulk import (
     fetch_bulk_entry,
 )
 
-# A tiny stand-in for the ~547MB default_cards export.
-_RAW_JSON = b'[{"id":"abc-123","name":"Edgar Markov"}]'
+# A tiny stand-in for the default_cards export, which Scryfall now serves as
+# gzipped JSON Lines (one card object per line).
+_RAW_JSON = b'{"id":"abc-123","name":"Edgar Markov"}\n{"id":"def-456","name":"Sol Ring"}\n'
 _GZ_BYTES = gzip.compress(_RAW_JSON)
 _UPDATED_AT = "2026-06-14T21:09:38.189+00:00"
-_DOWNLOAD_URI = "https://data.scryfall.io/bulk/default-cards.json.gz"
+_DOWNLOAD_URI = "https://data.scryfall.io/default-cards/default-cards-20260614210938.jsonl.gz"
+_FILENAME = "default_cards-20260614T210938Z.jsonl.gz"
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
 
 def _bulk_list(
-    *, bulk_type: str = "default_cards", content_encoding: str | None = "gzip"
+    *, bulk_type: str = "default_cards", download_uri: str = _DOWNLOAD_URI
 ) -> dict[str, object]:
+    """A ``/bulk-data`` listing in the shape Scryfall serves since October 2026."""
     return {
         "object": "list",
         "has_more": False,
         "data": [
             {
                 "object": "bulk_data",
+                "id": "e2ef41e3-5778-4bc2-af3f-78eca7dd9c23",
                 "type": bulk_type,
-                "name": "Default Cards",
-                "download_uri": _DOWNLOAD_URI,
                 "updated_at": _UPDATED_AT,
-                "size": len(_GZ_BYTES),
-                "content_type": "application/json",
-                "content_encoding": content_encoding,
+                "uri": "https://api.scryfall.com/bulk-data/e2ef41e3-5778-4bc2-af3f-78eca7dd9c23",
+                "name": "Default Cards",
+                "description": "A JSON file containing every card object on Scryfall in English.",
+                "jsonl_download_uri": download_uri,
+                "compressed_size": len(_GZ_BYTES),
             }
         ],
     }
@@ -112,7 +116,6 @@ def test_fetch_bulk_entry_returns_default_cards() -> None:
     assert entry.download_uri == _DOWNLOAD_URI
     assert entry.updated_at == _UPDATED_AT
     assert entry.size == len(_GZ_BYTES)
-    assert entry.content_encoding == "gzip"
 
 
 def test_fetch_bulk_entry_unknown_type_raises() -> None:
@@ -134,10 +137,40 @@ def test_fetch_bulk_entry_http_error_raises() -> None:
 def test_fetch_bulk_entry_malformed_entry_raises_scryfall_error() -> None:
     """A matched entry missing a required key surfaces as ScryfallBulkError, not KeyError."""
     payload = _bulk_list()
-    del payload["data"][0]["download_uri"]  # type: ignore[index]
+    del payload["data"][0]["jsonl_download_uri"]  # type: ignore[index]
     with (
         _client(_make_handler(list_payload=payload)) as client,
-        pytest.raises(ScryfallBulkError, match="malformed"),
+        pytest.raises(ScryfallBulkError, match="malformed.*jsonl_download_uri"),
+    ):
+        fetch_bulk_entry("default_cards", client=client)
+
+
+def test_fetch_bulk_entry_rejects_old_shape() -> None:
+    """An entry in the pre-October 2026 shape names the field it lacks (VEG-622).
+
+    Scryfall dropped ``download_uri``, ``size``, ``content_type`` and
+    ``content_encoding``. A listing that still carries only those fails with a
+    ScryfallBulkError that names ``jsonl_download_uri``, not a bare KeyError.
+    """
+    payload: dict[str, object] = {
+        "object": "list",
+        "has_more": False,
+        "data": [
+            {
+                "object": "bulk_data",
+                "type": "default_cards",
+                "name": "Default Cards",
+                "download_uri": "https://data.scryfall.io/bulk/default-cards.json.gz",
+                "updated_at": _UPDATED_AT,
+                "size": len(_GZ_BYTES),
+                "content_type": "application/json",
+                "content_encoding": "gzip",
+            }
+        ],
+    }
+    with (
+        _client(_make_handler(list_payload=payload)) as client,
+        pytest.raises(ScryfallBulkError, match="jsonl_download_uri"),
     ):
         fetch_bulk_entry("default_cards", client=client)
 
@@ -174,9 +207,9 @@ def test_fetch_bulk_entry_non_json_body_raises() -> None:
 def test_download_writes_compressed_file_named_by_updated_at(tmp_path: Path) -> None:
     with _client(_make_handler()) as client:
         path = download_bulk("default_cards", dest_dir=tmp_path, client=client)
-    assert path == tmp_path / "default_cards-20260614T210938Z.json.gz"
+    assert path == tmp_path / _FILENAME
     assert path.read_bytes() == _GZ_BYTES
-    # The stored file is the gzip stream as-is; it decompresses to the JSON.
+    # The stored file is the gzip stream as-is; it decompresses to the JSON Lines.
     assert gzip.decompress(path.read_bytes()) == _RAW_JSON
 
 
@@ -188,7 +221,7 @@ def test_download_leaves_no_partial_file(tmp_path: Path) -> None:
 
 def test_download_is_idempotent_for_same_version(tmp_path: Path) -> None:
     """If the exact version is already on disk, don't re-fetch the file."""
-    target = tmp_path / "default_cards-20260614T210938Z.json.gz"
+    target = tmp_path / _FILENAME
     target.write_bytes(_GZ_BYTES)
     seen: list[httpx.Request] = []
     with _client(_make_handler(seen=seen)) as client:
@@ -229,7 +262,7 @@ def test_download_rejects_truncated_transfer(tmp_path: Path) -> None:
     """A clean stream shorter than the reported size is rejected, not promoted."""
     # Report a larger size than the bytes the data host actually serves.
     payload = _bulk_list()
-    payload["data"][0]["size"] = len(_GZ_BYTES) + 999  # type: ignore[index]
+    payload["data"][0]["compressed_size"] = len(_GZ_BYTES) + 999  # type: ignore[index]
     with (
         _client(_make_handler(list_payload=payload)) as client,
         pytest.raises(ScryfallBulkError, match="truncated"),
@@ -240,7 +273,7 @@ def test_download_rejects_truncated_transfer(tmp_path: Path) -> None:
 
 def test_download_replaces_corrupt_cached_file(tmp_path: Path) -> None:
     """An existing file whose size doesn't match is re-downloaded, not trusted."""
-    target = tmp_path / "default_cards-20260614T210938Z.json.gz"
+    target = tmp_path / _FILENAME
     target.write_bytes(b"corrupt-partial")  # wrong size
     seen: list[httpx.Request] = []
     with _client(_make_handler(seen=seen)) as client:
@@ -272,7 +305,7 @@ def test_download_unknown_size_stores_file_and_warns(
 ) -> None:
     """When Scryfall reports no size, store the file but warn that we can't verify it."""
     payload = _bulk_list()
-    payload["data"][0]["size"] = 0  # type: ignore[index]
+    payload["data"][0]["compressed_size"] = 0  # type: ignore[index]
     with (
         _client(_make_handler(list_payload=payload)) as client,
         caplog.at_level("WARNING", logger="scriptorium"),
@@ -302,9 +335,9 @@ def test_cleanup_failure_does_not_mask_original_error(
         download_bulk("default_cards", dest_dir=tmp_path, client=client)
 
 
-def test_download_non_gzip_entry_uses_json_suffix(tmp_path: Path) -> None:
-    """When the export isn't gzip-encoded, the stored file is plain .json."""
-    payload = _bulk_list(content_encoding=None)
+def test_download_uri_without_suffix_stores_plain_json(tmp_path: Path) -> None:
+    """A download URI whose path has no suffix stores the file as plain .json."""
+    payload = _bulk_list(download_uri="https://data.scryfall.io/default-cards/latest")
     with _client(_make_handler(list_payload=payload)) as client:
         path = download_bulk("default_cards", dest_dir=tmp_path, client=client)
     assert path.name == "default_cards-20260614T210938Z.json"
@@ -318,7 +351,6 @@ def test_download_with_supplied_entry_skips_list_fetch(tmp_path: Path) -> None:
         download_uri=_DOWNLOAD_URI,
         updated_at=_UPDATED_AT,
         size=len(_GZ_BYTES),
-        content_encoding="gzip",
     )
     seen: list[httpx.Request] = []
     with _client(_make_handler(seen=seen)) as client:

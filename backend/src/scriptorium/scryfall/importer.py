@@ -1,7 +1,9 @@
 """Load a Scryfall bulk export into the local card catalog (VEG-213, ADR 0006).
 
-Stream-parses the bulk JSON array one card object at a time (via ijson, so the
-~1.5 GB decompressed file never lands in memory) and refreshes the ``cards`` /
+Stream-parses the bulk file one card object at a time, so the ~1.5 GB
+decompressed file never lands in memory. The file is a JSON array (parsed with
+ijson) or JSON Lines, one card per line, which is what Scryfall serves since
+October 2026 (VEG-622). The importer refreshes the ``cards`` /
 ``card_faces`` tables in a single transaction: a mid-import failure rolls back
 and never leaves a half-loaded catalog. Cards are upserted, faces are replaced
 per card, and a guarded sweep then deletes printings that left the export
@@ -14,6 +16,7 @@ price spread.
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import logging
 import sqlite3
@@ -22,7 +25,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any, cast
+from typing import Any
 
 import ijson
 
@@ -161,26 +164,78 @@ def _face_rows(card: dict[str, Any]) -> list[tuple[Any, ...]]:
     ]
 
 
+# The four whitespace bytes JSON allows between tokens (RFC 8259).
+_JSON_WHITESPACE = b" \t\r\n"
+
+# Both stream types support peek(), which the format sniff needs.
+_BulkStream = gzip.GzipFile | io.BufferedReader
+
+
 @contextmanager
-def _open_stream(path: Path) -> Iterator[IO[bytes]]:
+def _open_stream(path: Path) -> Iterator[_BulkStream]:
     """Open ``path`` for binary reading, transparently decompressing ``.gz``."""
     if path.suffix == ".gz":
         with gzip.open(path, "rb") as fh:
-            # GzipFile is a binary stream at runtime but isn't typed as IO[bytes].
-            yield cast("IO[bytes]", fh)
+            yield fh
     else:
         with path.open("rb") as fh:
             yield fh
 
 
+def _skip_leading_whitespace(fh: _BulkStream) -> tuple[bytes, int]:
+    """Consume whitespace before the first JSON value.
+
+    Returns the first non-whitespace byte, left unread, and the number of
+    newlines consumed so line numbers in errors still match the file. Returns
+    an empty byte string when the stream holds only whitespace.
+    """
+    newlines = 0
+    while head := fh.peek(1):
+        rest = head.lstrip(_JSON_WHITESPACE)
+        skipped = len(head) - len(rest)
+        newlines += head.count(b"\n", 0, skipped)
+        fh.read(skipped)
+        if rest:
+            return rest[:1], newlines
+    return b"", newlines
+
+
 def _iter_cards(path: Path) -> Iterator[dict[str, Any]]:
-    """Yield each card object from the bulk JSON array without loading it all.
+    """Yield each card object from a JSON array or JSON Lines file without loading it all.
+
+    The first non-whitespace byte picks the parser. ``[`` means an array, which
+    covers bulk files cached before VEG-622 and is parsed with ijson. Anything
+    else is read as JSON Lines, one object per line, with blank lines skipped.
+    A file holding nothing but whitespace raises :class:`BulkImportError`.
 
     ``use_float=True`` makes ijson yield plain floats for JSON numbers (e.g.
-    ``cmc``) instead of ``decimal.Decimal``, which sqlite3 cannot bind.
+    ``cmc``) instead of ``decimal.Decimal``, which sqlite3 cannot bind. The
+    stdlib ``json`` module already yields floats.
     """
     with _open_stream(path) as fh:
-        yield from ijson.items(fh, "item", use_float=True)
+        first, newlines = _skip_leading_whitespace(fh)
+        if not first:
+            # An empty export would commit zero cards and the sweep would then
+            # delete every unreferenced printing, so treat it as a bad download.
+            raise BulkImportError(
+                f"bulk file {path} is empty; the download may be corrupt, re-fetch it"
+            )
+        if first == b"[":
+            yield from ijson.items(fh, "item", use_float=True)
+            return
+        for lineno, raw in enumerate(fh, start=newlines + 1):
+            line = raw.strip(_JSON_WHITESPACE)
+            if not line:
+                continue
+            try:
+                card = json.loads(line)
+            except ValueError as exc:
+                # JSONDecodeError and UnicodeDecodeError both subclass ValueError.
+                raise BulkImportError(
+                    f"could not parse bulk file {path}: line {lineno} is not valid JSON "
+                    f"({exc}). The download may be corrupt; re-fetch it"
+                ) from exc
+            yield card
 
 
 def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:

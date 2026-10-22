@@ -73,3 +73,11 @@ card tables in one transaction:
   staleness checks) is [VEG-214].
 - Progress is logged every 25k cards plus a final summary; counts are returned
   as `ImportResult` for callers/tests.
+- **2026-10-22, VEG-622.** Scryfall moved the bulk exports to JSON Lines on or
+  before 2026-10-21. Each `/bulk-data` entry now carries `jsonl_download_uri`
+  and `compressed_size`, and the old `download_uri`, `size`, `content_type` and
+  `content_encoding` fields are gone. The downloader follows the new shape only.
+  The importer reads the first non-whitespace byte of the file and picks a
+  parser. An array goes through ijson as before, and anything else is read as
+  one `json.loads` per line, so array files cached before the change still
+  import. The compressed export is now about 80 MB rather than about 500 MB.

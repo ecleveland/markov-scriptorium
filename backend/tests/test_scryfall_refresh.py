@@ -34,7 +34,7 @@ from scriptorium.scryfall.refresh import (
     refresh_catalog,
 )
 
-_DOWNLOAD_URI = "https://data.scryfall.io/bulk/default-cards.json.gz"
+_DOWNLOAD_URI = "https://data.scryfall.io/default-cards/default-cards-20260614210938.jsonl.gz"
 _V1 = "2026-06-14T21:09:38.189+00:00"
 _V2 = "2026-06-15T21:09:38.189+00:00"
 
@@ -54,7 +54,8 @@ Handler = Callable[[httpx.Request], httpx.Response]
 
 
 def _gz(cards: list[dict[str, Any]]) -> bytes:
-    return gzip.compress(json.dumps(cards).encode())
+    """Gzip ``cards`` as JSON Lines, the format Scryfall serves bulk exports in."""
+    return gzip.compress(("\n".join(json.dumps(c) for c in cards) + "\n").encode())
 
 
 def _bulk_list(*, updated_at: str, size: int) -> dict[str, object]:
@@ -65,10 +66,9 @@ def _bulk_list(*, updated_at: str, size: int) -> dict[str, object]:
                 "object": "bulk_data",
                 "type": "default_cards",
                 "name": "Default Cards",
-                "download_uri": _DOWNLOAD_URI,
                 "updated_at": updated_at,
-                "size": size,
-                "content_encoding": "gzip",
+                "jsonl_download_uri": _DOWNLOAD_URI,
+                "compressed_size": size,
             }
         ],
     }
@@ -277,7 +277,7 @@ def test_import_failure_preserves_prior_metadata_and_drops_file(
         # Prior metadata is untouched — still V1, original counts and check time.
         assert read_status(conn) == before
         # The corrupt V2 download was removed so the next refresh re-downloads.
-        v2_file = tmp_path / "scryfall" / "default_cards-20260615T210938Z.json.gz"
+        v2_file = tmp_path / "scryfall" / "default_cards-20260615T210938Z.jsonl.gz"
         assert not v2_file.exists()
 
 
