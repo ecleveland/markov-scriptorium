@@ -8,9 +8,10 @@ fetch the ``default_cards`` export — one row per *printing*, the grain the
 Flow:
 
 1. ``GET https://api.scryfall.com/bulk-data`` and pick the entry by ``type``.
-2. Stream the entry's ``download_uri`` (hosted on a separate data host) to disk,
-   writing the raw gzip bytes as-is so the ~547 MB file never has to be
-   decompressed in memory.
+2. Stream the entry's ``jsonl_download_uri`` (hosted on a separate data host)
+   to disk, writing the raw gzip bytes as-is so the file of about 80 MB never
+   has to be decompressed in memory. The file holds JSON Lines, one card
+   object per line (VEG-622).
 
 The file is named from Scryfall's ``updated_at`` so a given version is written
 once; re-running with the same version on disk is a no-op (true staleness-driven
@@ -23,7 +24,8 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -57,8 +59,8 @@ class BulkDataEntry:
     name: str
     download_uri: str
     updated_at: str
+    # Bytes on the wire, from Scryfall's ``compressed_size``; 0 when unknown.
     size: int
-    content_encoding: str | None
 
 
 def _new_client() -> httpx.Client:
@@ -107,14 +109,19 @@ def _compact_timestamp(iso: str) -> str:
 
 
 def _filename(entry: BulkDataEntry) -> str:
-    suffix = ".json.gz" if entry.content_encoding == "gzip" else ".json"
+    """Name the stored file by type and version, keeping the download's suffixes.
+
+    ``.../default-cards-20261021210600.jsonl.gz`` keeps ``.jsonl.gz``, so the
+    importer sees ``.gz`` and decompresses. A URI with no suffix stores as ``.json``.
+    """
+    suffix = "".join(PurePosixPath(urlsplit(entry.download_uri).path).suffixes) or ".json"
     return f"{entry.bulk_type}-{_compact_timestamp(entry.updated_at)}{suffix}"
 
 
 def _is_complete(path: Path, entry: BulkDataEntry) -> bool:
     """Best-effort check that an existing file is a complete download.
 
-    Compares the on-disk size against Scryfall's reported ``size`` so a
+    Compares the on-disk size against Scryfall's reported ``compressed_size`` so a
     truncated or zero-byte file left by a past failure is re-downloaded rather
     than trusted by filename alone. When ``size`` is unknown (0), fall back to
     trusting the version-stamped name.
@@ -160,10 +167,9 @@ def fetch_bulk_entry(
                 return BulkDataEntry(
                     bulk_type=entry["type"],
                     name=entry.get("name", entry["type"]),
-                    download_uri=entry["download_uri"],
+                    download_uri=entry["jsonl_download_uri"],
                     updated_at=entry["updated_at"],
-                    size=entry.get("size", 0),
-                    content_encoding=entry.get("content_encoding"),
+                    size=entry.get("compressed_size", 0),
                 )
             except KeyError as exc:
                 raise ScryfallBulkError(

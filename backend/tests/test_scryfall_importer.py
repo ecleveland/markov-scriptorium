@@ -185,8 +185,14 @@ _ADVENTURE_CARD: dict[str, Any] = {
 }
 
 
-def _write_bulk(path: Path, cards: list[dict[str, Any]], *, gzipped: bool = True) -> Path:
-    raw = json.dumps(cards).encode()
+def _write_bulk(
+    path: Path, cards: list[dict[str, Any]], *, gzipped: bool = True, lines: bool = False
+) -> Path:
+    """Write ``cards`` as a JSON array, or as JSON Lines when ``lines`` is true."""
+    if lines:
+        raw = "".join(json.dumps(card) + "\n" for card in cards).encode()
+    else:
+        raw = json.dumps(cards).encode()
     if gzipped:
         path.write_bytes(gzip.compress(raw))
     else:
@@ -217,6 +223,121 @@ def test_import_loads_all_cards_and_faces(catalog: sqlite3.Connection, tmp_path:
     assert result == ImportResult(cards=3, faces=2)
     assert _count(catalog, "cards") == 3
     assert _count(catalog, "card_faces") == 2
+
+
+def test_import_reads_json_lines_file(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    """Scryfall serves bulk exports as gzipped JSON Lines since October 2026 (VEG-622)."""
+    path = _write_bulk(
+        tmp_path / "bulk.jsonl.gz", [_NORMAL_CARD, _DFC_CARD, _MINIMAL_CARD], lines=True
+    )
+    result = import_bulk_file(catalog, path)
+    assert result == ImportResult(cards=3, faces=2)
+    assert _count(catalog, "cards") == 3
+    assert _count(catalog, "card_faces") == 2
+
+
+def test_import_reads_plain_json_lines_file(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    path = _write_bulk(
+        tmp_path / "bulk.jsonl",
+        [_NORMAL_CARD, _DFC_CARD, _MINIMAL_CARD],
+        gzipped=False,
+        lines=True,
+    )
+    result = import_bulk_file(catalog, path)
+    assert result == ImportResult(cards=3, faces=2)
+    assert _count(catalog, "cards") == 3
+    assert _count(catalog, "card_faces") == 2
+
+
+def test_import_json_lines_skips_blank_lines(catalog: sqlite3.Connection, tmp_path: Path) -> None:
+    raw = (
+        json.dumps(_NORMAL_CARD)
+        + "\n\n"
+        + json.dumps(_DFC_CARD)
+        + "\n   \n"
+        + json.dumps(_MINIMAL_CARD)
+        + "\n\n\n"
+    )
+    path = tmp_path / "bulk.jsonl.gz"
+    path.write_bytes(gzip.compress(raw.encode()))
+    result = import_bulk_file(catalog, path)
+    assert result == ImportResult(cards=3, faces=2)
+
+
+def test_import_json_lines_malformed_line_rolls_back(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A truncated line fails with its line number and leaves the prior catalog in place."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+
+    raw = json.dumps(_MINIMAL_CARD) + '\n{"id": "broken"\n'
+    bad = tmp_path / "bad.jsonl.gz"
+    bad.write_bytes(gzip.compress(raw.encode()))
+    with pytest.raises(BulkImportError, match="line 2"):
+        import_bulk_file(catalog, bad)
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1"}
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("empty.jsonl.gz", gzip.compress(b"")),
+        ("blank.jsonl", b" \n\t\r\n  "),
+        ("empty-array.json.gz", gzip.compress(b"[]")),
+        ("spaced-array.json", b"  [ ] "),
+    ],
+    ids=["empty-gzip", "whitespace-plain", "empty-array-gzip", "spaced-array-plain"],
+)
+def test_import_empty_file_rolls_back(
+    catalog: sqlite3.Connection, tmp_path: Path, name: str, content: bytes
+) -> None:
+    """A file with no records fails instead of committing an empty export and sweeping."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+
+    empty = tmp_path / name
+    empty.write_bytes(content)
+    with pytest.raises(BulkImportError, match="holds no cards"):
+        import_bulk_file(catalog, empty)
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1"}
+
+
+def test_import_json_lines_invalid_utf8_rolls_back(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A line with a byte that is not UTF-8 fails with its line number, not a raw decode error."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+
+    raw = json.dumps(_MINIMAL_CARD).encode() + b'\n{"id":"x\xff"}\n'
+    bad = tmp_path / "bad.jsonl.gz"
+    bad.write_bytes(gzip.compress(raw))
+    with pytest.raises(BulkImportError, match="line 2"):
+        import_bulk_file(catalog, bad)
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1"}
+
+
+def test_import_json_lines_error_line_counts_leading_whitespace(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """Newlines skipped before the first record still count toward the reported line."""
+    raw = "\n\n\n" + json.dumps(_NORMAL_CARD) + '\n{"id": "broken"\n'
+    bad = tmp_path / "bad.jsonl.gz"
+    bad.write_bytes(gzip.compress(raw.encode()))
+    with pytest.raises(BulkImportError, match="line 5"):
+        import_bulk_file(catalog, bad)
+
+
+def test_import_json_lines_leading_whitespace_is_still_lines(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """Whitespace before the first record does not hide that the file is JSON Lines."""
+    raw = "\n  \n " + json.dumps(_NORMAL_CARD) + "\n" + json.dumps(_MINIMAL_CARD) + "\n"
+    path = tmp_path / "bulk.jsonl.gz"
+    path.write_bytes(gzip.compress(raw.encode()))
+    result = import_bulk_file(catalog, path)
+    assert result == ImportResult(cards=2, faces=0)
 
 
 def test_import_rebuilds_name_search_index(catalog: sqlite3.Connection, tmp_path: Path) -> None:

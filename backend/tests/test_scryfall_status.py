@@ -106,7 +106,7 @@ def test_run_manual_refresh_executes_real_orchestration(
     downloads: list[BulkDataEntry | None] = []
 
     def fake_fetch(client: object = None) -> BulkDataEntry:
-        return BulkDataEntry("default_cards", "Default Cards", "uri", version, 1, "gzip")
+        return BulkDataEntry("default_cards", "Default Cards", "uri", version, 1)
 
     def fake_download(bulk_type: str, client: object = None, entry: object = None) -> Path:
         downloads.append(entry)  # type: ignore[arg-type]

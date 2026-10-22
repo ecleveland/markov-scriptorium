@@ -25,7 +25,7 @@ A hybrid Python + TypeScript monorepo (see [ADR 0001](docs/decisions/0001-founda
 
 ```bash
 ./dev.sh           # backend (:8000) + frontend (:5173) with hot reload; Ctrl-C stops both
-./dev.sh --full    # same, but download the real Scryfall bulk data (~500 MB) on startup
+./dev.sh --full    # same, but download the real Scryfall bulk data (about 80 MB) on startup
 ./stop.sh          # free the dev ports after a crash / orphaned run
 ```
 
@@ -45,6 +45,9 @@ uv run pytest                                  # run the tests
 uv run ruff format && uv run ruff check --fix  # format and lint
 uv run mypy                                     # type-check (strict)
 ```
+
+Leave `--reload` off when the server stays up for hours, because a crashed reload worker
+leaves the port held with nothing answering.
 
 ### Frontend (React + Vite)
 

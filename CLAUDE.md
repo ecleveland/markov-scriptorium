@@ -43,7 +43,7 @@ Not yet chosen. When discussing or recommending options, optimize for:
 ## Scryfall Integration
 
 - Scryfall is the canonical card database. Never hand-roll card data.
-- **Default to local bulk data**, not live API calls. Scryfall publishes a full bulk JSON daily (~500MB). Download nightly, load into a local DB, serve all reads from local. Reserve live API for what bulk doesn't cover (current prices, real-time autocomplete typeahead).
+- **Default to local bulk data**, not live API calls. Scryfall publishes a full bulk JSON daily (about 80 MB). Download nightly, load into a local DB, serve all reads from local. Reserve live API for what bulk doesn't cover (current prices, real-time autocomplete typeahead).
 - Always send a real `User-Agent` header naming this app, per Scryfall's API requirements.
 - Store the Scryfall ID as the canonical foreign key for any card reference.
 - Respect the rate limits and the fan content guidelines: https://scryfall.com/docs/api

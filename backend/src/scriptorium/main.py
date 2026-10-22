@@ -138,7 +138,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             raise
 
     # Run the upkeep off the event loop (httpx + sqlite are blocking) and don't
-    # await it — startup must not wait on a backup or a ~500 MB download.
+    # await it — startup must not wait on a backup or a download of about 80 MB.
     upkeep_task = asyncio.create_task(_upkeep())
 
     try:
