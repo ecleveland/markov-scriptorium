@@ -34,6 +34,9 @@ handful of cards (`backend/scripts/seed_dev.py`, idempotent) so the Inscribe flo
 immediately. Use `--full` when you want the complete catalog. The two servers can also be
 run separately (below).
 
+The card scanner at `/scan` needs a secure context for camera access.
+`http://localhost:5173` counts as one, so the dev server works as is.
+
 ### Backend (Python + uv)
 
 Requires [uv](https://docs.astral.sh/uv/). From `backend/`:
