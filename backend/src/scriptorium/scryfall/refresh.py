@@ -9,7 +9,7 @@ Two levels:
 
 - :func:`refresh_catalog` always contacts Scryfall: it fetches the cheap
   bulk-data listing and, unless the published version differs (or ``force`` is
-  set), skips the ~1.5 GB download/import — the export changes about once a day.
+  set), skips the download of about 80 MB and the import — the export changes about once a day.
 - :func:`maybe_refresh` is the startup gate: it runs ``refresh_catalog`` only
   when the catalog is stale (never refreshed, or last checked over 24h ago), so
   a restart doesn't re-hit Scryfall on every launch.

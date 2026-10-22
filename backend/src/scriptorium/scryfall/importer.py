@@ -206,7 +206,8 @@ def _iter_cards(path: Path) -> Iterator[dict[str, Any]]:
     The first non-whitespace byte picks the parser. ``[`` means an array, which
     covers bulk files cached before VEG-622 and is parsed with ijson. Anything
     else is read as JSON Lines, one object per line, with blank lines skipped.
-    A file holding nothing but whitespace raises :class:`BulkImportError`.
+    A file holding nothing but whitespace yields no cards, and
+    :func:`import_bulk_file` rejects that.
 
     ``use_float=True`` makes ijson yield plain floats for JSON numbers (e.g.
     ``cmc``) instead of ``decimal.Decimal``, which sqlite3 cannot bind. The
@@ -214,12 +215,6 @@ def _iter_cards(path: Path) -> Iterator[dict[str, Any]]:
     """
     with _open_stream(path) as fh:
         first, newlines = _skip_leading_whitespace(fh)
-        if not first:
-            # An empty export would commit zero cards and the sweep would then
-            # delete every unreferenced printing, so treat it as a bad download.
-            raise BulkImportError(
-                f"bulk file {path} is empty; the download may be corrupt, re-fetch it"
-            )
         if first == b"[":
             yield from ijson.items(fh, "item", use_float=True)
             return
@@ -246,8 +241,8 @@ def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:
     references them through a foreign key that does not cascade. Returns the
     number of cards and faces written plus the retired and kept counts. Raises
     :class:`FileNotFoundError` if ``path`` is missing and :class:`BulkImportError`
-    if a card object is malformed; on any failure the transaction rolls back,
-    leaving the prior catalog intact.
+    if a card object is malformed or the file holds no cards; on any failure the
+    transaction rolls back, leaving the prior catalog intact.
     """
     if not path.exists():
         raise FileNotFoundError(path)
@@ -289,6 +284,13 @@ def import_bulk_file(conn: sqlite3.Connection, path: Path) -> ImportResult:
                 if cards % _PROGRESS_EVERY == 0:
                     logger.info("importing Scryfall bulk data: %d cards…", cards)
             _flush(conn, card_batch, face_batch)
+            if cards == 0:
+                # An export with no cards, whether an empty file or ``[]``, would
+                # let the sweep delete every unreferenced printing. Treat it as a
+                # bad download and roll back.
+                raise BulkImportError(
+                    f"bulk file {path} holds no cards; the download may be corrupt, re-fetch it"
+                )
             retired, kept = _sweep(conn)
             # Repopulate the name search index from the refreshed catalog; the
             # external-content FTS table (migration 0004) holds no copy of its

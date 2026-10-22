@@ -281,8 +281,13 @@ def test_import_json_lines_malformed_line_rolls_back(
 
 @pytest.mark.parametrize(
     ("name", "content"),
-    [("empty.jsonl.gz", gzip.compress(b"")), ("blank.jsonl", b" \n\t\r\n  ")],
-    ids=["empty-gzip", "whitespace-plain"],
+    [
+        ("empty.jsonl.gz", gzip.compress(b"")),
+        ("blank.jsonl", b" \n\t\r\n  "),
+        ("empty-array.json.gz", gzip.compress(b"[]")),
+        ("spaced-array.json", b"  [ ] "),
+    ],
+    ids=["empty-gzip", "whitespace-plain", "empty-array-gzip", "spaced-array-plain"],
 )
 def test_import_empty_file_rolls_back(
     catalog: sqlite3.Connection, tmp_path: Path, name: str, content: bytes
@@ -292,10 +297,36 @@ def test_import_empty_file_rolls_back(
 
     empty = tmp_path / name
     empty.write_bytes(content)
-    with pytest.raises(BulkImportError, match="is empty"):
+    with pytest.raises(BulkImportError, match="holds no cards"):
         import_bulk_file(catalog, empty)
     ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
     assert ids == {"edgar-1"}
+
+
+def test_import_json_lines_invalid_utf8_rolls_back(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """A line with a byte that is not UTF-8 fails with its line number, not a raw decode error."""
+    import_bulk_file(catalog, _write_bulk(tmp_path / "good.json.gz", [_NORMAL_CARD]))
+
+    raw = json.dumps(_MINIMAL_CARD).encode() + b'\n{"id":"x\xff"}\n'
+    bad = tmp_path / "bad.jsonl.gz"
+    bad.write_bytes(gzip.compress(raw))
+    with pytest.raises(BulkImportError, match="line 2"):
+        import_bulk_file(catalog, bad)
+    ids = {r["scryfall_id"] for r in catalog.execute("SELECT scryfall_id FROM cards")}
+    assert ids == {"edgar-1"}
+
+
+def test_import_json_lines_error_line_counts_leading_whitespace(
+    catalog: sqlite3.Connection, tmp_path: Path
+) -> None:
+    """Newlines skipped before the first record still count toward the reported line."""
+    raw = "\n\n\n" + json.dumps(_NORMAL_CARD) + '\n{"id": "broken"\n'
+    bad = tmp_path / "bad.jsonl.gz"
+    bad.write_bytes(gzip.compress(raw.encode()))
+    with pytest.raises(BulkImportError, match="line 5"):
+        import_bulk_file(catalog, bad)
 
 
 def test_import_json_lines_leading_whitespace_is_still_lines(
