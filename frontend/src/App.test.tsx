@@ -13,6 +13,9 @@ vi.stubGlobal(
   }),
 )
 
+// The camera has its own tests; routing only needs the page to mount.
+vi.mock('./scan/CameraCapture', () => ({ CameraCapture: () => null }))
+
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>()
   return {
@@ -114,6 +117,13 @@ describe('App routing', () => {
   it('renders the Inscribe view at /inscribe', () => {
     renderAt('/inscribe')
     expect(screen.getByLabelText('Card name')).toBeInTheDocument()
+  })
+
+  it('renders the Scrying Glass at /scan', () => {
+    renderAt('/scan')
+    expect(
+      screen.getByRole('heading', { name: 'Scry a Card' }),
+    ).toBeInTheDocument()
   })
 
   it('renders the folio detail route at /catalog/:lotId', async () => {

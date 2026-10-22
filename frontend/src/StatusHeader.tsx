@@ -58,6 +58,7 @@ export function StatusHeader() {
           <NavLink to="/catalog">Catalog</NavLink>
           <NavLink to="/tomes">Tomes</NavLink>
           <NavLink to="/inscribe">Inscribe</NavLink>
+          <NavLink to="/scan">Scan</NavLink>
           <NavLink to="/import/decklist">Decklist</NavLink>
           <NavLink to="/import/csv">CSV</NavLink>
           <NavLink to="/archive">Archive</NavLink>

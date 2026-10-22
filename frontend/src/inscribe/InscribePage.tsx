@@ -4,24 +4,8 @@ import { PageHeader, Panel, Sealed } from '../components'
 import { CardSearch } from './CardSearch'
 import { InscribeForm } from './InscribeForm'
 import { PrintingPicker } from './PrintingPicker'
+import { describeEntry, entryFromLot, type SessionEntry } from './session'
 import './inscribe.css'
-
-interface SessionEntry {
-  id: number
-  name: string
-  setCode: string
-  collectorNumber: string
-  quantity: number
-  finish: string
-}
-
-/**
- * One inscription as a line of text. The session list and the seal both use
- * it, so the confirmation always reads the same as the entry it adds.
- */
-function describeEntry(entry: SessionEntry): string {
-  return `${entry.quantity}× ${entry.name} (${entry.setCode.toUpperCase()} #${entry.collectorNumber}) · ${entry.finish}`
-}
 
 /**
  * The Inscribe flow: search a name → pick a printing → set acquisition details
@@ -43,14 +27,7 @@ export function InscribePage() {
   }
 
   function handleInscribed(lot: InventoryLot) {
-    const entry: SessionEntry = {
-      id: lot.id,
-      name: lot.card.name,
-      setCode: lot.card.set_code,
-      collectorNumber: lot.card.collector_number,
-      quantity: lot.quantity,
-      finish: lot.finish,
-    }
+    const entry = entryFromLot(lot)
     setSession((prev) => [entry, ...prev])
     setLastSealed(entry)
     backToSearch()

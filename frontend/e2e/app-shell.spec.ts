@@ -22,6 +22,7 @@ test('renders the brand mark, nav, and a healthy status chip', async ({
   await expect(page.getByRole('link', { name: 'Index' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Catalog' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Inscribe' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Scan' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Decklist' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'CSV' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Archive' })).toBeVisible()
@@ -46,6 +47,10 @@ test('navigates between the views via the nav', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Inscribe a Card' }),
   ).toBeVisible()
+
+  await page.getByRole('link', { name: 'Scan' }).click()
+  await expect(page).toHaveURL(/\/scan$/)
+  await expect(page.getByRole('heading', { name: 'Scry a Card' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Decklist' }).click()
   await expect(page).toHaveURL(/\/import\/decklist$/)

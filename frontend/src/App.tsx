@@ -14,6 +14,7 @@ import { TomeEditorPage } from './tomes/TomeEditorPage'
 import { TomesPage } from './tomes/TomesPage'
 import { CsvImportPage } from './onboarding/CsvImportPage'
 import { DecklistPage } from './onboarding/DecklistPage'
+import { ScanPage } from './scan/ScanPage'
 
 // The component specimen sheet exists in development only. The conditional
 // dynamic import lets the production build drop both its chunk and its CSS.
@@ -38,6 +39,7 @@ function App() {
           <Route path="/tomes/:deckId" element={<TomeEditorPage />} />
           <Route path="/tomes/:deckId/breakdown" element={<BreakdownPage />} />
           <Route path="/inscribe" element={<InscribePage />} />
+          <Route path="/scan" element={<ScanPage />} />
           <Route path="/import/decklist" element={<DecklistPage />} />
           <Route path="/import/csv" element={<CsvImportPage />} />
           <Route path="/archive" element={<ArchivePage />} />

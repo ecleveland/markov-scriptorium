@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { StatusHeader } from './StatusHeader'
@@ -50,6 +50,15 @@ describe('StatusHeader', () => {
       'href',
       '/inscribe',
     )
+    expect(screen.getByRole('link', { name: 'Scan' })).toHaveAttribute(
+      'href',
+      '/scan',
+    )
+    // Scanning is the other way to inscribe, so it sits beside Inscribe.
+    const names = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.textContent)
+    expect(names.indexOf('Scan')).toBe(names.indexOf('Inscribe') + 1)
     expect(screen.getByRole('link', { name: 'Decklist' })).toHaveAttribute(
       'href',
       '/import/decklist',

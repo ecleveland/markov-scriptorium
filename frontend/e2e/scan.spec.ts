@@ -1,0 +1,86 @@
+import { expect, test, type Page } from '@playwright/test'
+import { stubApi } from './stubs'
+
+// The Scrying Glass end to end against Chromium's fake camera (see the launch
+// flags in playwright.config.ts): capture a frame of its test pattern, let the
+// stubbed scanner read it, then settle the folio and inscribe it.
+
+test.beforeEach(async ({ context, page }) => {
+  // The fake UI flag already grants Chromium the camera; grant it anyway so
+  // the spec does not lean on a flag alone.
+  await context.grantPermissions(['camera'])
+  await stubApi(page)
+})
+
+/** Wait until the camera has painted a frame there is to draw. */
+async function waitForFrame(page: Page) {
+  // HAVE_CURRENT_DATA (2) or better.
+  await expect
+    .poll(() =>
+      page
+        .locator('video')
+        .evaluate((video: HTMLVideoElement) => video.readyState),
+    )
+    .toBeGreaterThanOrEqual(2)
+}
+
+/** Open the page and wait for the fake camera's first frame. */
+async function openGlass(page: Page) {
+  await page.goto('/scan')
+  await expect(page.getByRole('heading', { name: 'Scry a Card' })).toBeVisible()
+  await waitForFrame(page)
+}
+
+test('scries a card from the camera into the catalog', async ({ page }) => {
+  await openGlass(page)
+
+  await page.getByRole('button', { name: 'Capture' }).click()
+  await expect(page.getByAltText('The captured frame')).toBeVisible()
+
+  const sent = page.waitForRequest('**/api/scanner/recognize')
+  await page.getByRole('button', { name: 'Read the card' }).click()
+  // The canvas really encoded the fake camera's frame as a JPEG.
+  const request = await sent
+  expect(request.headers()['content-type']).toBe('image/jpeg')
+  const body = request.postDataBuffer()
+  expect(body?.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]))
+
+  await page.getByRole('button', { name: /Sol Ring.*91%/ }).click()
+  await page.getByRole('button', { name: /Commander 2021/ }).click()
+  await page.getByRole('button', { name: 'Inscribe' }).click()
+
+  // Found by text, not by role: the header's status chip is a status too.
+  await expect(page.getByText('Sealed into the catalog')).toBeVisible()
+  await expect(
+    page.getByRole('complementary', { name: 'Scried this session' }),
+  ).toContainText('Sol Ring')
+  // Back at the camera for the next card. It stayed open while hidden, so
+  // the next frame comes without asking for the camera again.
+  await expect(page.getByRole('button', { name: 'Capture' })).toBeVisible()
+  await waitForFrame(page)
+  await page.getByRole('button', { name: 'Capture' }).click()
+  await expect(page.getByAltText('The captured frame')).toBeVisible()
+})
+
+test('offers to type the name when the glass reads nothing', async ({
+  page,
+}) => {
+  // Registered after stubApi, so Playwright tries it first.
+  await page.route('**/api/scanner/recognize', (route) =>
+    route.fulfill({ json: { readings: [] } }),
+  )
+  await openGlass(page)
+
+  await page.getByRole('button', { name: 'Capture' }).click()
+  await page.getByRole('button', { name: 'Read the card' }).click()
+  await expect(
+    page.getByText('The glass could not make out a name.'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Type the name instead' }).click()
+  await page.getByLabel('Card name').fill('Sol Ring')
+  await page.getByRole('button', { name: 'Sol Ring' }).click()
+  await expect(
+    page.getByRole('heading', { name: /Choose a printing of “Sol Ring”/ }),
+  ).toBeVisible()
+})

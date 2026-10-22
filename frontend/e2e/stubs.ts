@@ -21,6 +21,9 @@ import type { Page, Route } from '@playwright/test'
 // and each seal adds one. The export links are never followed, so they have
 // no stub.
 //
+// The scanner always reads the same two names off any frame, Sol Ring first,
+// so the Scrying Glass flow can run against the fake camera's test pattern.
+//
 // Shapes mirror frontend/src/api.ts. Keep them in sync if the contracts change.
 
 /** A single catalog printing — enough fields for the Inscribe flow. */
@@ -447,7 +450,7 @@ function listFacets(lots: Map<number, LotStub>) {
  * Register a single `/api/**` handler covering the health probe, the Inscribe
  * read/write path, the Catalog's list, detail, amend and remove, the Index's
  * search and facets, the Tome endpoints (deck CRUD, slot CRUD,
- * breakdown), and the Muniment Room's sealed copies. Routes are
+ * breakdown), the Muniment Room's sealed copies, and the scanner. Routes are
  * matched by pathname + method; anything unmatched gets a 404 so an unstubbed
  * call fails loudly instead of hitting the network.
  *
@@ -511,6 +514,15 @@ export async function stubApi(page: Page): Promise<void> {
         total: results.length,
         limit: Number(url.searchParams.get('limit') ?? 100),
         offset: 0,
+      })
+    }
+
+    if (path === '/scanner/recognize' && method === 'POST') {
+      return json(route, {
+        readings: [
+          { name: 'Sol Ring', confidence: 0.91 },
+          { name: 'Lightning Bolt', confidence: 0.42 },
+        ],
       })
     }
 
