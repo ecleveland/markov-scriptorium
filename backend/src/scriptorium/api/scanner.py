@@ -31,18 +31,19 @@ def _declared_length(request: Request) -> int | None:
         return None
 
 
-async def _read_capped(request: Request) -> bytes:
+async def _read_capped(request: Request) -> bytearray:
     """Read the body chunk by chunk, refusing with a 413 once it passes the cap.
 
     The rest of an oversized body is never read, so a large upload costs at
-    most one chunk beyond MAX_IMAGE_BYTES in memory.
+    most one chunk beyond MAX_IMAGE_BYTES in memory. The body comes back as
+    the bytearray it was read into, so the image is held once, never copied.
     """
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
         if len(body) > MAX_IMAGE_BYTES:
             raise HTTPException(status_code=413, detail=_TOO_LARGE_DETAIL)
-    return bytes(body)
+    return body
 
 
 @router.post("/recognize")

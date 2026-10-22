@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ApiError,
-  SCAN_MAX_IMAGE_BYTES,
   recognizeCard,
   type CardPrinting,
   type InventoryLot,
@@ -62,10 +61,6 @@ type Step =
 
 const READ_FAILED = 'The card could not be read. Try again.'
 
-// The same words the backend's 413 uses, so the limit reads the same either way.
-const TOO_LARGE =
-  'The image is larger than 12 MB. Capture at a lower resolution.'
-
 /**
  * The Scrying Glass: capture a card on the camera, let the scanner read its
  * name, then settle the folio with the Inscribe flow's own printing picker and
@@ -102,17 +97,15 @@ export function ScanPage() {
   }
 
   function handleCapture(image: Blob, previewUrl: string) {
+    // Nothing should replace a still that is on show, but if a frame does,
+    // the one it replaces is freed rather than leaked.
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current)
     previewRef.current = previewUrl
     setLastSealed(null)
     setStep({ kind: 'captured', still: { image, previewUrl } })
   }
 
   async function read(still: Still) {
-    // The backend would refuse it with a 413, so spare the upload.
-    if (still.image.size > SCAN_MAX_IMAGE_BYTES) {
-      setStep({ kind: 'readings', still, readings: [], failure: TOO_LARGE })
-      return
-    }
     readingRef.current?.abort()
     const controller = new AbortController()
     readingRef.current = controller

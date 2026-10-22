@@ -781,9 +781,6 @@ export interface RecognizeResponse {
   readings: Reading[]
 }
 
-/** The largest image the recognize endpoint accepts (mirrors the API's 413). */
-export const SCAN_MAX_IMAGE_BYTES = 12 * 1024 * 1024
-
 /**
  * Send one captured frame to the scanner and get back the names it read.
  * Readings are card names, not printings, so the Scan page hands the chosen

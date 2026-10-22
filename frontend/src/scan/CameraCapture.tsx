@@ -23,6 +23,17 @@ export function CameraCapture({ onCapture }: Props) {
   // guard is a ref as well as state. Each capture makes an object URL, and a
   // second one would never be revoked.
   const capturingRef = useRef(false)
+  // A frame can finish encoding after the page has moved on. Handing it up
+  // then would make an object URL that nobody shows or frees.
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    // Set here, not at creation, so StrictMode's second mount sets it again.
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // srcObject has no JSX attribute, so the stream is handed over by hand.
   useEffect(() => {
@@ -38,15 +49,17 @@ export function CameraCapture({ onCapture }: Props) {
     setCaptureError(null)
     try {
       const image = await captureFrame(video, { flip })
+      if (!mountedRef.current) return
       onCapture(image, URL.createObjectURL(image))
     } catch (err) {
+      if (!mountedRef.current) return
       console.error('Capturing the frame failed', err)
       setCaptureError(
         err instanceof Error ? err.message : 'The frame could not be captured.',
       )
     } finally {
       capturingRef.current = false
-      setCapturing(false)
+      if (mountedRef.current) setCapturing(false)
     }
   }
 
@@ -67,7 +80,9 @@ export function CameraCapture({ onCapture }: Props) {
       {status === 'starting' && (
         <Consulting role="status">Lighting the glass…</Consulting>
       )}
-      {status === 'error' && (
+      {/* An error can sit beside a live stream: a camera that would not open
+          after the previous one came back. */}
+      {error && (
         <Notice tone="danger" role="alert">
           {error}
         </Notice>

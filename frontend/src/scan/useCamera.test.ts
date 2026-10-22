@@ -141,10 +141,61 @@ describe('useCamera', () => {
     expect(second.track.stop).not.toHaveBeenCalled()
   })
 
-  it('does not remember a camera that would not open', async () => {
+  it('reopens the previous camera when a switch fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const first = fakeStream('cam-desk')
+    const reopened = fakeStream('cam-desk')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockRejectedValueOnce(domError('NotReadableError'))
+      .mockResolvedValueOnce(reopened.stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    act(() => result.current.selectDevice('cam-built-in'))
+
+    await waitFor(() => expect(result.current.stream).toBe(reopened.stream))
+    expect(getUserMedia).toHaveBeenLastCalledWith({
+      video: { deviceId: { exact: 'cam-desk' } },
+      audio: false,
+    })
+    expect(result.current.status).toBe('live')
+    expect(result.current.deviceId).toBe('cam-desk')
+    expect(result.current.error).toBe(
+      'The chosen camera would not open, so the glass went back to the one before.',
+    )
+    // A camera that would not open is not remembered.
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(result.current.devices).toEqual([DESK, BUILT_IN])
+  })
+
+  it('reopens the default when the camera before a failed switch was the default', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    getUserMedia
+      .mockResolvedValueOnce(fakeStream(undefined).stream)
+      .mockRejectedValueOnce(domError('NotReadableError'))
+      .mockResolvedValueOnce(fakeStream(undefined).stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    expect(result.current.deviceId).toBeNull()
+
+    act(() => result.current.selectDevice('cam-built-in'))
+
+    await waitFor(() => expect(result.current.error).not.toBeNull())
+    expect(getUserMedia).toHaveBeenLastCalledWith({ video: true, audio: false })
+    expect(result.current.status).toBe('live')
+    expect(result.current.deviceId).toBeNull()
+  })
+
+  it('reports an error when a switch fails and the previous camera will not reopen', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     getUserMedia
       .mockResolvedValueOnce(fakeStream('cam-desk').stream)
+      .mockRejectedValueOnce(domError('NotReadableError'))
       .mockRejectedValueOnce(domError('NotReadableError'))
     enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
 
@@ -154,9 +205,46 @@ describe('useCamera', () => {
     act(() => result.current.selectDevice('cam-built-in'))
 
     await waitFor(() => expect(result.current.status).toBe('error'))
+    expect(getUserMedia).toHaveBeenCalledTimes(3)
+    expect(result.current.stream).toBeNull()
+    expect(result.current.error).toBe('The camera could not be started.')
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
     // The picker stays, so another camera can still be chosen.
     expect(result.current.devices).toEqual([DESK, BUILT_IN])
+  })
+
+  it('keeps the last choice when two switches settle out of order', async () => {
+    const first = fakeStream('cam-desk')
+    const toA = fakeStream('cam-a')
+    const toB = fakeStream('cam-b')
+    let deliverA: (stream: MediaStream) => void = () => {}
+    let deliverB: (stream: MediaStream) => void = () => {}
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockReturnValueOnce(
+        new Promise<MediaStream>((resolve) => {
+          deliverA = resolve
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<MediaStream>((resolve) => {
+          deliverB = resolve
+        }),
+      )
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    act(() => result.current.selectDevice('cam-a'))
+    act(() => result.current.selectDevice('cam-b'))
+    await act(async () => deliverB(toB.stream))
+    await act(async () => deliverA(toA.stream))
+
+    expect(toA.track.stop).toHaveBeenCalled()
+    expect(toB.track.stop).not.toHaveBeenCalled()
+    expect(result.current.stream).toBe(toB.stream)
+    expect(result.current.deviceId).toBe('cam-b')
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('cam-b')
   })
 
   it('opens the remembered camera on mount', async () => {
@@ -207,7 +295,7 @@ describe('useCamera', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
   })
 
-  it('forgets a remembered camera another app holds and opens the default', async () => {
+  it('opens the default when the remembered camera is busy, and keeps it for next time', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     localStorage.setItem(STORAGE_KEY, 'cam-busy')
     const fallback = fakeStream('cam-desk')
@@ -222,9 +310,26 @@ describe('useCamera', () => {
       video: true,
       audio: false,
     })
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
     expect(result.current.stream).toBe(fallback.stream)
+    // Busy is not gone: the next visit tries the user's camera again.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('cam-busy')
     expect(warn).toHaveBeenCalled()
+  })
+
+  it('asks only once when a remembered camera is refused', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    localStorage.setItem(STORAGE_KEY, 'cam-desk')
+    getUserMedia.mockRejectedValue(domError('NotAllowedError'))
+
+    const { result } = renderHook(() => useCamera())
+
+    await waitFor(() => expect(result.current.status).toBe('error'))
+    // A second request would be a second prompt.
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBe(
+      'Camera access was refused. Allow the camera for this site and reload.',
+    )
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('cam-desk')
   })
 
   it('reports the default camera failing after a remembered one did', async () => {
@@ -242,7 +347,7 @@ describe('useCamera', () => {
     expect(result.current.error).toBe(
       'Camera access was refused. Allow the camera for this site and reload.',
     )
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('cam-busy')
   })
 
   it('falls back on an error named by any object, not only a DOMException', async () => {
@@ -260,6 +365,19 @@ describe('useCamera', () => {
 
     await waitFor(() => expect(result.current.status).toBe('live'))
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('goes live without a picker when the cameras cannot be listed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { stream } = fakeStream('cam-desk')
+    getUserMedia.mockResolvedValue(stream)
+    enumerateDevices.mockRejectedValue(new Error('enumeration failed'))
+
+    const { result } = renderHook(() => useCamera())
+
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    expect(result.current.stream).toBe(stream)
+    expect(result.current.devices).toEqual([])
   })
 
   it('explains a refused camera', async () => {

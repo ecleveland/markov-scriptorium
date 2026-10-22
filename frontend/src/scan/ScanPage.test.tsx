@@ -1,15 +1,22 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, SCAN_MAX_IMAGE_BYTES } from '../api'
+import { ApiError } from '../api'
 import { lot, printing } from '../test/fixtures'
 import { ScanPage } from './ScanPage'
 
 // The camera has its own tests. Here a stand-in keeps the parts the page
-// cares about: a Capture button that hands up `camera.frame`, a Flip checkbox
+// cares about: a Capture button that hands up a frame with the URL in `camera.url`, a Flip checkbox
 // with its own state, and a count of how often it mounts. The state and the
 // count only survive if the page keeps the camera mounted between cards.
-const camera = vi.hoisted(() => ({ mounts: 0, frame: null as Blob | null }))
+const camera = vi.hoisted(() => ({ mounts: 0, url: 'blob:preview' }))
 
 vi.mock('./CameraCapture', async () => {
   const { useEffect, useState } = await import('react')
@@ -36,10 +43,7 @@ vi.mock('./CameraCapture', async () => {
           <button
             type="button"
             onClick={() =>
-              onCapture(
-                camera.frame ?? new Blob(['x'], { type: 'image/jpeg' }),
-                'blob:preview',
-              )
+              onCapture(new Blob(['x'], { type: 'image/jpeg' }), camera.url)
             }
           >
             Capture
@@ -94,7 +98,7 @@ URL.revokeObjectURL = revokeObjectURL
 
 beforeEach(() => {
   camera.mounts = 0
-  camera.frame = null
+  camera.url = 'blob:preview'
   searchMock.mockResolvedValue({ printings: [SOL_RING], truncated: false })
 })
 
@@ -389,29 +393,95 @@ describe('ScanPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('refuses a frame over the size limit without sending it', async () => {
-    const frame = new Blob(['x'], { type: 'image/jpeg' })
-    // A real 12 MB blob is slow to build, and the page reads only the size.
-    Object.defineProperty(frame, 'size', { value: SCAN_MAX_IMAGE_BYTES + 1 })
-    camera.frame = frame
+  it('shows the backend detail for a frame over the size limit', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const detail =
+      'The image is larger than 12 MB. Capture at a lower resolution.'
+    recognizeMock.mockRejectedValue(new ApiError(detail, 413, detail))
     await readCard()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The image is larger than 12 MB. Capture at a lower resolution.',
-    )
-    expect(recognizeMock).not.toHaveBeenCalled()
-    expect(
-      screen.getByRole('button', { name: 'Type the name instead' }),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(detail)
   })
 
-  it('sends a frame exactly at the size limit', async () => {
-    recognizeMock.mockResolvedValue({ readings: READINGS })
-    const frame = new Blob(['x'], { type: 'image/jpeg' })
-    Object.defineProperty(frame, 'size', { value: SCAN_MAX_IMAGE_BYTES })
-    camera.frame = frame
-    await readCard()
+  it('frees the previous still when a new frame replaces it', async () => {
+    camera.url = 'blob:first'
+    await capture()
 
-    expect(recognizeMock).toHaveBeenCalledWith(frame, expect.any(AbortSignal))
+    // The hidden camera hands up a second frame, as a late capture would.
+    camera.url = 'blob:second'
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Capture', hidden: true }),
+    )
+
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:first')
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:second')
+    expect(screen.getByAltText('The captured frame')).toHaveAttribute(
+      'src',
+      'blob:second',
+    )
+  })
+
+  it('stays on the camera when an abandoned request rejects late', async () => {
+    let fail: (reason: unknown) => void = () => {}
+    recognizeMock.mockReturnValue(
+      new Promise((_, reject) => {
+        fail = reject
+      }),
+    )
+    const user = await readCard()
+    await user.click(screen.getByRole('button', { name: 'Retake' }))
+
+    await act(async () =>
+      fail(new DOMException('The request was aborted.', 'AbortError')),
+    )
+
+    expect(screen.getByRole('button', { name: 'Capture' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('stays on the camera when an abandoned request answers late', async () => {
+    let answer: (value: { readings: typeof READINGS }) => void = () => {}
+    recognizeMock.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+    const user = await readCard()
+    await user.click(screen.getByRole('button', { name: 'Retake' }))
+
+    await act(async () => answer({ readings: READINGS }))
+
+    expect(screen.getByRole('button', { name: 'Capture' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('list', { name: 'Cards the glass read' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('still abandons the newer request after an older one settles', async () => {
+    let answerFirst: (value: { readings: typeof READINGS }) => void = () => {}
+    recognizeMock
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          answerFirst = resolve
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => {}))
+    const user = userEvent.setup()
+    const { unmount } = render(<ScanPage />)
+
+    // First card: read, then retake before it answers.
+    await user.click(screen.getByRole('button', { name: 'Capture' }))
+    await user.click(screen.getByRole('button', { name: 'Read the card' }))
+    await user.click(screen.getByRole('button', { name: 'Retake' }))
+    // Second card: read, and leave it in flight.
+    await user.click(screen.getByRole('button', { name: 'Capture' }))
+    await user.click(screen.getByRole('button', { name: 'Read the card' }))
+    // The first request settles; its cleanup must leave the second alone.
+    await act(async () => answerFirst({ readings: READINGS }))
+
+    unmount()
+
+    const [, secondSignal] = recognizeMock.mock.calls[1]
+    expect(secondSignal?.aborted).toBe(true)
   })
 })

@@ -166,6 +166,43 @@ describe('CameraCapture', () => {
     expect(button).toBeEnabled()
   })
 
+  it('drops a frame that arrives after the camera is gone', async () => {
+    let deliver: (value: Blob) => void = () => {}
+    captureMock.mockReturnValue(
+      new Promise<Blob>((resolve) => {
+        deliver = resolve
+      }),
+    )
+    useCameraMock.mockReturnValue(camera())
+    const onCapture = vi.fn()
+    const { unmount } = render(<CameraCapture onCapture={onCapture} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Capture' }))
+    unmount()
+    await act(async () => deliver(new Blob(['jpeg'], { type: 'image/jpeg' })))
+
+    expect(onCapture).not.toHaveBeenCalled()
+    // No object URL is made for a frame nobody will show or free.
+    expect(createObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('says so when a chosen camera failed and the previous one is back', () => {
+    useCameraMock.mockReturnValue(
+      camera({
+        status: 'live',
+        error:
+          'The chosen camera would not open, so the glass went back to the one before.',
+      }),
+    )
+    render(<CameraCapture onCapture={vi.fn()} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The chosen camera would not open, so the glass went back to the one before.',
+    )
+    // The camera is live again, so capturing still works.
+    expect(screen.getByRole('button', { name: 'Capture' })).toBeEnabled()
+  })
+
   it('shows why a capture failed', async () => {
     const user = userEvent.setup()
     vi.spyOn(console, 'error').mockImplementation(() => {})

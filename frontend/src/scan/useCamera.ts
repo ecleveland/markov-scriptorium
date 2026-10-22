@@ -18,6 +18,9 @@ type CameraState = Omit<Camera, 'selectDevice'>
 /** Where the last chosen camera is remembered between visits. */
 const STORAGE_KEY = 'scriptorium.scan.deviceId'
 
+const SWITCH_FAILED =
+  'The chosen camera would not open, so the glass went back to the one before.'
+
 const UNSUPPORTED =
   'This browser cannot open a camera here. The scanner needs a secure context such as localhost.'
 
@@ -80,10 +83,13 @@ function open(deviceId: string | null): Promise<MediaStream> {
 
 /**
  * Open the remembered camera, or the default one when nothing is remembered.
- * A remembered camera that fails for any reason (unplugged, an id the browser
- * rotated, or held by another app) is forgotten and the default is tried
- * once instead. Keeping a failing id would fail every later visit before the
- * picker could ever appear.
+ * How a remembered camera fails decides what happens next:
+ * - refused (NotAllowedError) is final, because asking again is a second
+ *   prompt for an answer already given;
+ * - gone (OverconstrainedError, NotFoundError: unplugged, or an id the
+ *   browser rotated) is forgotten, then the default is tried once;
+ * - anything else, such as a camera another app holds, tries the default
+ *   once but keeps the id, so the next visit tries the user's camera again.
  */
 async function openFirst(
   remembered: string | null,
@@ -92,8 +98,10 @@ async function openFirst(
   try {
     return { stream: await open(remembered), requested: remembered }
   } catch (err) {
+    const name = errorName(err)
+    if (name === 'NotAllowedError') throw err
     console.warn('The remembered camera would not open', err)
-    forget()
+    if (name === 'OverconstrainedError' || name === 'NotFoundError') forget()
     return { stream: await open(null), requested: null }
   }
 }
@@ -143,6 +151,9 @@ export function useCamera(): Camera {
   // older request is stopped, not shown, so a slow camera can never land
   // after the page is gone or after a newer choice.
   const generation = useRef(0)
+  // The device of the last stream that went live, so a failed switch knows
+  // which camera to go back to. Null means the browser's default.
+  const deviceRef = useRef<string | null>(null)
 
   const fail = useCallback((err: unknown) => {
     console.error('The camera could not be started', err)
@@ -167,11 +178,12 @@ export function useCamera(): Camera {
         const devices = await listCameras()
         // Unmount in the meantime has already stopped this stream.
         if (request !== generation.current) return
+        deviceRef.current = openedDevice(stream, requested)
         setState({
           status: 'live',
           stream,
           devices,
-          deviceId: openedDevice(stream, requested),
+          deviceId: deviceRef.current,
           error: null,
         })
       })
@@ -190,6 +202,7 @@ export function useCamera(): Camera {
     (id: string) => {
       if (!supported()) return
       const request = ++generation.current
+      const previous = deviceRef.current
       stop(streamRef.current)
       streamRef.current = null
       setState((prev) => ({
@@ -199,24 +212,44 @@ export function useCamera(): Camera {
         deviceId: id,
         error: null,
       }))
+
+      /** Adopt a stream if this is still the latest request, else stop it. */
+      const adopt = (
+        stream: MediaStream,
+        requested: string | null,
+        error: string | null,
+      ) => {
+        if (request !== generation.current) {
+          stop(stream)
+          return
+        }
+        streamRef.current = stream
+        deviceRef.current = openedDevice(stream, requested)
+        setState((prev) => ({
+          ...prev,
+          status: 'live',
+          stream,
+          deviceId: deviceRef.current,
+          error,
+        }))
+      }
+
       open(id)
         .then((stream) => {
-          if (request !== generation.current) {
-            stop(stream)
-            return
-          }
-          streamRef.current = stream
           // Only a camera that opened is worth opening next visit.
-          remember(id)
-          setState((prev) => ({
-            ...prev,
-            status: 'live',
-            stream,
-            deviceId: openedDevice(stream, id),
-          }))
+          if (request === generation.current) remember(id)
+          adopt(stream, id, null)
         })
-        .catch((err) => {
-          if (request === generation.current) fail(err)
+        .catch(async (err) => {
+          if (request !== generation.current) return
+          console.error('The chosen camera would not open', err)
+          // The old stream is already stopped, so go back to that camera
+          // rather than leave the page with no camera at all.
+          try {
+            adopt(await open(previous), previous, SWITCH_FAILED)
+          } catch (reopenErr) {
+            if (request === generation.current) fail(reopenErr)
+          }
         })
     },
     [fail],
