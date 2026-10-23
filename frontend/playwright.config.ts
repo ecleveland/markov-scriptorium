@@ -25,7 +25,23 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        // The fake device serves a synthetic video and the fake UI grants the
+        // camera without a prompt. Only pages under /scan call getUserMedia:
+        // the scan spec, and the app-shell nav test when it visits Scan.
+        launchOptions: {
+          args: [
+            '--use-fake-device-for-media-stream',
+            '--use-fake-ui-for-media-stream',
+          ],
+        },
+      },
+    },
+  ],
   // Boot only the frontend; the API is stubbed per-test. Reuse a dev server the
   // developer already has running locally; always start fresh on CI.
   webServer: {

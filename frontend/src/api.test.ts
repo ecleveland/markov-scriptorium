@@ -21,6 +21,7 @@ import {
   updateDeck,
   updateSlot,
   parseDecklist,
+  recognizeCard,
   resolveDecklist,
   searchFolios,
   searchPrintings,
@@ -548,5 +549,42 @@ describe('object error details', () => {
     await expect(addSlot(2, { scryfall_id: 'bolt-lea' })).rejects.toMatchObject(
       { status: 409, message: 'Edgar holds 2 copies.' },
     )
+  })
+})
+
+describe('recognizeCard', () => {
+  it('posts the image bytes with their own type and returns the readings', async () => {
+    const readings = [
+      { name: 'Sol Ring', confidence: 0.91 },
+      { name: 'Lightning Bolt', confidence: 0.42 },
+    ]
+    const fetchMock = mockFetch({ readings })
+    const image = new Blob(['jpeg bytes'], { type: 'image/jpeg' })
+    const controller = new AbortController()
+
+    expect(await recognizeCard(image, controller.signal)).toEqual({ readings })
+    expect(fetchMock).toHaveBeenCalledWith('/api/scanner/recognize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: image,
+      signal: controller.signal,
+    })
+  })
+
+  it('labels an untyped blob as JPEG', async () => {
+    const fetchMock = mockFetch({ readings: [] })
+    await recognizeCard(new Blob(['bytes']))
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      'Content-Type': 'image/jpeg',
+    })
+  })
+
+  it('surfaces the 501 detail while the scanner cannot read yet', async () => {
+    const detail =
+      'The scriptorium cannot yet read a card by sight. Type its name instead.'
+    mockFetch({ detail }, false, 501)
+    await expect(
+      recognizeCard(new Blob(['x'], { type: 'image/jpeg' })),
+    ).rejects.toMatchObject({ status: 501, detail })
   })
 })

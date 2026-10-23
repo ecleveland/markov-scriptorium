@@ -1,0 +1,118 @@
+/*
+ * The Scrying Glass: layout only. Buttons, fields, notices, listboxes, and the
+ * panel come from the component layer (styles/components.css, ADR 0017); what
+ * is left here is where those pieces sit on the page.
+ */
+
+.scan {
+  max-width: 40rem;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.camera-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* A 4:3 window on the desk, letterboxing whatever the camera sends. */
+.camera {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.camera__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* For a camera mounted upside down; the capture turns the frame the same way. */
+.camera__video--flipped {
+  transform: rotate(180deg);
+}
+
+/* A card-shaped outline (63 by 88 mm) to line the card up against. */
+.camera__guide {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  aspect-ratio: 63 / 88;
+  margin: auto;
+  border: 2px dashed var(--gold);
+  border-radius: var(--radius-lg);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.camera__controls,
+.scan__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.scan__actions {
+  margin-top: var(--space-4);
+}
+
+.camera__flip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scan__still {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
+}
+
+/* The still beside what the glass made of it, stacking on a narrow window. */
+.scan__result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-5);
+}
+
+.scan__result .scan__still {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.scan__readings {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.reading-picker__confidence {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.scan__session {
+  margin-top: var(--space-6);
+}
+
+.scan__session ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

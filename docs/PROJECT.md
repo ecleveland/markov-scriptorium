@@ -98,10 +98,10 @@ Visual card recognition that matches scans to Scryfall. Highly feasible — mult
 
 **Killer UX:** **batch scanning** — lay 9 cards on a table, one photo, recognize all. Transformative for collection imports vs. one-at-a-time scanning. mtgscan handles this natively.
 
+ADR 0025 settled two earlier open questions. The scanner targets a desktop webcam first and a phone camera later. It captures a still in the browser and posts it for processing.
+
 ### Open Questions
 
-- Mobile (phone camera) vs. desktop (webcam) — both, or pick one for MVP?
-- Do we need real-time live recognition, or is photo-then-process enough?
 - Scryfall bulk data refresh cadence (their data file updates daily)
 - How to handle foils, alters, signed cards, and non-English printings during scan
 

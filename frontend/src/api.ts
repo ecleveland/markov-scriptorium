@@ -767,3 +767,35 @@ export async function listBackups(): Promise<BackupList> {
 export async function createBackup(): Promise<Backup> {
   return request<Backup>('/archive/backups', { method: 'POST' })
 }
+
+// --- The scanner (VEG-230) --------------------------------------------------
+
+/** One name the scanner read off a card, with how sure it is, from 0 to 1. */
+export interface Reading {
+  name: string
+  confidence: number
+}
+
+export interface RecognizeResponse {
+  /** Best first. Empty when the glass could make out no name at all. */
+  readings: Reading[]
+}
+
+/**
+ * Send one captured frame to the scanner and get back the names it read.
+ * Readings are card names, not printings, so the Scan page hands the chosen
+ * name to the same printing picker and form the Inscribe flow uses to settle
+ * on a folio. Until recognition lands (VEG-231) a valid image answers 501
+ * with a detail the page shows as is.
+ */
+export async function recognizeCard(
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<RecognizeResponse> {
+  return request<RecognizeResponse>('/scanner/recognize', {
+    method: 'POST',
+    headers: { 'Content-Type': image.type || 'image/jpeg' },
+    body: image,
+    signal,
+  })
+}
