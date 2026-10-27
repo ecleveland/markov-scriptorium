@@ -785,8 +785,9 @@ export interface RecognizeResponse {
  * Send one captured frame to the scanner and get back the names it read.
  * Readings are card names, not printings, so the Scan page hands the chosen
  * name to the same printing picker and form the Inscribe flow uses to settle
- * on a folio. Until recognition lands (VEG-231) a valid image answers 501
- * with a detail the page shows as is.
+ * on a folio. When no engine is fitted or the engine fails the backend
+ * answers 503, and an image it cannot decode answers 400, each with a detail
+ * the page shows as is.
  */
 export async function recognizeCard(
   image: Blob,

@@ -16,10 +16,13 @@
   gap: var(--space-4);
 }
 
-/* A 4:3 window on the desk, letterboxing whatever the camera sends. */
+/*
+ * A window on the desk shaped like whatever the camera sends, so the picture
+ * fills it and the guide below never hangs over a letterbox. Before the
+ * stream starts the video has no shape of its own and holds a 4:3 one.
+ */
 .camera {
   position: relative;
-  aspect-ratio: 4 / 3;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -29,7 +32,8 @@
 .camera__video {
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: auto 4 / 3;
   object-fit: contain;
 }
 
@@ -38,11 +42,19 @@
   transform: rotate(180deg);
 }
 
-/* A card-shaped outline (63 by 88 mm) to line the card up against. */
+/*
+ * A card-shaped outline (63 by 88 mm) to line the card up against. The
+ * scanner expects a lined-up card to fill most of the frame's height,
+ * centred, so the outline grows to 84% of the height. A portrait camera
+ * caps it at 84% of the width instead, and the ratio sets the other side.
+ */
 .camera__guide {
   position: absolute;
   inset: 0;
-  width: 45%;
+  width: auto;
+  height: auto;
+  max-width: 84%;
+  max-height: 84%;
   aspect-ratio: 63 / 88;
   margin: auto;
   border: 2px dashed var(--gold);

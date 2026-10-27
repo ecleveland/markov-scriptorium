@@ -231,11 +231,11 @@ describe('ScanPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows the backend detail and lets the name be typed instead', async () => {
+  it('shows the backend detail when no engine is fitted and lets the name be typed instead', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const detail =
-      'The scriptorium cannot yet read a card by sight. Type its name instead.'
-    recognizeMock.mockRejectedValue(new ApiError(detail, 501, detail))
+      'No scrying glass is fitted to this scriptorium. Type the name instead.'
+    recognizeMock.mockRejectedValue(new ApiError(detail, 503, detail))
     autocompleteMock.mockResolvedValue(['Sol Ring'])
     const user = await readCard()
 
@@ -259,6 +259,20 @@ describe('ScanPage', () => {
     await user.click(screen.getByRole('button', { name: 'Change card' }))
     expect(screen.getByLabelText('Card name')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument()
+  })
+
+  it('shows the backend detail for an unreadable image and lets the name be typed instead', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const detail =
+      'The glass could not make sense of that image. Capture the card again.'
+    recognizeMock.mockRejectedValue(new ApiError(detail, 400, detail))
+    autocompleteMock.mockResolvedValue(['Sol Ring'])
+    await readCard()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(detail)
+    expect(
+      screen.getByRole('button', { name: 'Type the name instead' }),
+    ).toBeInTheDocument()
   })
 
   it('returns to the same readings from the picker without reading again', async () => {

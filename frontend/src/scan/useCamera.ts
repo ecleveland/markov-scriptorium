@@ -75,10 +75,15 @@ function describeError(err: unknown): string {
 }
 
 function open(deviceId: string | null): Promise<MediaStream> {
-  return navigator.mediaDevices.getUserMedia({
-    video: deviceId ? { deviceId: { exact: deviceId } } : true,
-    audio: false,
-  })
+  // Most USB webcams default to 640 by 480, which leaves the card title about
+  // 14 pixels tall, too small for the scanner's OCR. `ideal` is a preference,
+  // so a camera that cannot do 1080p still opens.
+  const video: MediaTrackConstraints = {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+  }
+  return navigator.mediaDevices.getUserMedia({ video, audio: false })
 }
 
 /**

@@ -5,6 +5,16 @@ import { useCamera } from './useCamera'
 
 const STORAGE_KEY = 'scriptorium.scan.deviceId'
 
+/** The argument useCamera passes to getUserMedia. */
+const constraints = (deviceId?: string) => ({
+  video: {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+  },
+  audio: false,
+})
+
 interface FakeTrack {
   stop: ReturnType<typeof vi.fn>
   getSettings: () => { deviceId?: string }
@@ -87,7 +97,7 @@ describe('useCamera', () => {
     expect(result.current.status).toBe('starting')
 
     await waitFor(() => expect(result.current.status).toBe('live'))
-    expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: false })
+    expect(getUserMedia).toHaveBeenCalledWith(constraints())
     expect(result.current.stream).toBe(stream)
     // The microphone is not a camera.
     expect(result.current.devices).toEqual([DESK])
@@ -129,10 +139,7 @@ describe('useCamera', () => {
     act(() => result.current.selectDevice('cam-built-in'))
 
     expect(first.track.stop).toHaveBeenCalled()
-    expect(getUserMedia).toHaveBeenLastCalledWith({
-      video: { deviceId: { exact: 'cam-built-in' } },
-      audio: false,
-    })
+    expect(getUserMedia).toHaveBeenLastCalledWith(constraints('cam-built-in'))
     await waitFor(() => expect(result.current.stream).toBe(second.stream))
     // Remembered only once the camera has opened.
     expect(localStorage.getItem(STORAGE_KEY)).toBe('cam-built-in')
@@ -157,10 +164,7 @@ describe('useCamera', () => {
     act(() => result.current.selectDevice('cam-built-in'))
 
     await waitFor(() => expect(result.current.stream).toBe(reopened.stream))
-    expect(getUserMedia).toHaveBeenLastCalledWith({
-      video: { deviceId: { exact: 'cam-desk' } },
-      audio: false,
-    })
+    expect(getUserMedia).toHaveBeenLastCalledWith(constraints('cam-desk'))
     expect(result.current.status).toBe('live')
     expect(result.current.deviceId).toBe('cam-desk')
     expect(result.current.error).toBe(
@@ -186,7 +190,7 @@ describe('useCamera', () => {
     act(() => result.current.selectDevice('cam-built-in'))
 
     await waitFor(() => expect(result.current.error).not.toBeNull())
-    expect(getUserMedia).toHaveBeenLastCalledWith({ video: true, audio: false })
+    expect(getUserMedia).toHaveBeenLastCalledWith(constraints())
     expect(result.current.status).toBe('live')
     expect(result.current.deviceId).toBeNull()
   })
@@ -255,10 +259,7 @@ describe('useCamera', () => {
 
     await waitFor(() => expect(result.current.status).toBe('live'))
     expect(getUserMedia).toHaveBeenCalledTimes(1)
-    expect(getUserMedia).toHaveBeenCalledWith({
-      video: { deviceId: { exact: 'cam-built-in' } },
-      audio: false,
-    })
+    expect(getUserMedia).toHaveBeenCalledWith(constraints('cam-built-in'))
     expect(result.current.deviceId).toBe('cam-built-in')
   })
 
@@ -273,10 +274,7 @@ describe('useCamera', () => {
     const { result } = renderHook(() => useCamera())
 
     await waitFor(() => expect(result.current.status).toBe('live'))
-    expect(getUserMedia).toHaveBeenNthCalledWith(2, {
-      video: true,
-      audio: false,
-    })
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, constraints())
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
     expect(result.current.stream).toBe(fallback.stream)
     expect(result.current.deviceId).toBe('cam-desk')
@@ -306,10 +304,7 @@ describe('useCamera', () => {
     const { result } = renderHook(() => useCamera())
 
     await waitFor(() => expect(result.current.status).toBe('live'))
-    expect(getUserMedia).toHaveBeenNthCalledWith(2, {
-      video: true,
-      audio: false,
-    })
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, constraints())
     expect(result.current.stream).toBe(fallback.stream)
     // Busy is not gone: the next visit tries the user's camera again.
     expect(localStorage.getItem(STORAGE_KEY)).toBe('cam-busy')
@@ -438,7 +433,7 @@ describe('useCamera', () => {
     const { result } = renderHook(() => useCamera())
 
     await waitFor(() => expect(result.current.status).toBe('live'))
-    expect(getUserMedia).toHaveBeenCalledWith({ video: true, audio: false })
+    expect(getUserMedia).toHaveBeenCalledWith(constraints())
   })
 
   it('stops the tracks on unmount', async () => {
