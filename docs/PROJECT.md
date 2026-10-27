@@ -90,11 +90,11 @@ Visual card recognition that matches scans to Scryfall. Highly feasible — mult
 
 ### Recommended Path
 
-**Primary:** OCR + fuzzy match
-- Crop to title bar (cleanest, most consistent region across printings)
-- OCR via Google Vision or Azure (both have free tiers)
-- Fuzzy match against Scryfall `/catalog/card-names`
-- For printing disambiguation, prompt user OR use perceptual hash on the art crop as a tiebreaker
+**Primary:** OCR + fuzzy match, decided in [ADR 0026](decisions/0026-scanner-recognition-engine-and-name-match.md)
+- Apple Vision reads the title on macOS, behind an engine protocol so a second engine can join for Linux and Windows. Nothing leaves the machine.
+- The reader tries the title region first, then the same region rotated 180 degrees for an upside-down card, then the full frame.
+- rapidfuzz matches the text against the card and face names in the local catalog and answers up to five full names with a confidence.
+- The user picks the printing from the card in hand, through the existing printing picker.
 
 **Killer UX:** **batch scanning** — lay 9 cards on a table, one photo, recognize all. Transformative for collection imports vs. one-at-a-time scanning. mtgscan handles this natively.
 
@@ -103,7 +103,8 @@ ADR 0025 settled two earlier open questions. The scanner targets a desktop webca
 ### Open Questions
 
 - Scryfall bulk data refresh cadence (their data file updates daily)
-- How to handle foils, alters, signed cards, and non-English printings during scan
+- Non-English printings cannot be read until the catalog imports Scryfall's `printed_name`. That is a schema change for a follow-up ticket.
+- Foils read unless glare covers the title. Alters are unpredictable, and "Type the name instead" covers them.
 
 ---
 

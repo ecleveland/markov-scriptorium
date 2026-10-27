@@ -52,6 +52,15 @@ uv run mypy                                     # type-check (strict)
 Leave `--reload` off when the server stays up for hours, because a crashed reload worker
 leaves the port held with nothing answering.
 
+#### Scanner
+
+The Scry a Card page reads card titles with Apple's Vision framework, which ships with
+macOS. On a Mac, `uv sync` installs the bindings and nothing more is needed. Linux and
+Windows have no reader yet. The page says "No scrying glass is fitted", and typing the name
+still works. Set `SCRIPTORIUM_OCR=none` to turn scanning off, or `SCRIPTORIUM_OCR=vision`
+to make startup fail when Vision cannot load. See
+[ADR 0026](docs/decisions/0026-scanner-recognition-engine-and-name-match.md).
+
 ### Frontend (React + Vite)
 
 From `frontend/`:
