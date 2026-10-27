@@ -37,6 +37,13 @@ def test_letters_are_counted_after_fixing_misread_digits() -> None:
     assert pick_title_candidates([line("123/280", 0.1), line("2", 0.1)]) == []
 
 
+def test_digits_and_marks_alone_do_not_fold_into_letters() -> None:
+    # Fold turns 1, 0, 5 and ! into letters, and the comma or hyphen keeps
+    # these out of the mana-cost check, so they need a real letter to count.
+    lines = [line(text, 0.1) for text in ("100,000", "1,000", "10-15", "!!!")]
+    assert pick_title_candidates(lines) == []
+
+
 def test_a_three_letter_title_is_kept() -> None:
     opt = line("Opt", 0.1)
     assert pick_title_candidates([opt]) == [opt]

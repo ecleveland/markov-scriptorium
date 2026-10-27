@@ -20,7 +20,10 @@ _BAND_RIGHT = 0.85
 
 def _letters(text: str) -> int:
     # Counted after fold, so "0pt" read for "Opt" keeps its three letters,
-    # the same repair the name match makes.
+    # the same repair the name match makes. Fold also turns 1, 0, 5 and ! into
+    # letters, so a line with no real letter, such as "100,000", counts none.
+    if not any(ch.isalpha() for ch in text):
+        return 0
     return sum(ch.isalpha() for ch in fold(text))
 
 

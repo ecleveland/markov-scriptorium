@@ -7,17 +7,19 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Iterator
+from contextlib import closing
 from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
 
+from scriptorium import db
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import NameIndex, invalidate, name_index
 from scriptorium.scanner.ocr import OcrUnavailable, UnreadableImage
 from scriptorium.scanner.pipeline import FALLBACK_WEIGHT, Reading, recognize
 from scriptorium.scanner.region import title_region
-from tests.scanner.fakes import FakeOcr, line, seed_catalog
+from tests.scanner.fakes import FakeOcr, insert_card, line, seed_catalog
 
 IMAGE = b"\x89PNG\r\n\x1a\n"
 EDGAR = line("Edgar Markov", 0.1)
@@ -109,6 +111,20 @@ def test_a_reading_just_under_accept_reads_every_pass(index: NameIndex) -> None:
     ocr = FakeOcr([line("Edgar Markov", 0.1, confidence=0.3)])
     assert recognize(IMAGE, ocr, index) == [Reading("Edgar Markov", 0.79)]
     assert len(ocr.calls) == 3
+
+
+def test_a_full_read_outranks_a_shorter_name_found_by_trimming(index: NameIndex) -> None:
+    # Both score 1.0. The order the name index ranks them in must survive the
+    # pipeline's merge and sort.
+    with closing(db.connect()) as conn:
+        insert_card(conn, "nicol", "Nicol Bolas")
+        insert_card(conn, "ravager", "Nicol Bolas, the Ravager")
+        conn.commit()
+    ocr = FakeOcr([line("Nicol Bolas, the Ravager", 0.1)])
+    assert recognize(IMAGE, ocr, name_index()) == [
+        Reading("Nicol Bolas, the Ravager", 1.0),
+        Reading("Nicol Bolas", 1.0),
+    ]
 
 
 def test_garbage_reads_as_no_readings(index: NameIndex) -> None:

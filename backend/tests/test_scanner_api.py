@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +18,13 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.types import Message, Scope
 
+from scriptorium import db
 from scriptorium.api.scanner import MAX_IMAGE_BYTES, get_ocr
 from scriptorium.main import app
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import invalidate
 from scriptorium.scanner.ocr import OcrUnavailable, UnreadableImage
-from tests.scanner.fakes import FakeOcr, line, seed_catalog
+from tests.scanner.fakes import FakeOcr, insert_card, line, seed_catalog
 
 client = TestClient(app)
 
@@ -88,6 +90,23 @@ def test_content_type_parameters_are_ignored() -> None:
 
 def test_media_type_match_ignores_case() -> None:
     assert _post(JPEG, "Image/JPEG") == (200, EDGAR_READ)
+
+
+def test_the_card_read_in_full_comes_before_one_found_by_trimming() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "nicol", "Nicol Bolas")
+        insert_card(conn, "ravager", "Nicol Bolas, the Ravager")
+        conn.commit()
+    _fit(FakeOcr([line("Nicol Bolas, the Ravager", 0.1)]))
+    assert _post(JPEG, "image/jpeg") == (
+        200,
+        {
+            "readings": [
+                {"name": "Nicol Bolas, the Ravager", "confidence": 1.0},
+                {"name": "Nicol Bolas", "confidence": 1.0},
+            ]
+        },
+    )
 
 
 def test_a_still_with_no_name_reads_as_no_readings() -> None:

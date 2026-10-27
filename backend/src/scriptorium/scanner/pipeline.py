@@ -27,6 +27,12 @@ FALLBACK_WEIGHT = 0.9
 _MATCH_SHARE = 0.7
 
 
+# Per name, (confidence, -position) where position is the name's place in the
+# list NameIndex.match ranked for the line. Equal confidences then keep the
+# index's order, which prefers the match that used more of the read text.
+_Rank = tuple[float, int]
+
+
 @dataclass(frozen=True, slots=True)
 class Reading:
     """A card name the still could show, with confidence from 0 to 1."""
@@ -43,15 +49,20 @@ def _read(
     upside_down: bool,
     region: Box | None,
     weight: float,
-) -> dict[str, float]:
-    found: dict[str, float] = {}
+) -> dict[str, _Rank]:
+    found: dict[str, _Rank] = {}
     lines = ocr.read_lines(image, upside_down=upside_down, region=region)
     for candidate in pick_title_candidates(lines):
         line_confidence = min(max(candidate.confidence, 0.0), 1.0)
         shade = _MATCH_SHARE + (1 - _MATCH_SHARE) * line_confidence
-        for name, ratio in index.match(candidate.text):
-            found[name] = max(found.get(name, 0.0), ratio * shade * weight)
+        for position, (name, ratio) in enumerate(index.match(candidate.text)):
+            _keep_better(found, name, (ratio * shade * weight, -position))
     return found
+
+
+def _keep_better(ranks: dict[str, _Rank], name: str, rank: _Rank) -> None:
+    held = ranks.get(name)
+    ranks[name] = rank if held is None else max(held, rank)
 
 
 def recognize(image: bytes, ocr: Ocr, index: NameIndex, *, limit: int = 5) -> list[Reading]:
@@ -65,16 +76,17 @@ def recognize(image: bytes, ocr: Ocr, index: NameIndex, *, limit: int = 5) -> li
     # slack.
     region = title_region()
     passes = ((False, region, 1.0), (True, region, 1.0), (False, None, FALLBACK_WEIGHT))
-    best: dict[str, float] = {}
+    best: dict[str, _Rank] = {}
     for upside_down, read_region, weight in passes:
         found = _read(image, ocr, index, upside_down=upside_down, region=read_region, weight=weight)
-        for name, confidence in found.items():
-            best[name] = max(best.get(name, 0.0), confidence)
-        if best and max(best.values()) >= ACCEPT:
+        for name, rank in found.items():
+            _keep_better(best, name, rank)
+        if best and max(c for c, _ in best.values()) >= ACCEPT:
             break
     # Round before ranking so the order matches the numbers the page shows.
-    rounded = [(name, round(c, 3)) for name, c in best.items()]
+    rounded = [(round(c, 3), -neg_position, name) for name, (c, neg_position) in best.items()]
     kept = sorted(
-        ((name, c) for name, c in rounded if c >= FLOOR), key=lambda item: (-item[1], item[0])
+        (item for item in rounded if item[0] >= FLOOR),
+        key=lambda item: (-item[0], item[1], item[2]),
     )
-    return [Reading(name, confidence) for name, confidence in kept[:limit]]
+    return [Reading(name, confidence) for confidence, _, name in kept[:limit]]
