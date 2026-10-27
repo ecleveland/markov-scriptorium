@@ -128,6 +128,21 @@ class _FailingHandler:
         return (False, "boom")
 
 
+class _RaisingHandler(_FailingHandler):
+    """Fails the way a pyobjc bridge error surfaces, as a raised objc.error."""
+
+    def performRequests_error_(self, requests: object, error: object) -> tuple[bool, str]:  # noqa: N802
+        import objc
+
+        raise objc.error("bridge broke")
+
+
+def test_a_pyobjc_error_is_an_engine_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("Vision.VNImageRequestHandler", _RaisingHandler)
+    with pytest.raises(OcrUnavailable, match="bridge broke"):
+        _engine().read_lines(_png(_card()), region=title_region())
+
+
 def test_a_vision_failure_on_a_good_image_is_an_engine_failure(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

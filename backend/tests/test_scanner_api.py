@@ -75,6 +75,7 @@ def _recognize(body: bytes, content_type: str | None) -> tuple[int, str]:
 def test_jpeg_is_read_to_a_card_name(engine: FakeOcr) -> None:
     assert _post(JPEG, "image/jpeg") == (200, EDGAR_READ)
     assert engine.images[0] == JPEG
+    assert type(engine.images[0]) is bytes
 
 
 def test_png_is_read_to_a_card_name() -> None:
@@ -98,6 +99,21 @@ def test_a_still_with_no_name_reads_as_no_readings() -> None:
 def test_no_engine_answers_unavailable() -> None:
     _fit(None)
     assert _recognize(JPEG, "image/jpeg") == (503, NO_ENGINE)
+
+
+def test_an_empty_body_is_checked_before_the_engine() -> None:
+    _fit(None)
+    assert _recognize(b"", "image/jpeg") == (400, "The image was empty.")
+
+
+def test_a_declared_length_is_checked_before_the_engine() -> None:
+    _fit(None)
+    resp = client.post(
+        "/scanner/recognize",
+        content=JPEG,
+        headers={"Content-Type": "image/jpeg", "Content-Length": str(MAX_IMAGE_BYTES + 1)},
+    )
+    assert (resp.status_code, resp.json()["detail"]) == (413, TOO_LARGE)
 
 
 def test_the_type_is_checked_before_the_engine() -> None:

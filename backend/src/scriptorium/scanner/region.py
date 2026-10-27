@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from scriptorium.scanner.ocr import Box
 
-# A card lined up to the page's guide sits in the centre of the frame and
-# fills most of its height. Half the card's width is a little under 0.40 of
-# the frame height, so this half-width keeps the whole title bar in view.
+# A card lined up to the page's guide sits in the centre of the frame. The
+# guide is 84 percent of the frame height, so the card is 0.84 * 63 / 88, about
+# 0.60 of the height wide, and half of it about 0.30. A half-width of 0.40
+# keeps the whole title bar in view with about a third of slack for a card
+# held off centre.
 _HALF_WIDTH_OF_HEIGHT = 0.40
 # The title bar sits in the top 8 to 16 percent of the frame. Reading the top
 # 30 percent leaves slack for a card held high or tilted.

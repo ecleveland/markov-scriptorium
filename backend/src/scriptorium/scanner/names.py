@@ -92,19 +92,25 @@ class NameIndex:
 
         Plain ``ratio`` compares whole strings. Partial scorers would score a
         short name such as "Opt" as a perfect hit inside "Optimus Prime, Hero".
+
+        Equal scores rank by how much of the read text the match used, so a
+        full read of "Nicol Bolas, the Ravager" beats "Nicol Bolas" found by
+        trimming it. Names tie last.
         """
         if not self._keys:
             return []
-        best: dict[str, float] = {}
+        # Per name, the best (score, length of the folded variant that hit).
+        best: dict[str, tuple[float, int]] = {}
         for query in _variants(text):
             hits = process.extract(
                 query, self._keys, scorer=fuzz.ratio, limit=limit, score_cutoff=_SCORE_CUTOFF
             )
             for _key, score, position in hits:
+                found = (score / 100, len(query))
                 for name in self._names[position]:
-                    best[name] = max(best.get(name, 0.0), score / 100)
-        ranked = sorted(best.items(), key=lambda item: (-item[1], item[0]))
-        return ranked[:limit]
+                    best[name] = max(best.get(name, found), found)
+        ranked = sorted(best.items(), key=lambda item: (-item[1][0], -item[1][1], item[0]))
+        return [(name, score) for name, (score, _) in ranked[:limit]]
 
 
 def _build(conn: sqlite3.Connection) -> NameIndex:

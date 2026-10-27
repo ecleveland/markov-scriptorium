@@ -73,6 +73,44 @@ def test_the_full_frame_is_read_last_and_weighed_down(index: NameIndex) -> None:
     assert FALLBACK_WEIGHT == 0.9
 
 
+def test_merging_passes_keeps_the_better_reading(index: NameIndex) -> None:
+    # A line confidence of 1/6 shades a perfect match to 0.75, under ACCEPT,
+    # so every pass runs. The full frame then finds Edgar at 0.63.
+    first = line("Edgar Markov", 0.1, confidence=1 / 6)
+    ocr = FakeOcr([first], full_frame=[line("Edgar Markov", 0.1, confidence=0.0)])
+    assert recognize(IMAGE, ocr, index) == [Reading("Edgar Markov", 0.75)]
+    assert len(ocr.calls) == 3
+
+
+def test_merging_lines_in_one_pass_keeps_the_better_reading(index: NameIndex) -> None:
+    ocr = FakeOcr([EDGAR, line("Edgar Markow", 0.2, confidence=0.0)])
+    assert recognize(IMAGE, ocr, index) == [Reading("Edgar Markov", 1.0)]
+
+
+def test_readings_under_the_floor_are_dropped(index: NameIndex) -> None:
+    # A ratio of 0.80 at line confidence 0 shades to 0.56.
+    dropped = FakeOcr([line("Uanowar Eloes", 0.1, confidence=0.0)])
+    assert recognize(IMAGE, dropped, index) == []
+
+
+def test_readings_just_over_the_floor_are_kept(index: NameIndex) -> None:
+    # A ratio of 0.88 at line confidence 0 shades to about 0.62.
+    kept = FakeOcr([line("Uanowar Elves", 0.1, confidence=0.0)])
+    assert [r.name for r in recognize(IMAGE, kept, index)] == ["Llanowar Elves"]
+
+
+def test_a_reading_just_over_accept_stops_after_one_read(index: NameIndex) -> None:
+    ocr = FakeOcr([line("Edgar Markov", 0.1, confidence=0.4)])
+    assert recognize(IMAGE, ocr, index) == [Reading("Edgar Markov", 0.82)]
+    assert len(ocr.calls) == 1
+
+
+def test_a_reading_just_under_accept_reads_every_pass(index: NameIndex) -> None:
+    ocr = FakeOcr([line("Edgar Markov", 0.1, confidence=0.3)])
+    assert recognize(IMAGE, ocr, index) == [Reading("Edgar Markov", 0.79)]
+    assert len(ocr.calls) == 3
+
+
 def test_garbage_reads_as_no_readings(index: NameIndex) -> None:
     ocr = FakeOcr([NOISE], upside_down=[NOISE], full_frame=[NOISE])
     assert recognize(IMAGE, ocr, index) == []
@@ -129,6 +167,13 @@ def test_an_unknown_engine_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.usefixtures("fresh_selection")
 def test_auto_selects_nothing_off_macos(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert select_engine() is None
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_an_empty_setting_means_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "")
     monkeypatch.setattr(sys, "platform", "linux")
     assert select_engine() is None
 

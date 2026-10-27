@@ -43,8 +43,10 @@ class Ocr(Protocol):
         """Read the lines in ``region`` of the frame, or all of it when None.
 
         ``upside_down`` asks the engine to turn the image half a turn first.
-        Boxes come back in fractions of the upright frame, top-left origin,
-        whatever the region.
+        Then both ``region`` and the returned boxes are in the turned frame,
+        which is why the pipeline passes the same title region on both
+        passes. Boxes come back in fractions of the whole frame, top-left
+        origin, whatever the region.
         """
         ...
 

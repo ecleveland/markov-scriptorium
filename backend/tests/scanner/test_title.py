@@ -30,6 +30,13 @@ def test_a_mana_cost_read_alone_is_dropped() -> None:
     assert pick_title_candidates([line("3BRW", 0.1), line("{2}{U}{U}", 0.1)]) == []
 
 
+def test_letters_are_counted_after_fixing_misread_digits() -> None:
+    # Vision reads the O of "Opt" as a zero often enough to matter.
+    misread = line("0pt", 0.1)
+    assert pick_title_candidates([misread]) == [misread]
+    assert pick_title_candidates([line("123/280", 0.1), line("2", 0.1)]) == []
+
+
 def test_a_three_letter_title_is_kept() -> None:
     opt = line("Opt", 0.1)
     assert pick_title_candidates([opt]) == [opt]

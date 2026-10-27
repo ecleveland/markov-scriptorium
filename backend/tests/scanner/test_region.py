@@ -46,6 +46,13 @@ def test_unscale_maps_a_region_relative_box_back_to_the_frame() -> None:
     assert box.x == pytest.approx(0.287, abs=1e-3)
 
 
+def test_unscale_offsets_by_where_the_region_starts() -> None:
+    region = Box(0.1, 0.5, 0.8, 0.3)
+    box = unscale(Box(0.0, 0.5, 1.0, 0.1), region)
+    assert box.y == pytest.approx(0.5 + 0.5 * region.height)
+    assert box.x == pytest.approx(0.1)
+
+
 def test_to_bottom_left_round_trips() -> None:
     box = Box(0.2, 0.1, 0.6, 0.3)
     (x, y), (width, height) = to_bottom_left(box)

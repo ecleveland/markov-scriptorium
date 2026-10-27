@@ -74,6 +74,15 @@ def test_fold_drops_accents_case_and_punctuation() -> None:
     assert fold("Optimus Prime, Hero") == fold("optimus prime hero")
 
 
+def test_fold_repairs_each_misread_character() -> None:
+    assert fold("0pt") == fold("Opt")
+    assert fold("5hock") == fold("Shock")
+    assert fold("|ightning") == fold("Lightning")
+    assert fold("1ightning") == fold("Lightning")
+    assert fold("vvall") == fold("Wall")
+    assert fold("æther") == fold("Aether")
+
+
 def test_fold_keeps_digits_in_names() -> None:
     assert fold("Borrowing 100,000 Arrows") == fold("Borrowing 100000 Arrows")
     assert fold("Borrowing 100,000 Arrows") != fold("Borrowing Arrows")
@@ -81,6 +90,24 @@ def test_fold_keeps_digits_in_names() -> None:
 
 def test_exact_title_with_a_trailing_mana_cost_scores_one() -> None:
     assert _best("Edgar Markov 3BRW") == ("Edgar Markov", 1.0)
+
+
+def test_three_trailing_specks_are_trimmed() -> None:
+    assert _best("Edgar Markov 2 R B") == ("Edgar Markov", 1.0)
+
+
+def test_a_full_read_outranks_a_shorter_name_found_by_trimming() -> None:
+    # Trimming "the Ravager" finds Nicol Bolas at 1.0 too. The match that used
+    # more of what OCR read is the better answer.
+    with closing(db.connect()) as conn:
+        insert_card(conn, "nicol", "Nicol Bolas")
+        insert_card(conn, "ravager", "Nicol Bolas, the Ravager")
+        conn.commit()
+    assert name_index().match("Nicol Bolas, the Ravager")[:2] == [
+        ("Nicol Bolas, the Ravager", 1.0),
+        ("Nicol Bolas", 1.0),
+    ]
+    assert _best("Nicol Bolas") == ("Nicol Bolas", 1.0)
 
 
 def test_a_misread_first_letter_still_matches() -> None:

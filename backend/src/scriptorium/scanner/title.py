@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from scriptorium.scanner.names import fold
 from scriptorium.scanner.ocr import TextLine
 
 # A title has at least three letters, which drops stray digits and collector
@@ -18,7 +19,9 @@ _BAND_RIGHT = 0.85
 
 
 def _letters(text: str) -> int:
-    return sum(ch.isalpha() for ch in text)
+    # Counted after fold, so "0pt" read for "Opt" keeps its three letters,
+    # the same repair the name match makes.
+    return sum(ch.isalpha() for ch in fold(text))
 
 
 def _is_mana_cost(text: str) -> bool:
