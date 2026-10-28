@@ -579,12 +579,21 @@ describe('recognizeCard', () => {
     })
   })
 
-  it('surfaces the 501 detail while the scanner cannot read yet', async () => {
+  it('surfaces the detail when no engine is fitted', async () => {
     const detail =
-      'The scriptorium cannot yet read a card by sight. Type its name instead.'
-    mockFetch({ detail }, false, 501)
+      'No scrying glass is fitted to this scriptorium. Type the name instead.'
+    mockFetch({ detail }, false, 503)
     await expect(
       recognizeCard(new Blob(['x'], { type: 'image/jpeg' })),
-    ).rejects.toMatchObject({ status: 501, detail })
+    ).rejects.toMatchObject({ status: 503, detail })
+  })
+
+  it('surfaces the detail for an image the engine cannot decode', async () => {
+    const detail =
+      'The glass could not make sense of that image. Capture the card again.'
+    mockFetch({ detail }, false, 400)
+    await expect(
+      recognizeCard(new Blob(['x'], { type: 'image/jpeg' })),
+    ).rejects.toMatchObject({ status: 400, detail })
   })
 })

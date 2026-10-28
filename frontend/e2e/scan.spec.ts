@@ -24,6 +24,36 @@ async function waitForFrame(page: Page) {
     .toBeGreaterThanOrEqual(2)
 }
 
+/**
+ * Check the card guide lies inside the video's picture, wherever
+ * `object-fit: contain` puts it. A card lined up to a guide that spills onto
+ * the letterbox has its title bar outside the captured frame.
+ */
+async function expectGuideInsidePicture(page: Page) {
+  const fit = await page.locator('.camera').evaluate((camera) => {
+    const video = camera.querySelector('video') as HTMLVideoElement
+    const guide = camera.querySelector('.camera__guide') as HTMLElement
+    const box = video.getBoundingClientRect()
+    const scale = Math.min(
+      box.width / video.videoWidth,
+      box.height / video.videoHeight,
+    )
+    const width = video.videoWidth * scale
+    const height = video.videoHeight * scale
+    const left = box.left + (box.width - width) / 2
+    const top = box.top + (box.height - height) / 2
+    const rect = guide.getBoundingClientRect()
+    // A pixel of slack for subpixel rounding.
+    return (
+      rect.left >= left - 1 &&
+      rect.top >= top - 1 &&
+      rect.right <= left + width + 1 &&
+      rect.bottom <= top + height + 1
+    )
+  })
+  expect(fit, 'the card guide lies inside the video picture').toBe(true)
+}
+
 /** Open the page and wait for the fake camera's first frame. */
 async function openGlass(page: Page) {
   await page.goto('/scan')
@@ -33,6 +63,7 @@ async function openGlass(page: Page) {
 
 test('scries a card from the camera into the catalog', async ({ page }) => {
   await openGlass(page)
+  await expectGuideInsidePicture(page)
 
   await page.getByRole('button', { name: 'Capture' }).click()
   await expect(page.getByAltText('The captured frame')).toBeVisible()

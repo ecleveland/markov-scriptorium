@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "httpx>=0.27",
     "ijson>=3.2",
+    "rapidfuzz>=3.14,<4",
+    "pyobjc-framework-vision>=12.2,<13 ; sys_platform == 'darwin'",
 ]
 
 [dependency-groups]
@@ -15,6 +17,7 @@ dev = [
     "pytest>=8",
     "ruff>=0.15.17",
     "mypy>=2.1.0",
+    "pillow>=12,<14",
 ]
 
 [build-system]
@@ -26,6 +29,7 @@ packages = ["src/scriptorium"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["vision: runs the real Apple Vision engine (macOS only)"]
 
 [tool.ruff]
 line-length = 100
@@ -43,4 +47,9 @@ files = ["src", "tests"]
 [[tool.mypy.overrides]]
 # ijson ships no type stubs.
 module = "ijson.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pyobjc ships no type stubs.
+module = ["objc.*", "Foundation.*", "Vision.*", "Quartz.*"]
 ignore_missing_imports = true

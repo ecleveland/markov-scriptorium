@@ -21,6 +21,8 @@ from scriptorium.api.onboarding import router as onboarding_router
 from scriptorium.api.scanner import router as scanner_router
 from scriptorium.db import connect, healthcheck
 from scriptorium.migrations import apply_migrations, pending_migrations
+from scriptorium.scanner.engines import select_engine
+from scriptorium.scanner.ocr import OcrUnavailable
 from scriptorium.scryfall.refresh import is_stale, maybe_refresh, read_status, refresh_catalog
 
 logger = logging.getLogger("scriptorium")
@@ -106,7 +108,7 @@ def _run_manual_refresh() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Back up and migrate the catalog, then start the background upkeep, before serving.
+    """Back up and migrate the catalog, check the OCR engine, then start the upkeep.
 
     The upkeep task seals the daily backup when one is due, then runs the
     startup refresh, then checks the daily backup again every hour. None of
@@ -137,6 +139,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("catalog migration failed during startup")
             raise
+
+    # A bad SCRIPTORIUM_OCR stops startup here (VEG-231, ADR 0026), so it is
+    # fixed once rather than answering 503 on every scan. The choice is cached,
+    # so the scanner's requests reuse it.
+    try:
+        select_engine()
+    except OcrUnavailable:
+        logger.exception("OCR engine misconfigured; refusing to start")
+        raise
 
     # Run the upkeep off the event loop (httpx + sqlite are blocking) and don't
     # await it — startup must not wait on a backup or a download of about 80 MB.
