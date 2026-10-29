@@ -137,11 +137,21 @@ function openedDevice(
 
 /**
  * The browser camera for the Scan page. Opens a stream on mount, lists the
- * cameras once permission is granted, and switches between them on request.
- * Every track is stopped on unmount and whenever a new stream replaces the
- * old one, so the camera light goes out when the page is left.
+ * cameras once permission is granted and again whenever one is plugged in or
+ * out, and switches between them on request. Every track is stopped on
+ * unmount and whenever a new stream replaces the old one, so the camera light
+ * goes out when the page is left.
+ *
+ * While `active` is false the camera rests: the video track is disabled, so
+ * it sends black frames, but the stream stays open and comes back without a
+ * new request. Chrome and Firefox keep the camera light on for a disabled
+ * track (Firefox on purpose, so a page cannot fake letting go of the camera).
+ * Only stopping the track puts the light out, which is why no UI text claims
+ * resting does.
  */
-export function useCamera(): Camera {
+export function useCamera({
+  active = true,
+}: { active?: boolean } = {}): Camera {
   const [state, setState] = useState<CameraState>(() => ({
     status: supported() ? 'starting' : 'error',
     stream: null,
@@ -159,6 +169,10 @@ export function useCamera(): Camera {
   // The device of the last stream that went live, so a failed switch knows
   // which camera to go back to. Null means the browser's default.
   const deviceRef = useRef<string | null>(null)
+  // Whether the hook is mounted, for a device list that arrives late. The
+  // generation is no use here: a camera switch bumps it too, and the new
+  // list is still worth showing then.
+  const mountedRef = useRef(false)
 
   const fail = useCallback((err: unknown) => {
     console.error('The camera could not be started', err)
@@ -172,6 +186,16 @@ export function useCamera(): Camera {
 
   useEffect(() => {
     if (!supported()) return
+    mountedRef.current = true
+    // A camera plugged in after the page opened only gets a picker if the
+    // list is read again. The live stream is left as it is.
+    const relist = async () => {
+      const devices = await listCameras()
+      if (mountedRef.current) setState((prev) => ({ ...prev, devices }))
+    }
+    // Held here so cleanup unsubscribes from the object it subscribed to.
+    const media = navigator.mediaDevices
+    media.addEventListener('devicechange', relist)
     const request = ++generation.current
     openFirst(recall())
       .then(async ({ stream, requested }) => {
@@ -196,6 +220,8 @@ export function useCamera(): Camera {
         if (request === generation.current) fail(err)
       })
     return () => {
+      mountedRef.current = false
+      media.removeEventListener('devicechange', relist)
       // The latest request is the one to retire, so this reads the ref live.
       generation.current += 1
       stop(streamRef.current)
@@ -259,6 +285,15 @@ export function useCamera(): Camera {
     },
     [fail],
   )
+
+  // Keyed on the stream too, so a stream that opens or is switched to while
+  // the camera rests starts out rested.
+  const { stream } = state
+  useEffect(() => {
+    stream?.getVideoTracks().forEach((track) => {
+      track.enabled = active
+    })
+  }, [stream, active])
 
   return { ...state, selectDevice }
 }

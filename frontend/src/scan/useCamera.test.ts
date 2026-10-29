@@ -18,11 +18,16 @@ const constraints = (deviceId?: string) => ({
 interface FakeTrack {
   stop: ReturnType<typeof vi.fn>
   getSettings: () => { deviceId?: string }
+  enabled: boolean
 }
 
 /** A stream with one video track reporting the device it came from. */
 function fakeStream(deviceId: string | undefined) {
-  const track: FakeTrack = { stop: vi.fn(), getSettings: () => ({ deviceId }) }
+  const track: FakeTrack = {
+    stop: vi.fn(),
+    getSettings: () => ({ deviceId }),
+    enabled: true,
+  }
   const stream = {
     getTracks: () => [track],
     getVideoTracks: () => [track],
@@ -63,12 +68,31 @@ function memoryStorage(): Storage {
 
 let getUserMedia: ReturnType<typeof vi.fn>
 let enumerateDevices: ReturnType<typeof vi.fn>
+let addEventListener: ReturnType<typeof vi.fn>
+let removeEventListener: ReturnType<typeof vi.fn>
+// The devicechange handler the hook registered, if any.
+let onDeviceChange: (() => void) | null
 
 function installMediaDevices() {
+  onDeviceChange = null
+  addEventListener = vi.fn((type: string, handler: () => void) => {
+    if (type === 'devicechange') onDeviceChange = handler
+  })
+  removeEventListener = vi.fn()
   Object.defineProperty(navigator, 'mediaDevices', {
-    value: { getUserMedia, enumerateDevices },
+    value: {
+      getUserMedia,
+      enumerateDevices,
+      addEventListener,
+      removeEventListener,
+    },
     configurable: true,
   })
+}
+
+/** Tell the hook the browser's cameras changed, as plugging one in does. */
+async function fireDeviceChange() {
+  await act(async () => onDeviceChange?.())
 }
 
 function domError(name: string): DOMException {
@@ -113,6 +137,87 @@ describe('useCamera', () => {
 
     await waitFor(() => expect(result.current.status).toBe('live'))
     expect(result.current.devices).toEqual([DESK, BUILT_IN])
+  })
+
+  it('lists a camera plugged in after the page opened', async () => {
+    const { stream } = fakeStream('cam-desk')
+    getUserMedia.mockResolvedValue(stream)
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    expect(result.current.devices).toEqual([DESK])
+
+    enumerateDevices.mockResolvedValue([DESK, MIC, BUILT_IN])
+    await fireDeviceChange()
+
+    await waitFor(() =>
+      expect(result.current.devices).toEqual([DESK, BUILT_IN]),
+    )
+    // The live stream is left alone.
+    expect(result.current.stream).toBe(stream)
+    expect(result.current.deviceId).toBe('cam-desk')
+    expect(result.current.status).toBe('live')
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops listening for device changes on unmount', async () => {
+    getUserMedia.mockResolvedValue(fakeStream('cam-desk').stream)
+
+    const { result, unmount } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    const handler = onDeviceChange
+    expect(handler).toBeInstanceOf(Function)
+
+    unmount()
+    expect(removeEventListener).toHaveBeenCalledWith('devicechange', handler)
+  })
+
+  it('rests the video track while inactive and wakes it on return', async () => {
+    const { stream, track } = fakeStream('cam-desk')
+    getUserMedia.mockResolvedValue(stream)
+
+    const { result, rerender } = renderHook(
+      ({ active }) => useCamera({ active }),
+      { initialProps: { active: true } },
+    )
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    expect(track.enabled).toBe(true)
+
+    rerender({ active: false })
+    expect(track.enabled).toBe(false)
+    // Rested, not released: the same stream comes back.
+    expect(track.stop).not.toHaveBeenCalled()
+
+    rerender({ active: true })
+    expect(track.enabled).toBe(true)
+    expect(result.current.stream).toBe(stream)
+  })
+
+  it('rests a stream that opens while inactive', async () => {
+    const { stream, track } = fakeStream('cam-desk')
+    getUserMedia.mockResolvedValue(stream)
+
+    const { result } = renderHook(() => useCamera({ active: false }))
+
+    await waitFor(() => expect(result.current.stream).toBe(stream))
+    expect(track.enabled).toBe(false)
+  })
+
+  it('rests a camera switched to while inactive', async () => {
+    const first = fakeStream('cam-desk')
+    const second = fakeStream('cam-built-in')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockResolvedValueOnce(second.stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera({ active: false }))
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    act(() => result.current.selectDevice('cam-built-in'))
+
+    await waitFor(() => expect(result.current.stream).toBe(second.stream))
+    expect(second.track.enabled).toBe(false)
   })
 
   it('falls back to the requested id when the track reports none', async () => {

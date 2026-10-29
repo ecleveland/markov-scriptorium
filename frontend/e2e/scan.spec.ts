@@ -24,6 +24,16 @@ async function waitForFrame(page: Page) {
     .toBeGreaterThanOrEqual(2)
 }
 
+/** Whether the camera's video track is sending frames rather than resting. */
+async function trackEnabled(page: Page) {
+  return page
+    .locator('video')
+    .evaluate(
+      (video: HTMLVideoElement) =>
+        (video.srcObject as MediaStream).getVideoTracks()[0].enabled,
+    )
+}
+
 /**
  * Check the card guide lies inside the video's picture, wherever
  * `object-fit: contain` puts it. A card lined up to a guide that spills onto
@@ -64,9 +74,12 @@ async function openGlass(page: Page) {
 test('scries a card from the camera into the catalog', async ({ page }) => {
   await openGlass(page)
   await expectGuideInsidePicture(page)
+  expect(await trackEnabled(page)).toBe(true)
 
   await page.getByRole('button', { name: 'Capture' }).click()
   await expect(page.getByAltText('The captured frame')).toBeVisible()
+  // The camera rests while the still is on show.
+  await expect.poll(() => trackEnabled(page)).toBe(false)
 
   const sent = page.waitForRequest('**/api/scanner/recognize')
   await page.getByRole('button', { name: 'Read the card' }).click()
@@ -98,9 +111,10 @@ test('scries a card from the camera into the catalog', async ({ page }) => {
   await expect(
     page.getByRole('complementary', { name: 'Scried this session' }),
   ).toContainText('Sol Ring')
-  // Back at the camera for the next card. It stayed open while hidden, so
-  // the next frame comes without asking for the camera again.
+  // Back at the camera for the next card. It stayed open, rested, while
+  // hidden, so the next frame comes without asking for the camera again.
   await expect(page.getByRole('button', { name: 'Capture' })).toBeVisible()
+  await expect.poll(() => trackEnabled(page)).toBe(true)
   await waitForFrame(page)
   await page.getByRole('button', { name: 'Capture' }).click()
   await expect(page.getByAltText('The captured frame')).toBeVisible()

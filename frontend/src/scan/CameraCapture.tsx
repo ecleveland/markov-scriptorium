@@ -4,6 +4,8 @@ import { captureFrame } from './capture'
 import { useCamera } from './useCamera'
 
 interface Props {
+  /** False rests the camera while the page shows something else. */
+  active: boolean
   /** The captured frame, and an object URL for it that the caller revokes. */
   onCapture: (image: Blob, previewUrl: string) => void
 }
@@ -13,8 +15,10 @@ interface Props {
  * there is more than one, a flip for a camera mounted upside down, and the
  * Capture button that grabs the current frame.
  */
-export function CameraCapture({ onCapture }: Props) {
-  const { status, stream, devices, deviceId, selectDevice, error } = useCamera()
+export function CameraCapture({ active, onCapture }: Props) {
+  const { status, stream, devices, deviceId, selectDevice, error } = useCamera({
+    active,
+  })
   const videoRef = useRef<HTMLVideoElement>(null)
   const [flip, setFlip] = useState(false)
   const [captureError, setCaptureError] = useState<string | null>(null)
