@@ -23,6 +23,15 @@ export function CameraCapture({ active, onCapture }: Props) {
   const [flip, setFlip] = useState(false)
   const [captureError, setCaptureError] = useState<string | null>(null)
   const [capturing, setCapturing] = useState(false)
+  // Whether the video has shown a frame since the camera last woke or the
+  // stream last changed. It is reset while rendering rather than in the effect
+  // below, so a stale true never reaches the Capture button.
+  const [fresh, setFresh] = useState(false)
+  const [seen, setSeen] = useState({ active, stream })
+  if (seen.active !== active || seen.stream !== stream) {
+    setSeen({ active, stream })
+    setFresh(false)
+  }
   // A second click can land before the disabled button re-renders, so the
   // guard is a ref as well as state. Each capture makes an object URL, and a
   // second one would never be revoked.
@@ -44,6 +53,28 @@ export function CameraCapture({ active, onCapture }: Props) {
     const video = videoRef.current
     if (video) video.srcObject = stream
   }, [stream])
+
+  // A frame drawn just after the camera wakes can be black. Chrome has the
+  // picture back within 8 ms, but Firefox lets the camera go while the track
+  // is off and reopens it on waking, which takes hundreds of milliseconds. A
+  // new stream has the same gap before its first frame. So Capture waits for
+  // the video to show a frame.
+  useEffect(() => {
+    if (!active || !stream) return
+    const video = videoRef.current
+    if (!video) return
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      const id = video.requestVideoFrameCallback(() => setFresh(true))
+      return () => video.cancelVideoFrameCallback(id)
+    }
+    // Firefox before 132, which had no requestVideoFrameCallback, and jsdom.
+    // A weaker signal: a stream's clock keeps moving while the track rests,
+    // so this fires about a quarter second after waking whether or not the
+    // camera has reopened. Good enough for a browser this old.
+    const onFrame = () => setFresh(true)
+    video.addEventListener('timeupdate', onFrame, { once: true })
+    return () => video.removeEventListener('timeupdate', onFrame)
+  }, [active, stream])
 
   async function capture() {
     const video = videoRef.current
@@ -81,7 +112,7 @@ export function CameraCapture({ active, onCapture }: Props) {
         <div className="camera__guide" aria-hidden="true" />
       </div>
 
-      {status === 'starting' && (
+      {(status === 'starting' || (status === 'live' && !fresh)) && (
         <Consulting role="status">Lighting the glass…</Consulting>
       )}
       {/* An error can sit beside a live stream: a camera that would not open
@@ -123,7 +154,7 @@ export function CameraCapture({ active, onCapture }: Props) {
         </label>
         <Button
           variant="primary"
-          disabled={status !== 'live' || capturing}
+          disabled={status !== 'live' || capturing || !fresh}
           onClick={capture}
         >
           Capture
