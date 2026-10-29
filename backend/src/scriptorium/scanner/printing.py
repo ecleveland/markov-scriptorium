@@ -26,13 +26,17 @@ _CORNER_TOP = 0.78
 
 # Vision reads the number on its own line, with the rarity letter in front and
 # sometimes the set size behind ("123/280"). The rarity letter is optional
-# because Vision misread it as a digit at 14 px, so it is never relied on.
-_NUMBER_LINE = re.compile(r"\s*([A-Z])?\s*(\d{1,4})([a-z★]?)\s*(/\s*\d{1,4})?\s*")
-_NUMBER_TOKEN = re.compile(r"(\d{1,4})([a-z★]?)|(\d{1,4})/\d{1,4}")
+# because Vision misread it as a digit at 14 px, so it is never relied on. A
+# suffix can come back in either case and is lowercased, as the catalog has it.
+_NUMBER_LINE = re.compile(r"\s*([A-Z])?\s*(\d{1,4})([A-Za-z★]?)\s*(/\s*\d{1,4})?\s*")
+_NUMBER_TOKEN = re.compile(r"(\d{1,4})([A-Za-z★]?)|(\d{1,4})/\d{1,4}")
+# A rarity letter glued to the number, as in "C0002".
+_RARITY_GLUED = re.compile(r"[A-Z](\d{1,4})")
 # A pin needs one lookup per candidate, and past three the guesses are noise.
 _MAX_NUMBERS = 3
 # Letters Vision reads in place of digits. Applied only to a token that
-# already has a digit, so a word such as "Randy" is left alone.
+# already has a digit and matches nothing as read, so a word such as "Randy"
+# and a suffix such as the S in "63S" are left alone.
 _DIGIT_FOLDS = str.maketrans({"O": "0", "o": "0", "l": "1", "I": "1", "S": "5"})
 
 # No set code is all digits, so a code needs a letter. That keeps the number
@@ -42,9 +46,15 @@ _SET_CODE = re.compile(r"(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,6}")
 # line, so a three-letter word elsewhere in the corner is not taken for a set.
 _LANGUAGE = "EN"
 _DOTS = "•·"
-_SET_LINE_SPLIT = re.compile(rf"[\s{_DOTS}]+")
+_SET_LINE_TOKENS = re.compile(rf"[{_DOTS}]|[^\s{_DOTS}]+")
+# The collector number and set line sit on the card's left half. The power
+# and toughness box and the copyright line sit on the right, so a line centred
+# at or right of the frame's middle is never read. The card is centred on the
+# guide, so the frame's middle is the card's.
+_LEFT_OF = 0.5
 # The copyright line ("™ & © 2024 Wizards of the Coast") sits in the same band
-# on the right, and its year looks like a collector number.
+# on the right, and its year looks like a collector number. Its place on the
+# right is the first guard and this the second.
 _COPYRIGHT = re.compile(r"[©™]|\(TM\)|\bwizards\b", re.IGNORECASE)
 
 
@@ -52,10 +62,11 @@ _COPYRIGHT = re.compile(r"[©™]|\(TM\)|\bwizards\b", re.IGNORECASE)
 class CornerRead:
     """Collector number candidates and the set code the corner showed."""
 
-    # Up to _MAX_NUMBERS, best first and without repeats. Each number comes
-    # with its leading zeros stripped, because Scryfall stores "2" where the
-    # card prints "0002", and then as read when that differs, for the few
-    # numbers the catalog stores padded. A letter suffix stays, lowercase.
+    # Up to _MAX_NUMBERS, best first and without repeats. Every number comes
+    # first with its leading zeros stripped, because Scryfall stores "2"
+    # where the card prints "0002". The numbers as read follow, for the few
+    # the catalog stores padded. A letter suffix stays, lowercased by the
+    # parser, because the catalog stores it lowercase.
     collector_numbers: tuple[str, ...]
     set_code: str
 
@@ -78,24 +89,30 @@ class _Number:
     # number carries. A line of bare digits can be a split-off year.
     anchored: bool = False
 
-    def forms(self) -> list[str]:
-        """The number with its zeros stripped, then as read when that differs."""
-        stripped = self.digits.lstrip("0") + self.suffix
-        as_read = self.digits + self.suffix
-        return [stripped] if stripped == as_read else [stripped, as_read]
+    @property
+    def stripped(self) -> str:
+        return self.digits.lstrip("0") + self.suffix
+
+    @property
+    def as_read(self) -> str:
+        return self.digits + self.suffix
 
 
 def _number(digits: str, suffix: str = "", *, anchored: bool = False) -> _Number | None:
     # An all-zero number is no card's collector number.
     if not digits.strip("0"):
         return None
-    return _Number(digits, suffix, anchored)
+    return _Number(digits, suffix.lower(), anchored)
 
 
-def _number_in(token: str) -> _Number | None:
-    if any(ch.isdigit() for ch in token):
-        token = token.translate(_DIGIT_FOLDS)
+def _number_in(token: str, *, fold: bool) -> _Number | None:
     match = _NUMBER_TOKEN.fullmatch(token)
+    if match is None:
+        glued = _RARITY_GLUED.fullmatch(token)
+        if glued is not None:
+            return _number(glued.group(1), anchored=True)
+    if match is None and fold and any(ch.isdigit() for ch in token):
+        match = _NUMBER_TOKEN.fullmatch(token.translate(_DIGIT_FOLDS))
     if match is None:
         return None
     if match.group(1) is not None:
@@ -103,7 +120,7 @@ def _number_in(token: str) -> _Number | None:
     return _number(match.group(3), anchored=True)
 
 
-def _number_on(text: str) -> _Number | None:
+def _number_on(text: str, *, set_line: bool) -> _Number | None:
     """The collector number on one line, if it has one."""
     # The whole line first and as read, so a rarity letter the digit map would
     # turn into a digit, such as the S in "S0123", is still taken as a letter.
@@ -114,7 +131,9 @@ def _number_on(text: str) -> _Number | None:
     tokens = text.split()
     best: _Number | None = None
     for token in tokens:
-        found = _number_in(token)
+        # The set line's other tokens are artists and set symbols. Folded,
+        # "SO1" there would read as a number.
+        found = _number_in(token, fold=not set_line)
         # "2 0002" is the rarity letter misread as a digit, so the longest
         # run is the number. The first wins a tie.
         if found is not None and (best is None or len(found.digits) > len(best.digits)):
@@ -126,37 +145,60 @@ def _number_on(text: str) -> _Number | None:
     return best
 
 
-def _set_code_on(text: str) -> str | None:
-    tokens = [token for token in _SET_LINE_SPLIT.split(text) if token]
-    if _LANGUAGE not in tokens and not any(dot in text for dot in _DOTS):
-        return None
-    for token in tokens:
-        # No digit fold here, because set codes carry digits and letters alike
-        # ("2X2", "M21", "O7E").
-        if token != _LANGUAGE and _SET_CODE.fullmatch(token):
-            return token.lower()
-    return None
+def _split_set_code(text: str) -> tuple[str | None, str]:
+    """The set code on a line and the line without it.
+
+    A line is the set line when it carries the language code or a dot. The
+    token right before the first of them is the set code when it fits,
+    because that is where the card prints it. Otherwise the first token that
+    fits is. No digit fold here, because set codes carry digits and letters
+    alike ("2X2", "M21", "O7E").
+    """
+    tokens = _SET_LINE_TOKENS.findall(text)
+    marks = [i for i, token in enumerate(tokens) if token == _LANGUAGE or token in _DOTS]
+    if not marks:
+        return None, text
+    before = marks[0] - 1
+    fits = [
+        i for i, token in enumerate(tokens) if token != _LANGUAGE and _SET_CODE.fullmatch(token)
+    ]
+    if not fits:
+        return None, text
+    chosen = before if before in fits else fits[0]
+    rest = " ".join(token for i, token in enumerate(tokens) if i != chosen)
+    return tokens[chosen].lower(), rest
+
+
+def _is_set_line(text: str) -> bool:
+    return any(dot in text for dot in _DOTS) or _LANGUAGE in _SET_LINE_TOKENS.findall(text)
 
 
 def parse_corner(lines: list[TextLine]) -> CornerRead | None:
     """The collector number candidates and set code read in ``lines``, or None.
 
     Both must be found. Half a pair would pin nothing, because one collector
-    number appears in hundreds of sets. Numbers read beside a rarity letter or
-    set size come first, then bare digit lines, each in the order read.
+    number appears in hundreds of sets. Lines are read top to bottom and left
+    to right by where they sit, because Vision does not promise an order.
+    Numbers read beside a rarity letter or set size rank first, then bare
+    digit lines. Every number with its zeros stripped comes before any number
+    as read.
     """
     numbers: list[_Number] = []
     set_code: str | None = None
-    for ln in lines:
-        if not _COPYRIGHT.search(ln.text):
-            found = _number_on(ln.text)
+    for ln in sorted(lines, key=lambda ln: (ln.box.y, ln.box.x)):
+        if ln.box.x + ln.box.width / 2 >= _LEFT_OF:
+            continue
+        code, rest = _split_set_code(ln.text)
+        if set_code is None:
+            set_code = code
+        if not _COPYRIGHT.search(rest):
+            found = _number_on(rest, set_line=_is_set_line(rest))
             if found is not None:
                 numbers.append(found)
-        if set_code is None:
-            set_code = _set_code_on(ln.text)
     if not numbers or set_code is None:
         return None
-    # sorted is stable, so lines of one rank keep the order Vision read them.
+    # sorted is stable, so lines of one rank keep their place on the card.
     ranked = sorted(numbers, key=lambda n: not n.anchored)
-    candidates = dict.fromkeys(form for n in ranked for form in n.forms())
-    return CornerRead(collector_numbers=tuple(candidates)[:_MAX_NUMBERS], set_code=set_code)
+    forms = [n.stripped for n in ranked] + [n.as_read for n in ranked]
+    candidates = tuple(dict.fromkeys(forms))[:_MAX_NUMBERS]
+    return CornerRead(collector_numbers=candidates, set_code=set_code)

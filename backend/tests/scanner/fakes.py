@@ -37,6 +37,11 @@ def line(
     return TextLine(text=text, confidence=confidence, box=Box(x, y, width, height))
 
 
+def corner_line(text: str, y: float, *, x: float = 0.25, width: float = 0.1) -> TextLine:
+    """A line in the card's bottom-left corner, left of the frame's centre."""
+    return line(text, y, x=x, width=width, height=0.02)
+
+
 class FakeOcr:
     """An engine that returns canned lines and records how it was asked."""
 

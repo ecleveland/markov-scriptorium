@@ -20,7 +20,7 @@ from scriptorium.scanner.ocr import OcrUnavailable, UnreadableImage
 from scriptorium.scanner.pipeline import ACCEPT, FALLBACK_WEIGHT, Reading, recognize
 from scriptorium.scanner.printing import CornerRead, corner_region
 from scriptorium.scanner.region import title_region
-from tests.scanner.fakes import FakeOcr, insert_card, line, seed_catalog
+from tests.scanner.fakes import FakeOcr, corner_line, insert_card, line, seed_catalog
 
 IMAGE = b"\x89PNG\r\n\x1a\n"
 EDGAR = line("Edgar Markov", 0.1)
@@ -160,7 +160,7 @@ def test_an_unreadable_image_propagates(index: NameIndex) -> None:
 
 # --- the corner -----------------------------------------------------------
 
-CORNER = [line("C 0002", 0.93, x=0.25, width=0.08), line("FRA • EN", 0.95, x=0.25, width=0.1)]
+CORNER = [corner_line("C 0002", 0.93), corner_line("FRA • EN", 0.95)]
 
 
 def test_a_confident_title_reads_the_corner_once(index: NameIndex) -> None:
@@ -209,7 +209,7 @@ def test_a_card_found_in_the_full_frame_never_reads_the_corner(index: NameIndex)
 
 
 def test_a_corner_that_does_not_parse_leaves_the_readings_alone(index: NameIndex) -> None:
-    ocr = FakeOcr([EDGAR], corner=[line("Randy Gallegos", 0.95)])
+    ocr = FakeOcr([EDGAR], corner=[corner_line("Randy Gallegos", 0.95)])
     result = recognize(IMAGE, ocr, index)
     assert result.readings == [Reading("Edgar Markov", 1.0)]
     assert result.corner is None

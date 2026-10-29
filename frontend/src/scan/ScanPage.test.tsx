@@ -349,6 +349,26 @@ describe('ScanPage', () => {
     expect(searchMock).toHaveBeenCalledWith('Sol Ring', expect.any(AbortSignal))
   })
 
+  it('returns to the same readings on "Change card" after the shortcut', async () => {
+    recognizeMock.mockResolvedValue({ readings: PINNED_READINGS })
+    const user = await readCard()
+    await user.click(
+      await screen.findByRole('button', { name: /Sol Ring.*Commander 2021/ }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Change printing' }))
+    await screen.findByRole('heading', {
+      name: /Choose a printing of “Sol Ring”/,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Change card' }))
+
+    expect(screen.getByRole('button', { name: /Sol Ring.*91%/ })).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: /Lightning Bolt.*42%/ }),
+    ).toBeVisible()
+    expect(recognizeMock).toHaveBeenCalledTimes(1)
+  })
+
   it('still opens the picker for a reading without a printing', async () => {
     recognizeMock.mockResolvedValue({ readings: PINNED_READINGS })
     const user = await readCard()

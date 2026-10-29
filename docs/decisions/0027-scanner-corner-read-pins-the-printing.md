@@ -48,6 +48,10 @@ What we verified about Vision on the corner:
 
 **Parse rules.**
 
+- Lines are sorted by position, and the parser reads only lines on the card's
+  left half, with their centre left of the frame's centre. The power and
+  toughness box and the copyright line sit on the right, and "2/2" would
+  otherwise parse as a collector number with a set size.
 - The parser collects up to three collector number candidates in preference
   order. Lines with a rarity letter or a set size come first, then bare digit
   lines. The lookup tries each candidate with the set code until one pins.
@@ -63,9 +67,14 @@ What we verified about Vision on the corner:
 - Each candidate goes in the form the catalog stores, with leading zeros
   stripped, because Scryfall stores "2" where the card prints "0002". When the
   read form differs, it goes in as well, for the few printings whose stored
-  number keeps its zero padding. A letter suffix stays, as in "221a".
+  number keeps its zero padding. A letter suffix stays, as in "221a". A suffix
+  read in capitals is lowercased.
 - The set code is a token of 3 to 6 capitals and digits on a line that also
-  carries "EN" or a bullet. It is lowercased to match the catalog.
+  carries "EN" or a bullet. It is lowercased to match the catalog. On a line
+  that carries both, the set code is the token before the language marker or
+  bullet, and the parser removes it before it reads the number. "C0002 FRA •
+  EN" read as one line still gives 2 and fra, and a code such as "SS1" never
+  becomes a number.
 - The set code must hold at least one letter. No set code in the catalog is
   all digits, and 338 carry digits. A line that merges number and code, such
   as "C 0002 FRA • EN", still picks FRA.
@@ -82,6 +91,12 @@ corner that points at a different card also attaches nothing. A misread corner
 can never override a good name read. Only readings at or above the accept bar
 are candidates. A misread corner that happens to match a doubtful lower name
 pins nothing.
+
+The pin is also refused when the catalog holds a sibling printing of the same
+name whose number is the read number plus one character, or the List form
+"SET-number". The List reprints, prerelease promos and star variants print
+the base card's corner. A silent pin on the regular printing would break the
+rule that a card is its printing. Those cards go through the picker.
 
 **The contract grows one field.** Every reading now carries `printing`. It is
 either null or the full printing object in the shape `/cards/search` returns:

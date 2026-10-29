@@ -140,6 +140,33 @@ def printings_by_number(
     return [_row_to_card(row) for row in rows]
 
 
+def has_sibling_printings(
+    conn: sqlite3.Connection, name: str, scryfall_id: str, set_code: str, collector_number: str
+) -> bool:
+    """Whether another printing of ``name`` prints the same corner as this one.
+
+    The scanner pins a printing from the set code and number on a card's
+    corner (VEG-653, ADR 0027), but some printings print another printing's
+    corner. Prerelease promos print the base corner and are stored as
+    "152s" in a promo set, star variants as "226★", and The List as plst
+    "M21-152". So a printing of the same name at the number plus one more
+    character, or at "<SET>-<number>", means the corner cannot tell them
+    apart.
+
+    The name compares NOCASE so the search rides idx_cards_name, which is
+    NOCASE. A plain compare would scan every card.
+    """
+    pattern = _escape_like(collector_number) + "_"
+    plst_number = f"{set_code.upper()}-{collector_number}"
+    row = conn.execute(
+        "SELECT COUNT(*) FROM cards "
+        "WHERE name = ? COLLATE NOCASE AND scryfall_id <> ? "
+        "AND (collector_number LIKE ? ESCAPE '\\' OR collector_number = ?)",
+        (name, scryfall_id, pattern, plst_number),
+    ).fetchone()
+    return bool(row[0])
+
+
 def search_cards(
     conn: sqlite3.Connection, query: str, *, limit: int = 20, offset: int = 0
 ) -> tuple[list[dict[str, Any]], int]:

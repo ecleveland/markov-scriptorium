@@ -402,3 +402,66 @@ def test_printings_by_number_misses_answer_empty(catalog_conn: sqlite3.Connectio
     assert catalog.printings_by_number(catalog_conn, "  ", "1") == []
     assert catalog.printings_by_number(catalog_conn, "lea", "  ") == []
     assert catalog.printings_by_number(catalog_conn, "", "") == []
+
+
+def _siblings(
+    conn: sqlite3.Connection, name: str, scryfall_id: str, code: str, number: str
+) -> bool:
+    return catalog.has_sibling_printings(conn, name, scryfall_id, code, number)
+
+
+def test_a_promo_suffix_on_the_same_number_is_a_sibling(catalog_conn: sqlite3.Connection) -> None:
+    # Prerelease promos print the base corner and are stored as "263s".
+    _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+    _insert_card(catalog_conn, "ring-s", "Sol Ring", set_code="pc21", collector_number="263s")
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, "Sol Ring", "ring", "c21", "263")
+
+
+def test_a_star_variant_is_a_sibling(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(catalog_conn, "bolt-226", "Lightning Bolt", set_code="sta", collector_number="226")
+    _insert_card(
+        catalog_conn, "bolt-star", "Lightning Bolt", set_code="sta", collector_number="226★"
+    )
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, "Lightning Bolt", "bolt-226", "sta", "226")
+
+
+def test_a_list_reprint_of_the_set_and_number_is_a_sibling(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    # The List prints the base corner and is stored as plst "M21-152".
+    _insert_card(catalog_conn, "bolt-m21", "Lightning Bolt", set_code="m21", collector_number="152")
+    _insert_card(
+        catalog_conn, "bolt-plst", "Lightning Bolt", set_code="plst", collector_number="M21-152"
+    )
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, "Lightning Bolt", "bolt-m21", "m21", "152")
+
+
+def test_other_printings_that_print_another_corner_are_not_siblings(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+    # Another card at the promo number, a two-character extension, the same
+    # number in another set, and a List reprint of another set.
+    _insert_card(catalog_conn, "other-s", "Arcane Signet", set_code="pc21", collector_number="263s")
+    _insert_card(catalog_conn, "ring-ab", "Sol Ring", set_code="pc21", collector_number="263ab")
+    _insert_card(catalog_conn, "ring-c20", "Sol Ring", set_code="c20", collector_number="263")
+    _insert_card(catalog_conn, "ring-plst", "Sol Ring", set_code="plst", collector_number="C20-263")
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", "263")
+
+
+def test_a_printing_is_not_its_own_sibling(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(catalog_conn, "ring-s", "Sol Ring", set_code="pc21", collector_number="263s")
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, "Sol Ring", "ring-s", "pc21", "263")
+
+
+def test_wildcards_in_the_number_match_only_themselves(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+    _insert_card(catalog_conn, "ring-x", "Sol Ring", set_code="pc21", collector_number="2634")
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", "26_")
+    assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", "2%")

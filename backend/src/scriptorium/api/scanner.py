@@ -101,8 +101,9 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
     The name read stays primary. Only readings at ACCEPT can take a printing,
     so a misread corner cannot land on a doubtful name. A corner misread onto
     another card's number pins nothing, and a pair that still holds several
-    printings of the name leaves the choice to the picker. The number
-    candidates are tried best first, and the first that pins wins.
+    printings of the name leaves the choice to the picker, and so does a
+    promo or List reprint that prints the same corner. The number candidates
+    are tried best first, and the first that pins wins.
     """
     names = {r.name for r in readings if r.confidence >= pipeline.ACCEPT}
     if not names:
@@ -112,8 +113,21 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
             for number in corner.collector_numbers:
                 rows = catalog.printings_by_number(conn, corner.set_code, number)
                 pinned = _pin(rows, names)
-                if pinned is not None:
-                    return pinned
+                if pinned is None:
+                    continue
+                if catalog.has_sibling_printings(
+                    conn, pinned["name"], pinned["scryfall_id"], corner.set_code, number
+                ):
+                    # The corner matches this printing and one that prints
+                    # the same corner, so the picker has to ask.
+                    logger.debug(
+                        "corner %s %s matches %s and a sibling; no printing pinned",
+                        corner.set_code,
+                        number,
+                        pinned["scryfall_id"],
+                    )
+                    return None
+                return pinned
     except sqlite3.Error:
         # The name index read the catalog a moment ago, so this is most likely
         # the nightly refresh's write lock. The picker still finds the printing.

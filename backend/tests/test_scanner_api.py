@@ -24,7 +24,7 @@ from scriptorium.main import app
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import invalidate
 from scriptorium.scanner.ocr import OcrUnavailable, TextLine, UnreadableImage
-from tests.scanner.fakes import FakeOcr, insert_card, line, seed_catalog
+from tests.scanner.fakes import FakeOcr, corner_line, insert_card, line, seed_catalog
 
 client = TestClient(app)
 
@@ -41,7 +41,7 @@ ENGINE_FAILED = (
 )
 EDGAR_READ = {"readings": [{"name": "Edgar Markov", "confidence": 1.0, "printing": None}]}
 # The bottom-left corner of a Fragments common, as Vision reads it at 1080p.
-FRA_2 = [line("C 0002", 0.93, x=0.25, width=0.08), line("FRA • EN", 0.95, x=0.25, width=0.1)]
+FRA_2 = [corner_line("C 0002", 0.93), corner_line("FRA • EN", 0.95)]
 
 
 @pytest.fixture(autouse=True)
@@ -159,7 +159,7 @@ def test_a_corner_pointing_at_another_card_pins_nothing() -> None:
         insert_card(conn, "twister", "Savage Twister", set_code="cmd", collector_number="222")
         insert_card(conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
         conn.commit()
-    corner = [line("U 0222", 0.93), line("CMD • EN", 0.95)]
+    corner = [corner_line("U 0222", 0.93), corner_line("CMD • EN", 0.95)]
     readings = _readings_for("Sol Ring", corner)
     assert readings[0]["name"] == "Sol Ring"
     assert all(r["printing"] is None for r in readings)
@@ -170,7 +170,7 @@ def test_a_pair_holding_the_name_twice_pins_nothing() -> None:
         insert_card(conn, "bolt-a", "Lightning Bolt", set_code="2x2", collector_number="117")
         insert_card(conn, "bolt-b", "Lightning Bolt", set_code="2x2", collector_number="117")
         conn.commit()
-    corner = [line("U 0117", 0.93), line("2X2 • EN", 0.95)]
+    corner = [corner_line("U 0117", 0.93), corner_line("2X2 • EN", 0.95)]
     readings = _readings_for("Lightning Bolt", corner)
     assert readings[0]["name"] == "Lightning Bolt"
     assert all(r["printing"] is None for r in readings)
@@ -183,13 +183,13 @@ def test_an_english_printing_wins_over_another_language_at_the_pair() -> None:
         )
         insert_card(conn, "bolt-en", "Lightning Bolt", set_code="sta", collector_number="42")
         conn.commit()
-    corner = [line("U 0042", 0.93), line("STA • EN", 0.95)]
+    corner = [corner_line("U 0042", 0.93), corner_line("STA • EN", 0.95)]
     readings = _readings_for("Lightning Bolt", corner)
     assert readings[0]["printing"]["scryfall_id"] == "bolt-en"
 
 
 def test_a_corner_missing_from_the_catalog_pins_nothing() -> None:
-    corner = [line("C 0099", 0.93), line("FRA • EN", 0.95)]
+    corner = [corner_line("C 0099", 0.93), corner_line("FRA • EN", 0.95)]
     readings = _readings_for("Academic Ascent", corner)
     assert readings[0]["name"] == "Academic Ascent"
     assert readings[0]["printing"] is None
@@ -202,7 +202,7 @@ def test_a_corner_never_pins_a_reading_under_accept() -> None:
         conn.commit()
     # A line confidence of 0 shades the exact second name to 0.70.
     title = [line("Sol Ring", 0.1), line("Sol Talisman", 0.15, confidence=0.0)]
-    _fit(FakeOcr(title, corner=[line("R 0112", 0.93), line("MH1 • EN", 0.95)]))
+    _fit(FakeOcr(title, corner=[corner_line("R 0112", 0.93), corner_line("MH1 • EN", 0.95)]))
     status, payload = _post(JPEG, "image/jpeg")
     assert status == 200
     readings = payload["readings"]
@@ -214,7 +214,7 @@ def test_a_corner_never_pins_a_reading_under_accept() -> None:
 
 
 def test_a_lone_year_read_before_the_number_still_pins() -> None:
-    corner = [line("2024", 0.91), *FRA_2]
+    corner = [corner_line("2024", 0.91), *FRA_2]
     readings = _readings_for("Academic Ascent", corner)
     assert readings[0]["printing"]["scryfall_id"] == "ascent"
 
@@ -223,8 +223,70 @@ def test_a_number_the_catalog_stores_padded_pins_as_read() -> None:
     with closing(db.connect()) as conn:
         insert_card(conn, "padded", "Padded Promo", set_code="ppad", collector_number="001")
         conn.commit()
-    readings = _readings_for("Padded Promo", [line("C 001", 0.93), line("PPAD • EN", 0.95)])
+    readings = _readings_for(
+        "Padded Promo", [corner_line("C 001", 0.93), corner_line("PPAD • EN", 0.95)]
+    )
     assert readings[0]["printing"]["scryfall_id"] == "padded"
+
+
+def test_a_lowercase_suffix_read_as_a_capital_still_pins() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-221a", "Lightning Bolt", set_code="2x2", collector_number="221a")
+        conn.commit()
+    corner = [corner_line("R 221A", 0.93), corner_line("2X2 • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "bolt-221a"
+
+
+def test_a_promo_printed_with_the_same_corner_pins_nothing() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+        insert_card(conn, "ring-s", "Sol Ring", set_code="pc21", collector_number="263s")
+        conn.commit()
+    corner = [corner_line("U 0263", 0.93), corner_line("C21 • EN", 0.95)]
+    readings = _readings_for("Sol Ring", corner)
+    assert readings[0]["name"] == "Sol Ring"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_list_reprint_printed_with_the_same_corner_pins_nothing() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-m21", "Lightning Bolt", set_code="m21", collector_number="152")
+        insert_card(
+            conn, "bolt-plst", "Lightning Bolt", set_code="plst", collector_number="M21-152"
+        )
+        conn.commit()
+    corner = [corner_line("C 0152", 0.93), corner_line("M21 • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["name"] == "Lightning Bolt"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_the_printing_attaches_to_the_reading_it_names() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+        insert_card(conn, "talisman", "Sol Talisman", set_code="mh1", collector_number="112")
+        conn.commit()
+    title = [line("Sol Ring", 0.1), line("Sol Talisman", 0.15)]
+    corner = [corner_line("R 0112", 0.93), corner_line("MH1 • EN", 0.95)]
+    _fit(FakeOcr(title, corner=corner))
+    status, payload = _post(JPEG, "image/jpeg")
+    assert status == 200
+    readings = payload["readings"]
+    assert [(r["name"], r["confidence"]) for r in readings] == [
+        ("Sol Ring", 1.0),
+        ("Sol Talisman", 1.0),
+    ]
+    assert readings[0]["printing"] is None
+    assert readings[1]["printing"]["scryfall_id"] == "talisman"
+
+
+def test_the_first_candidate_that_pins_wins() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "ascent-2024", "Academic Ascent", set_code="fra", collector_number="2024")
+        conn.commit()
+    readings = _readings_for("Academic Ascent", [corner_line("2024", 0.91), *FRA_2])
+    assert readings[0]["printing"]["scryfall_id"] == "ascent"
 
 
 @pytest.mark.parametrize(
