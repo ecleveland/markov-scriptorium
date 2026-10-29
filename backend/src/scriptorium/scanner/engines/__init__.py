@@ -25,24 +25,21 @@ def _vision() -> Ocr:
     return VisionOcr()
 
 
-def _tesseract() -> Ocr:
+def _tesseract() -> Ocr | None:
     """A Tesseract engine whose binary runs and has the eng model.
 
-    Raises OcrUnavailable saying which of the two is missing.
+    None when no binary is found. Raises OcrUnavailable when the engine will
+    not import or the binary fails its probe, naming the cause.
     """
-    # Imported here so Pillow loads only where Tesseract is wanted.
-    from scriptorium.scanner.engines.tesseract import TesseractOcr, find_tesseract, probe
-
+    try:
+        # Imported here so Pillow loads only where Tesseract is wanted.
+        from scriptorium.scanner.engines.tesseract import TesseractOcr, find_tesseract, probe
+    except ImportError as exc:
+        raise OcrUnavailable(f"the Tesseract engine would not import: {exc}") from exc
     binary = find_tesseract()
     if binary is None:
-        raise OcrUnavailable(
-            "no tesseract binary was found; set SCRIPTORIUM_TESSERACT or install it "
-            "(brew install tesseract, apt install tesseract-ocr)"
-        )
-    if probe(binary) is None:
-        raise OcrUnavailable(
-            f"the tesseract at {binary} failed its probe; it would not run or has no eng model"
-        )
+        return None
+    probe(binary)
     return TesseractOcr(binary)
 
 
@@ -67,11 +64,17 @@ def select_engine() -> Ocr | None:
         return engine
     if choice == "tesseract":
         try:
-            engine = _tesseract()
+            found = _tesseract()
         except OcrUnavailable as exc:
             raise OcrUnavailable(f"SCRIPTORIUM_OCR=tesseract but {exc}") from exc
+        if found is None:
+            raise OcrUnavailable(
+                "SCRIPTORIUM_OCR=tesseract but no tesseract binary was found; set "
+                "SCRIPTORIUM_TESSERACT or install it (brew install tesseract, "
+                "apt install tesseract-ocr)"
+            )
         logger.info("OCR engine: tesseract")
-        return engine
+        return found
     if choice != "auto":
         raise OcrUnavailable(
             f"SCRIPTORIUM_OCR={choice!r} is not an engine; use auto, vision, tesseract or none"
@@ -79,12 +82,17 @@ def select_engine() -> Ocr | None:
     if sys.platform != "darwin":
         # Vision is better on a Mac, so Tesseract is chosen only off macOS.
         try:
-            engine = _tesseract()
+            found = _tesseract()
         except OcrUnavailable as exc:
-            logger.info("OCR engine: none on %s, because %s", sys.platform, exc)
+            # A binary that is there but broken is worth a warning. One that
+            # is not installed is the usual case and only info.
+            logger.warning("OCR engine: none on %s, because %s", sys.platform, exc)
+            return None
+        if found is None:
+            logger.info("OCR engine: none (no tesseract binary found on %s)", sys.platform)
             return None
         logger.info("OCR engine: tesseract")
-        return engine
+        return found
     try:
         engine = _vision()
     except ImportError:

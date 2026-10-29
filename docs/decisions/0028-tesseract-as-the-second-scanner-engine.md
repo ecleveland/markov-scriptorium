@@ -39,6 +39,14 @@ that will not run or a missing model counts as no binary. A forced setting then
 stops startup and `auto` falls back to no engine, so a broken install never
 leaves every scan answering 503.
 
+The probe reports which of three things went wrong:
+
+- The binary would not run, or it timed out.
+- It exited with an error while listing the languages.
+- The English model is not among the languages.
+
+Under a forced setting that reason is the startup error.
+
 **The adapter does what the command line cannot.** Tesseract takes an image and
 returns text. Everything else the `Ocr` protocol asks for happens in Python,
 with Pillow:
@@ -47,9 +55,11 @@ with Pillow:
 2. For an upside-down card, turn the frame half a turn before cropping. Regions
    and boxes are then in the turned frame, as the protocol requires.
 3. Crop to the region, or keep the whole frame when there is none.
-4. Upscale the crop with Lanczos so the title bar reaches about 120 pixels of
-   cap height. The factor stops at 4.
-5. Stretch the contrast with a 1 percent cutoff and add a white border.
+4. Convert the crop to greyscale. Tesseract greys the image anyway, and a
+   contrast stretch per colour channel would shift the colours for no gain.
+5. Upscale with Lanczos so the title bar reaches about 120 pixels of cap
+   height. The factor stops at 4.
+6. Stretch the contrast with a 1 percent cutoff and add a white border.
 
 The adapter sends the result as PNG bytes on stdin:
 
@@ -80,15 +90,17 @@ pipeline sees the same geometry Vision gives it.
 
 **What the comparison on the drawn cards showed.**
 
-- The title reads at confidence 0.97 in about 110 to 160 ms, upright and
-  turned. Vision takes about 30 ms for the same read.
-- A whole-frame read finds the type line too.
-- The 1080p corner text, about 16 pixels tall, is beyond Tesseract with or
-  without inversion and upscaling.
+- The title reads at confidence 0.97 in about 50 ms, upright and turned.
+  Vision takes about 30 ms for the same read.
+- A whole-frame read of the 1280x960 card takes about 70 ms and finds the type
+  line too.
+- On the 1080p corner, with text about 16 pixels tall, greyed Tesseract reads
+  part of the set line as "RA * EN Randy Gallegos" but never the collector
+  number. The corner parser finds nothing to look up.
 
-On Tesseract the name read works and the corner pin from ADR 0027 does not.
-Those scans go through the printing picker. A higher-resolution capture or a
-crop before upload could change that later.
+On Tesseract the name read works and the corner pin from ADR 0027 needs
+Vision. Those scans go through the printing picker. A higher-resolution capture
+or a crop before upload could change that later.
 
 Engines declare whether they can read the corner, through `reads_corners` on
 the protocol. Tesseract declares that it cannot, and the pipeline skips the
@@ -124,7 +136,7 @@ an engine that declares it cannot read one. Running the binary as a
 subprocess keeps the Python side to Pillow, which the lock file already held.
 
 Vision stays first on a Mac because it reads the corner and Tesseract does
-not, and it is several times faster.
+not, and it is a little faster.
 
 ## Consequences
 

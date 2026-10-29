@@ -83,6 +83,10 @@ def test_reads_the_corner_of_an_upside_down_card_when_asked_to_turn_it() -> None
     assert parse_corner(lines) == CornerRead(("2", "0002"), "fra")
 
 
+def test_vision_claims_to_read_corners() -> None:
+    assert _engine().reads_corners is True
+
+
 def test_bytes_vision_cannot_decode_are_unreadable() -> None:
     # The decode check catches the smoke check's bytes before Vision sees them.
     with pytest.raises(UnreadableImage, match="ImageIO"):

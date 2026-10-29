@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import io
 import logging
+import random
+import struct
 import subprocess
 from dataclasses import dataclass, field
 
 import pytest
 from PIL import Image, ImageDraw
 
+from scriptorium.scanner.engines import tesseract as engine_module
 from scriptorium.scanner.engines.tesseract import (
     PixelBox,
     TesseractOcr,
@@ -221,6 +224,16 @@ def test_the_same_line_number_in_another_block_is_another_line() -> None:
     assert len(group_lines(words)) == 2
 
 
+def test_the_same_line_number_in_another_paragraph_is_another_line() -> None:
+    words = parse_tsv(
+        tsv(
+            word_row(1, 1, 1, (100, 50, 200, 40), 96, "Edgar", par=1),
+            word_row(1, 1, 1, (100, 400, 300, 30), 70, "Vampire", par=2),
+        )
+    )
+    assert [text for text, _, _ in group_lines(words)] == ["Edgar", "Vampire"]
+
+
 def test_parse_tsv_keeps_every_field_of_a_word() -> None:
     words = parse_tsv(tsv(word_row(2, 3, 1, (11, 22, 33, 44), 91.5, "Markov", par=4)))
     assert words == [Word(2, 4, 3, "Markov", 91.5, 11, 22, 33, 44)]
@@ -343,6 +356,18 @@ def test_an_upside_down_read_crops_from_the_turned_frame(fake_run: FakeRun) -> N
     assert pixel < 64
 
 
+def test_a_region_past_the_left_and_bottom_edges_is_cropped_to_the_frame(
+    fake_run: FakeRun,
+) -> None:
+    # Clamped, the region is the frame's bottom-left 0.2 by 0.2.
+    TesseractOcr(BINARY).read_lines(png(frame()), region=Box(-0.1, 0.8, 0.3, 0.4))
+    width, height = round(0.2 * WIDTH), round(0.2 * HEIGHT)
+    prepared = prepare(Image.new("L", (width, height), 255))
+    border = 2 * prepared.border
+    expected = (round(width * prepared.scale) + border, round(height * prepared.scale) + border)
+    assert fake_run.stdin_image().size == expected
+
+
 def test_to_frame_undoes_the_border_and_the_scale() -> None:
     box = to_frame(PixelBox(70, 120, 200, 50), 2.5, 20, (100, 30), (1000, 500))
     assert as_tuple(box) == pytest.approx((0.12, 0.14, 0.08, 0.04))
@@ -371,10 +396,22 @@ def test_prepare_upscales_a_short_crop_and_adds_a_white_border() -> None:
     assert out.size == (300 * 4 + 40, 120 * 4 + 40)
 
 
+def test_prepare_caps_the_upscale_at_four() -> None:
+    # 480 over 60 would be 8.
+    prepared = prepare(Image.new("RGB", (300, 60), "white"))
+    assert prepared.scale == 4.0
+    assert Image.open(io.BytesIO(prepared.png)).size == (1240, 280)
+
+
 def test_prepare_leaves_a_tall_crop_at_its_size() -> None:
     prepared = prepare(Image.new("RGB", (1280, 960), "white"))
     assert prepared.scale == 1.0
     assert Image.open(io.BytesIO(prepared.png)).size == (1320, 1000)
+
+
+def test_prepare_hands_tesseract_a_greyscale_image() -> None:
+    crop = Image.new("RGB", (300, 120), (200, 30, 30))
+    assert Image.open(io.BytesIO(prepare(crop).png)).mode == "L"
 
 
 # --- errors -------------------------------------------------------------------
@@ -405,6 +442,20 @@ def test_a_missing_language_reaches_the_failure_message(monkeypatch: pytest.Monk
         TesseractOcr(BINARY).read_lines(png(frame()))
 
 
+def test_the_failure_message_keeps_the_last_five_lines_of_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stderr = "Warning: first noise\nWarning: second noise\n\n" + NO_ENG
+    monkeypatch.setattr(RUN, FakeRun(returncode=1, stderr=stderr))
+    with pytest.raises(OcrUnavailable) as caught:
+        TesseractOcr(BINARY).read_lines(png(frame()))
+    message = str(caught.value)
+    assert "Could not initialize tesseract" in message
+    assert "Error opening data file" in message
+    assert "second noise" not in message
+    assert "first noise" not in message
+
+
 def test_bytes_pillow_cannot_decode_are_unreadable_before_any_run(fake_run: FakeRun) -> None:
     with pytest.raises(UnreadableImage):
         TesseractOcr(BINARY).read_lines(b"\xff\xd8\xff" + b"\x00" * 16)
@@ -413,10 +464,79 @@ def test_bytes_pillow_cannot_decode_are_unreadable_before_any_run(fake_run: Fake
     assert fake_run.calls == []
 
 
-def test_an_image_over_the_pixel_cap_is_unreadable_before_any_run(fake_run: FakeRun) -> None:
-    # 49 million pixels. One bit per pixel keeps the PNG to a few KB, and the
-    # cap is checked from the header before the body is decoded.
+def noise_png() -> bytes:
+    """A PNG big enough after compression that Pillow writes several IDAT chunks."""
+    noise = random.Random(649).randbytes(300 * 300 * 3)
+    return png(Image.frombytes("RGB", (300, 300), noise))
+
+
+def chunk_offsets(data: bytes) -> list[tuple[bytes, int]]:
+    """Each chunk's type and the offset of its length field."""
+    offsets: list[tuple[bytes, int]] = []
+    pos = 8
+    while pos < len(data):
+        (length,) = struct.unpack(">I", data[pos : pos + 4])
+        offsets.append((data[pos + 4 : pos + 8], pos))
+        pos += 12 + length
+    return offsets
+
+
+def test_a_png_broken_between_its_data_chunks_is_unreadable(fake_run: FakeRun) -> None:
+    data = bytearray(noise_png())
+    idats = [pos for kind, pos in chunk_offsets(bytes(data)) if kind == b"IDAT"]
+    assert len(idats) > 1
+    # A chunk type that is not letters makes Pillow raise SyntaxError on load.
+    data[idats[1] + 4 : idats[1] + 8] = b"\x00\x00\x00\x00"
+    with pytest.raises(UnreadableImage):
+        TesseractOcr(BINARY).read_lines(bytes(data))
+    assert fake_run.calls == []
+
+
+def test_a_jpeg_cut_in_half_is_unreadable(fake_run: FakeRun) -> None:
+    out = io.BytesIO()
+    Image.open(io.BytesIO(noise_png())).save(out, format="JPEG")
+    jpeg = out.getvalue()
+    with pytest.raises(UnreadableImage):
+        TesseractOcr(BINARY).read_lines(jpeg[: len(jpeg) // 2])
+    assert fake_run.calls == []
+
+
+def encoded(img: Image.Image, fmt: str) -> bytes:
+    out = io.BytesIO()
+    img.save(out, format=fmt)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        encoded(frame().convert("RGBA"), "PNG"),
+        encoded(frame().convert("P"), "PNG"),
+        encoded(frame().convert("CMYK"), "JPEG"),
+    ],
+    ids=["RGBA", "palette", "CMYK"],
+)
+def test_any_colour_mode_reaches_tesseract_as_a_greyscale_png(
+    image: bytes, fake_run: FakeRun
+) -> None:
+    TesseractOcr(BINARY).read_lines(image, region=title_region())
+    assert len(fake_run.calls) == 1
+    sent = fake_run.stdin_image()
+    assert sent.format == "PNG"
+    assert sent.mode == "L"
+
+
+def test_an_image_over_the_pixel_cap_is_unreadable_before_any_run(
+    fake_run: FakeRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 49 million pixels. One bit per pixel keeps the PNG to a few KB.
     huge = png(Image.new("1", (7000, 7000), 1))
+
+    def refuse(self: object) -> None:
+        raise AssertionError("decoded before the pixel cap was checked")
+
+    # PNG decodes through ImageFile.load, so this proves the cap reads the header.
+    monkeypatch.setattr("PIL.ImageFile.ImageFile.load", refuse)
     with pytest.raises(UnreadableImage, match="pixels"):
         TesseractOcr(BINARY).read_lines(huge)
     assert fake_run.calls == []
@@ -446,7 +566,7 @@ LANGS = 'List of available languages in "/opt/homebrew/share/tessdata/" (2):\nen
 def test_probe_lists_the_languages_with_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeRun(stdout=LANGS)
     monkeypatch.setattr(RUN, fake)
-    assert probe(BINARY) == BINARY
+    probe(BINARY)
     argv, kwargs = fake.calls[0]
     assert argv == [BINARY, "--list-langs"]
     assert kwargs["timeout"] == 5
@@ -456,30 +576,52 @@ def test_probe_lists_the_languages_with_a_short_timeout(monkeypatch: pytest.Monk
 def test_probe_finds_eng_listed_on_stderr(monkeypatch: pytest.MonkeyPatch) -> None:
     # Tesseract before 5 printed the list to stderr.
     monkeypatch.setattr(RUN, FakeRun(stderr=LANGS))
-    assert probe(BINARY) == BINARY
+    probe(BINARY)
 
 
-def test_probe_without_eng_finds_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_without_eng_says_the_model_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     langs = 'List of available languages in "/usr/share/tessdata/" (2):\nosd\nengrestrict\n'
     monkeypatch.setattr(RUN, FakeRun(stdout=langs))
-    assert probe(BINARY) is None
+    with pytest.raises(OcrUnavailable, match=f"{BINARY} has no eng model"):
+        probe(BINARY)
+
+
+def test_probe_that_exits_non_zero_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(RUN, FakeRun(stdout=LANGS, returncode=1))
+    with pytest.raises(OcrUnavailable, match=f"{BINARY} exited 1 while listing languages"):
+        probe(BINARY)
 
 
 @pytest.mark.parametrize(
     "fake",
     [
-        FakeRun(stdout=LANGS, returncode=1),
         FakeRun(raises=FileNotFoundError(BINARY)),
         FakeRun(raises=PermissionError(BINARY)),
         FakeRun(raises=subprocess.TimeoutExpired(BINARY, 5)),
     ],
-    ids=["non-zero exit", "missing binary", "not executable", "timeout"],
+    ids=["missing binary", "not executable", "timeout"],
 )
-def test_probe_of_a_binary_that_will_not_run_finds_nothing(
+def test_probe_of_a_binary_that_will_not_run_says_so(
     fake: FakeRun, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(RUN, fake)
-    assert probe(BINARY) is None
+    with pytest.raises(OcrUnavailable, match=f"{BINARY} would not run or timed out"):
+        probe(BINARY)
+
+
+# --- the conftest guard -------------------------------------------------------
+
+
+def test_the_guard_refuses_a_real_read_outside_the_marker() -> None:
+    with pytest.raises(AssertionError, match="real Tesseract"):
+        TesseractOcr(BINARY).read_lines(png(frame()))
+
+
+def test_the_guard_refuses_a_real_probe_outside_the_marker() -> None:
+    # Looked up on the module at call time, as selection does, because the
+    # guard replaces the module's attribute.
+    with pytest.raises(AssertionError, match="real Tesseract"):
+        engine_module.probe(BINARY)
 
 
 # --- find_tesseract -----------------------------------------------------------

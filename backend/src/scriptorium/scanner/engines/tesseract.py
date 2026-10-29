@@ -85,11 +85,12 @@ def find_tesseract() -> str | None:
     return shutil.which("tesseract")
 
 
-def probe(binary: str) -> str | None:
-    """``binary`` when it runs and lists the eng model, else None.
+def probe(binary: str) -> None:
+    """Check that ``binary`` runs and lists the eng model.
 
     Selection probes once at startup, so a stale path or a missing model
-    fails there and not on the first scan.
+    fails there and not on the first scan. Raises OcrUnavailable naming the
+    path and the cause.
     """
     try:
         result = subprocess.run(
@@ -98,22 +99,26 @@ def probe(binary: str) -> str | None:
             timeout=_PROBE_TIMEOUT_SECONDS,
             creationflags=_NO_WINDOW,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        logger.warning("Tesseract at %s would not run", binary, exc_info=True)
-        return None
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise OcrUnavailable(
+            f"the tesseract at {binary} would not run or timed out: {exc}"
+        ) from exc
     if result.returncode != 0:
-        logger.warning("Tesseract at %s exited %d listing languages", binary, result.returncode)
-        return None
+        raise OcrUnavailable(
+            f"the tesseract at {binary} exited {result.returncode} while listing languages"
+        )
     # Tesseract 5 lists the models on stdout, older releases on stderr.
     listed = (result.stdout + b"\n" + result.stderr).decode(errors="replace")
     if "eng" not in {ln.strip() for ln in listed.splitlines()}:
-        logger.warning("Tesseract at %s has no eng model", binary)
-        return None
-    return binary
+        raise OcrUnavailable(f"the tesseract at {binary} has no eng model among its languages")
 
 
 def prepare(crop: Image.Image) -> Prepared:
-    """Upscale a short crop, stretch its contrast and pad it in white."""
+    """Grey a crop, upscale it if short, stretch its contrast and pad it in white."""
+    # Tesseract greys the image itself. Greying first keeps autocontrast from
+    # stretching each colour channel apart, and makes the resize a third of
+    # the work.
+    crop = crop.convert("L")
     scale = min(_MAX_SCALE, max(1.0, _TARGET_HEIGHT / crop.height))
     if scale > 1.0:
         size = (round(crop.width * scale), round(crop.height * scale))
@@ -203,9 +208,17 @@ def _decode(image: bytes) -> Image.Image:
         # load() decodes, so a truncated or corrupt body fails here and not
         # inside the crop.
         decoded.load()
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as exc:
+    # Pillow reports a damaged PNG chunk as SyntaxError, not as OSError.
+    except (
+        UnidentifiedImageError,
+        Image.DecompressionBombError,
+        OSError,
+        SyntaxError,
+        ValueError,
+    ) as exc:
         raise UnreadableImage(f"Pillow could not decode the image: {exc}") from exc
-    return decoded.convert("RGB")
+    # Left in its own mode. prepare() greys the crop, which is less to convert.
+    return decoded
 
 
 def _crop_box(region: Box, frame: tuple[int, int]) -> tuple[int, int, int, int] | None:
@@ -224,8 +237,8 @@ class TesseractOcr:
     """Reads text by running the tesseract CLI with the eng LSTM model."""
 
     name = "tesseract"
-    # Tesseract read nothing of the 16 px corner text in the smoke check, so
-    # the pipeline leaves the printing to the picker (ADR 0028).
+    # Tesseract never reads the collector number in the 16 px corner text,
+    # so the pipeline leaves the printing to the picker (ADR 0028).
     reads_corners = False
 
     def __init__(self, binary: str) -> None:

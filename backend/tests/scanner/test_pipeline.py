@@ -259,8 +259,12 @@ def no_tesseract(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def tesseract_at(monkeypatch: pytest.MonkeyPatch, binary: str, *, works: bool = True) -> None:
+    def probe(found: str) -> None:
+        if not works:
+            raise OcrUnavailable(f"the tesseract at {found} has no eng model among its languages")
+
     monkeypatch.setattr(FIND_TESSERACT, lambda: binary)
-    monkeypatch.setattr(PROBE, lambda found: found if works else None)
+    monkeypatch.setattr(PROBE, probe)
 
 
 @pytest.mark.usefixtures("fresh_selection")
@@ -354,7 +358,41 @@ def test_asking_for_a_tesseract_that_fails_its_probe_is_refused(
 ) -> None:
     monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
     tesseract_at(monkeypatch, "/usr/bin/tesseract", works=False)
-    with pytest.raises(OcrUnavailable, match="/usr/bin/tesseract.*eng"):
+    with pytest.raises(
+        OcrUnavailable, match="SCRIPTORIUM_OCR=tesseract but .*/usr/bin/tesseract.*eng"
+    ):
+        select_engine()
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_auto_selects_nothing_off_macos_when_tesseract_will_not_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    # A None entry in sys.modules makes the import raise ImportError.
+    monkeypatch.setitem(sys.modules, "scriptorium.scanner.engines.tesseract", None)
+    assert select_engine() is None
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_asking_for_tesseract_when_it_will_not_import_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
+    monkeypatch.setitem(sys.modules, "scriptorium.scanner.engines.tesseract", None)
+    with pytest.raises(OcrUnavailable, match="would not import"):
+        select_engine()
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_auto_off_macos_hits_the_real_tesseract_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Only the lookup is faked, so a found binary would be probed for real.
+    # The conftest guard must stop that probe in an unmarked test.
+    monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(FIND_TESSERACT, lambda: "/usr/bin/tesseract")
+    with pytest.raises(AssertionError, match="real Tesseract"):
         select_engine()
 
 
