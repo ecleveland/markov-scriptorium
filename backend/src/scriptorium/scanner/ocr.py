@@ -36,6 +36,10 @@ class Ocr(Protocol):
     """Reads lines of text from an encoded JPEG or PNG."""
 
     name: str
+    # Whether the engine can read the corner's collector number and set code,
+    # 16 px text on a 1080p frame. The pipeline skips the corner read when it
+    # cannot, so the picker finds the printing instead.
+    reads_corners: bool
 
     def read_lines(
         self, image: bytes, *, upside_down: bool = False, region: Box | None = None
@@ -47,6 +51,12 @@ class Ocr(Protocol):
         which is why the pipeline passes the same title region on both
         passes. Boxes come back in fractions of the whole frame, top-left
         origin, whatever the region.
+
+        Raises UnreadableImage for bytes the engine cannot decode or will not
+        accept, such as an image over Tesseract's pixel cap. The API answers
+        that with a 400. Raises OcrUnavailable when the engine fails to run,
+        which the API answers with a 503. No other exception may escape,
+        because the handler maps only these two.
         """
         ...
 

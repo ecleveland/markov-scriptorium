@@ -55,15 +55,25 @@ leaves the port held with nothing answering.
 #### Scanner
 
 The Scry a Card page reads card titles with Apple's Vision framework, which ships with
-macOS. On a Mac, `uv sync` installs the bindings and nothing more is needed. Linux and
-Windows have no reader yet. The page says "No scrying glass is fitted", and typing the name
-still works. Set `SCRIPTORIUM_OCR=none` to turn scanning off, or `SCRIPTORIUM_OCR=vision`
-to make startup fail when Vision cannot load. See
-[ADR 0026](docs/decisions/0026-scanner-recognition-engine-and-name-match.md).
+macOS. On a Mac, Vision is used and `uv sync` is enough. On Linux and Windows the glass
+reads with Tesseract when it is installed:
+
+```bash
+brew install tesseract          # macOS or Linux with Homebrew
+sudo apt install tesseract-ocr  # Debian and Ubuntu
+```
+
+On Windows, install the UB Mannheim build and point `SCRIPTORIUM_TESSERACT` at
+`tesseract.exe`. Without Tesseract the page says "No scrying glass is fitted", and typing
+the name still works. `SCRIPTORIUM_OCR` takes `auto` by default, `vision` or `tesseract` to
+force one engine and fail at startup when it cannot load, or `none` to turn scanning off.
+See [ADR 0026](docs/decisions/0026-scanner-recognition-engine-and-name-match.md).
 
 On a modern card the glass also reads the collector number and set code in the corner and
 lands on the exact printing. Older cards and misreads go through the printing picker as
-before. See [ADR 0027](docs/decisions/0027-scanner-corner-read-pins-the-printing.md).
+before. See [ADR 0027](docs/decisions/0027-scanner-corner-read-pins-the-printing.md). The
+corner pin needs Vision, so on Tesseract every scan goes through the picker. See
+[ADR 0028](docs/decisions/0028-tesseract-as-the-second-scanner-engine.md).
 
 ### Frontend (React + Vite)
 

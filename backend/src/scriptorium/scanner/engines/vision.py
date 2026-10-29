@@ -29,6 +29,7 @@ class VisionOcr:
     """Reads text with VNRecognizeTextRequest at the accurate level."""
 
     name = "vision"
+    reads_corners = True
 
     def read_lines(
         self, image: bytes, *, upside_down: bool = False, region: Box | None = None

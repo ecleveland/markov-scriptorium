@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import sys
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -372,7 +373,7 @@ def test_a_locked_catalog_answers_unavailable(monkeypatch: pytest.MonkeyPatch) -
 
 def test_a_misconfigured_engine_falls_back_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
     # get_ocr runs before the handler's checks, so it must never raise.
-    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "paddle")
     select_engine.cache_clear()
     try:
         assert get_ocr() is None
@@ -393,6 +394,18 @@ def test_a_misconfigured_engine_stops_startup(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("SCRIPTORIUM_OCR", "bogus")
     with pytest.raises(OcrUnavailable, match="bogus"), TestClient(app):
         pass
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_startup_off_macos_never_probes_a_real_tesseract(monkeypatch: pytest.MonkeyPatch) -> None:
+    # On Linux with tesseract installed, auto would probe the real binary at
+    # startup. The conftest hides it outside the tesseract marker, so the app
+    # starts with no engine.
+    monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    with TestClient(app) as started:
+        assert started.get("/").status_code == 200
+    assert select_engine() is None
 
 
 @pytest.mark.usefixtures("fresh_selection")

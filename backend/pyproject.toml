@@ -10,6 +10,7 @@ dependencies = [
     "ijson>=3.2",
     "rapidfuzz>=3.14,<4",
     "pyobjc-framework-vision>=12.2,<13 ; sys_platform == 'darwin'",
+    "pillow>=12,<14",
 ]
 
 [dependency-groups]
@@ -17,7 +18,6 @@ dev = [
     "pytest>=8",
     "ruff>=0.15.17",
     "mypy>=2.1.0",
-    "pillow>=12,<14",
 ]
 
 [build-system]
@@ -29,7 +29,10 @@ packages = ["src/scriptorium"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["vision: runs the real Apple Vision engine (macOS only)"]
+markers = [
+    "vision: runs the real Apple Vision engine (macOS only)",
+    "tesseract: runs the real Tesseract binary (skipped when not installed)",
+]
 
 [tool.ruff]
 line-length = 100

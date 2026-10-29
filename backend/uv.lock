@@ -878,6 +878,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "ijson" },
+    { name = "pillow" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'" },
     { name = "rapidfuzz" },
     { name = "uvicorn", extra = ["standard"] },
@@ -886,7 +887,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
-    { name = "pillow" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -896,6 +896,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "ijson", specifier = ">=3.2" },
+    { name = "pillow", specifier = ">=12,<14" },
     { name = "pyobjc-framework-vision", marker = "sys_platform == 'darwin'", specifier = ">=12.2,<13" },
     { name = "rapidfuzz", specifier = ">=3.14,<4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
@@ -904,7 +905,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.1.0" },
-    { name = "pillow", specifier = ">=12,<14" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.15.17" },
 ]

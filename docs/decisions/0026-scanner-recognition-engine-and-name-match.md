@@ -177,3 +177,5 @@ printing from the card in hand, as ADR 0025 decided.
   `vision`. Every other scanner test uses a fake engine through a FastAPI
   dependency override.
 - A restore, when it lands, must call `invalidate()`.
+- [ADR 0028](0028-tesseract-as-the-second-scanner-engine.md) adds Tesseract as
+  the second engine behind the same protocol for Linux and Windows.
