@@ -232,6 +232,9 @@ export function useCamera({
         const next = ++generation.current
         stop(streamRef.current)
         streamRef.current = null
+        // A switch made during the reopen falls back to this, and the
+        // unplugged camera is no camera to go back to.
+        deviceRef.current = null
         setState((prev) => ({
           ...prev,
           status: 'starting',
@@ -261,15 +264,18 @@ export function useCamera({
       // An id missing from the list leaves the picker with nothing to show
       // as chosen. The stream stays: the camera may still be live under an
       // id the browser rotated, and if it is really gone its track ends and
-      // the ended handler reopens.
+      // the ended handler reopens. A list read mid-change can lack the
+      // camera for a moment, so a later list that has it puts it back.
       const gone =
         deviceRef.current !== null &&
         !devices.some((d) => d.deviceId === deviceRef.current)
-      setState((prev) => ({
-        ...prev,
-        devices,
-        ...(gone ? { deviceId: null } : {}),
-      }))
+      setState((prev) =>
+        // Outside live, deviceId is a pending choice or already null, and
+        // deviceRef still names the camera before it.
+        prev.status === 'live'
+          ? { ...prev, devices, deviceId: gone ? null : deviceRef.current }
+          : { ...prev, devices },
+      )
     }
     // Held here so cleanup unsubscribes from the object it subscribed to.
     const media = navigator.mediaDevices

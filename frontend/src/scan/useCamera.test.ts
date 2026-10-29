@@ -203,6 +203,43 @@ describe('useCamera', () => {
     expect(result.current.deviceId).toBe('cam-desk')
   })
 
+  it('restores the device id when the camera is listed again', async () => {
+    getUserMedia.mockResolvedValue(fakeStream('cam-desk').stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    // A list read mid-change can briefly lack the live camera.
+    enumerateDevices.mockResolvedValue([])
+    await fireDeviceChange()
+    await waitFor(() => expect(result.current.deviceId).toBeNull())
+
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+    await fireDeviceChange()
+
+    await waitFor(() => expect(result.current.deviceId).toBe('cam-desk'))
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the picker on the pending camera when the list changes mid-switch', async () => {
+    getUserMedia
+      .mockResolvedValueOnce(fakeStream('cam-desk').stream)
+      .mockReturnValueOnce(new Promise<MediaStream>(() => {}))
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    act(() => result.current.selectDevice('cam-built-in'))
+
+    enumerateDevices.mockResolvedValue([BUILT_IN])
+    await fireDeviceChange()
+
+    await waitFor(() => expect(result.current.devices).toEqual([BUILT_IN]))
+    expect(result.current.status).toBe('starting')
+    expect(result.current.deviceId).toBe('cam-built-in')
+  })
+
   it('reopens the default camera when the live one is unplugged', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     localStorage.setItem(STORAGE_KEY, 'cam-desk')
@@ -247,6 +284,28 @@ describe('useCamera', () => {
     expect(result.current.error).toBe(
       'No camera was found. Plug one in and reload.',
     )
+  })
+
+  it('falls back to the default when a switch fails during an unplug reopen', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const first = fakeStream('cam-desk')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockReturnValueOnce(new Promise<MediaStream>(() => {}))
+      .mockRejectedValueOnce(domError('NotReadableError'))
+      .mockResolvedValueOnce(fakeStream('cam-built-in').stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    endTrack(first.track)
+    act(() => result.current.selectDevice('cam-2'))
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(4))
+    // The unplugged camera is gone, so the fallback is the default.
+    expect(getUserMedia).toHaveBeenLastCalledWith(constraints())
   })
 
   it('ignores an ended event from a stream it already replaced', async () => {
