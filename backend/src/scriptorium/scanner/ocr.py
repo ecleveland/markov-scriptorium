@@ -36,6 +36,10 @@ class Ocr(Protocol):
     """Reads lines of text from an encoded JPEG or PNG."""
 
     name: str
+    # Whether the engine can read the corner's collector number and set code,
+    # 16 px text on a 1080p frame. The pipeline skips the corner read when it
+    # cannot, so the picker finds the printing instead.
+    reads_corners: bool
 
     def read_lines(
         self, image: bytes, *, upside_down: bool = False, region: Box | None = None

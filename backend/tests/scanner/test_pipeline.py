@@ -15,6 +15,7 @@ import pytest
 
 from scriptorium import db
 from scriptorium.scanner.engines import select_engine
+from scriptorium.scanner.engines.tesseract import TesseractOcr
 from scriptorium.scanner.names import NameIndex, invalidate, name_index
 from scriptorium.scanner.ocr import OcrUnavailable, UnreadableImage
 from scriptorium.scanner.pipeline import ACCEPT, FALLBACK_WEIGHT, Reading, recognize
@@ -175,6 +176,14 @@ def test_a_confident_title_reads_the_corner_once(index: NameIndex) -> None:
     assert region.y >= 0.5
 
 
+def test_an_engine_that_cannot_read_corners_is_never_asked_to(index: NameIndex) -> None:
+    ocr = FakeOcr([EDGAR], corner=CORNER, reads_corners=False)
+    result = recognize(IMAGE, ocr, index)
+    assert result.readings == [Reading("Edgar Markov", 1.0)]
+    assert result.corner is None
+    assert ocr.calls == [(False, title_region())]
+
+
 def test_a_weak_title_never_reads_the_corner(index: NameIndex) -> None:
     ocr = FakeOcr([line("Edgar Markov", 0.1, confidence=0.3)], corner=CORNER)
     result = recognize(IMAGE, ocr, index)
@@ -240,6 +249,20 @@ def fresh_selection() -> Iterator[None]:
     select_engine.cache_clear()
 
 
+FIND_TESSERACT = "scriptorium.scanner.engines.tesseract.find_tesseract"
+PROBE = "scriptorium.scanner.engines.tesseract.probe"
+
+
+def no_tesseract(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This Mac has tesseract installed, so auto off darwin would find it.
+    monkeypatch.setattr(FIND_TESSERACT, lambda: None)
+
+
+def tesseract_at(monkeypatch: pytest.MonkeyPatch, binary: str, *, works: bool = True) -> None:
+    monkeypatch.setattr(FIND_TESSERACT, lambda: binary)
+    monkeypatch.setattr(PROBE, lambda found: found if works else None)
+
+
 @pytest.mark.usefixtures("fresh_selection")
 def test_none_selects_no_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCRIPTORIUM_OCR", "none")
@@ -248,15 +271,18 @@ def test_none_selects_no_engine(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("fresh_selection")
 def test_an_unknown_engine_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
-    with pytest.raises(OcrUnavailable, match="tesseract"):
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "paddle")
+    with pytest.raises(OcrUnavailable, match="paddle.*auto, vision, tesseract or none"):
         select_engine()
 
 
 @pytest.mark.usefixtures("fresh_selection")
-def test_auto_selects_nothing_off_macos(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auto_selects_nothing_off_macos_without_tesseract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
     monkeypatch.setattr(sys, "platform", "linux")
+    no_tesseract(monkeypatch)
     assert select_engine() is None
 
 
@@ -264,6 +290,7 @@ def test_auto_selects_nothing_off_macos(monkeypatch: pytest.MonkeyPatch) -> None
 def test_an_empty_setting_means_auto(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCRIPTORIUM_OCR", "")
     monkeypatch.setattr(sys, "platform", "linux")
+    no_tesseract(monkeypatch)
     assert select_engine() is None
 
 
@@ -298,3 +325,68 @@ def test_auto_selects_vision_on_macos(monkeypatch: pytest.MonkeyPatch) -> None:
     assert engine is not None
     assert engine.name == "vision"
     assert select_engine() is engine
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_asking_for_tesseract_selects_it_with_the_binary_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
+    tesseract_at(monkeypatch, "/usr/bin/tesseract")
+    engine = select_engine()
+    assert isinstance(engine, TesseractOcr)
+    assert engine.binary == "/usr/bin/tesseract"
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_asking_for_tesseract_when_none_is_found_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
+    no_tesseract(monkeypatch)
+    with pytest.raises(OcrUnavailable, match="SCRIPTORIUM_TESSERACT"):
+        select_engine()
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_asking_for_a_tesseract_that_fails_its_probe_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
+    tesseract_at(monkeypatch, "/usr/bin/tesseract", works=False)
+    with pytest.raises(OcrUnavailable, match="/usr/bin/tesseract.*eng"):
+        select_engine()
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_auto_selects_nothing_off_macos_when_tesseract_fails_its_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    tesseract_at(monkeypatch, "/usr/bin/tesseract", works=False)
+    assert select_engine() is None
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_auto_selects_tesseract_off_macos_when_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    tesseract_at(monkeypatch, "/usr/bin/tesseract")
+    engine = select_engine()
+    assert isinstance(engine, TesseractOcr)
+    assert engine.binary == "/usr/bin/tesseract"
+
+
+@pytest.mark.usefixtures("fresh_selection")
+@pytest.mark.skipif(
+    sys.platform != "darwin" or find_spec("Vision") is None, reason="needs macOS with pyobjc"
+)
+def test_auto_keeps_vision_on_macos_with_tesseract_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "auto")
+    tesseract_at(monkeypatch, "/usr/bin/tesseract")
+    engine = select_engine()
+    assert engine is not None
+    assert engine.name == "vision"

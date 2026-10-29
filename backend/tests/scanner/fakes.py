@@ -56,7 +56,9 @@ class FakeOcr:
         corner: list[TextLine] | None = None,
         raise_: Exception | None = None,
         corner_raise: Exception | None = None,
+        reads_corners: bool = True,
     ) -> None:
+        self.reads_corners = reads_corners
         self.upright = upright
         self.upside_down = upside_down or []
         self.full_frame = full_frame or []

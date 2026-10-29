@@ -372,7 +372,7 @@ def test_a_locked_catalog_answers_unavailable(monkeypatch: pytest.MonkeyPatch) -
 
 def test_a_misconfigured_engine_falls_back_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
     # get_ocr runs before the handler's checks, so it must never raise.
-    monkeypatch.setenv("SCRIPTORIUM_OCR", "tesseract")
+    monkeypatch.setenv("SCRIPTORIUM_OCR", "paddle")
     select_engine.cache_clear()
     try:
         assert get_ocr() is None

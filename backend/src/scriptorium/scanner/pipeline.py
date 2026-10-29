@@ -100,10 +100,10 @@ def recognize(image: bytes, ocr: Ocr, index: NameIndex, *, limit: int = 5) -> Re
     """Read the card name off ``image``, best reading first, and its corner.
 
     Returns at most ``limit`` readings and an empty list when nothing
-    matched. The corner is None unless a title region read reached ACCEPT
-    and the corner's lines parsed. Engine errors such as UnreadableImage from the
-    title reads pass through. From the corner read they are logged and the
-    corner is None.
+    matched. The corner is None unless a title region read reached ACCEPT,
+    the engine reads corners, and the corner's lines parsed. Engine errors
+    such as UnreadableImage from the title reads pass through. From the
+    corner read they are logged and the corner is None.
     """
     # Without decoding the image the frame's aspect is unknown. The 4:3
     # default gives a wider region than a 16:9 frame needs, which only adds
@@ -125,7 +125,7 @@ def recognize(image: bytes, ocr: Ocr, index: NameIndex, *, limit: int = 5) -> Re
                 accepted_upside_down = upside_down
             break
     corner: CornerRead | None = None
-    if accepted_upside_down is not None:
+    if accepted_upside_down is not None and ocr.reads_corners:
         corner = _read_corner(image, ocr, upside_down=accepted_upside_down)
     # Round before ranking so the order matches the numbers the page shows.
     rounded = [(round(c, 3), -neg_position, name) for name, (c, neg_position) in best.items()]
