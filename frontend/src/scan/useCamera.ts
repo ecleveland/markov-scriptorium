@@ -144,10 +144,12 @@ function openedDevice(
  *
  * While `active` is false the camera rests: the video track is disabled, so
  * it sends black frames, but the stream stays open and comes back without a
- * new request. Chrome and Firefox keep the camera light on for a disabled
- * track (Firefox on purpose, so a page cannot fake letting go of the camera).
- * Only stopping the track puts the light out, which is why no UI text claims
- * resting does.
+ * new request. Browsers differ on the light. Chrome keeps the camera open
+ * and its light on for a disabled track; only stopping the track puts it
+ * out. Firefox (60 and later) releases the camera for a disabled track and
+ * takes it back when the track is enabled again, so the light goes out
+ * there and the first frames after waking can be slower to arrive. No UI
+ * text claims the light goes out, because on Chrome it does not.
  */
 export function useCamera({
   active = true,
