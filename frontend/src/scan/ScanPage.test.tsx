@@ -86,8 +86,14 @@ const SOL_RING = printing({
 })
 
 const READINGS = [
-  { name: 'Sol Ring', confidence: 0.91 },
-  { name: 'Lightning Bolt', confidence: 0.42 },
+  { name: 'Sol Ring', confidence: 0.91, printing: null },
+  { name: 'Lightning Bolt', confidence: 0.42, printing: null },
+]
+
+/** Sol Ring read with its corner, so the glass already knows the printing. */
+const PINNED_READINGS = [
+  { name: 'Sol Ring', confidence: 0.91, printing: SOL_RING },
+  { name: 'Lightning Bolt', confidence: 0.42, printing: null },
 ]
 
 // jsdom has no object URLs. The stub stays for the whole file, because the
@@ -304,6 +310,82 @@ describe('ScanPage', () => {
         name: /Choose a printing of “Sol Ring”/,
       }),
     ).toBeInTheDocument()
+  })
+
+  it('goes straight to the Inscribe form when the reading names its printing', async () => {
+    recognizeMock.mockResolvedValue({ readings: PINNED_READINGS })
+    const user = await readCard()
+
+    await user.click(
+      await screen.findByRole('button', { name: /Sol Ring.*Commander 2021/ }),
+    )
+
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: /Sol Ring.*Commander 2021 \(C21\) · #263/,
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /Choose a printing/ }),
+    ).not.toBeInTheDocument()
+    expect(searchMock).not.toHaveBeenCalled()
+  })
+
+  it('opens the printings of the read card on "Change printing" after the shortcut', async () => {
+    recognizeMock.mockResolvedValue({ readings: PINNED_READINGS })
+    const user = await readCard()
+    await user.click(
+      await screen.findByRole('button', { name: /Sol Ring.*Commander 2021/ }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Change printing' }))
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /Choose a printing of “Sol Ring”/,
+      }),
+    ).toBeInTheDocument()
+    expect(searchMock).toHaveBeenCalledWith('Sol Ring', expect.any(AbortSignal))
+  })
+
+  it('returns to the same readings on "Change card" after the shortcut', async () => {
+    recognizeMock.mockResolvedValue({ readings: PINNED_READINGS })
+    const user = await readCard()
+    await user.click(
+      await screen.findByRole('button', { name: /Sol Ring.*Commander 2021/ }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Change printing' }))
+    await screen.findByRole('heading', {
+      name: /Choose a printing of “Sol Ring”/,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Change card' }))
+
+    expect(screen.getByRole('button', { name: /Sol Ring.*91%/ })).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: /Lightning Bolt.*42%/ }),
+    ).toBeVisible()
+    expect(recognizeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still opens the picker for a reading without a printing', async () => {
+    recognizeMock.mockResolvedValue({ readings: PINNED_READINGS })
+    const user = await readCard()
+
+    await user.click(
+      await screen.findByRole('button', { name: /Lightning Bolt.*42%/ }),
+    )
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /Choose a printing of “Lightning Bolt”/,
+      }),
+    ).toBeInTheDocument()
+    expect(searchMock).toHaveBeenCalledWith(
+      'Lightning Bolt',
+      expect.any(AbortSignal),
+    )
   })
 
   it('retakes from the captured frame, letting go of the still', async () => {

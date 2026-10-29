@@ -345,3 +345,166 @@ def test_printings_by_name_front_face_does_not_swallow_plain_names(
     # "Lightning" is the front-face-shaped prefix of nothing here; the bare word
     # resolves to no printing (the two Bolts are "Lightning Bolt", not "Lightning").
     assert catalog.printings_by_name(catalog_conn, "Lightning") == []
+
+
+def test_printings_by_number_finds_the_printing_at_a_set_and_number(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """The scanner's corner read (VEG-653) pins a printing by set and collector number."""
+    _insert_card(
+        catalog_conn,
+        "ascent-1",
+        "Academic Ascent",
+        set_code="fra",
+        collector_number="2",
+        finishes='["nonfoil","foil"]',
+    )
+    _insert_card(catalog_conn, "other-1", "Counterspell", set_code="fra", collector_number="3")
+    catalog_conn.commit()
+    printings = catalog.printings_by_number(catalog_conn, "fra", "2")
+    assert [p["scryfall_id"] for p in printings] == ["ascent-1"]
+    # JSON columns come back deserialized, like the other catalog reads.
+    assert printings[0]["finishes"] == ["nonfoil", "foil"]
+    assert "card_faces" not in printings[0]
+
+
+def test_printings_by_number_ignores_case_on_the_set_code_only(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(
+        catalog_conn, "bolt-221a", "Lightning Bolt", set_code="2x2", collector_number="221a"
+    )
+    catalog_conn.commit()
+    found = catalog.printings_by_number(catalog_conn, " 2X2 ", " 221a ")
+    assert [p["scryfall_id"] for p in found] == ["bolt-221a"]
+    # The number compares exactly, so the lookup can use both columns of the
+    # set and number index. The corner parser already lowercases a suffix.
+    assert catalog.printings_by_number(catalog_conn, "2x2", "221A") == []
+
+
+def test_printings_by_number_puts_english_first(catalog_conn: sqlite3.Connection) -> None:
+    # The Japanese row sorts first by id, so only the language rule puts it second.
+    _insert_card(
+        catalog_conn, "a-ja", "Lightning Bolt", set_code="sta", collector_number="42", lang="ja"
+    )
+    _insert_card(catalog_conn, "b-en", "Lightning Bolt", set_code="sta", collector_number="42")
+    _insert_card(
+        catalog_conn, "c-de", "Lightning Bolt", set_code="sta", collector_number="42", lang="de"
+    )
+    catalog_conn.commit()
+    found = catalog.printings_by_number(catalog_conn, "sta", "42")
+    assert [p["scryfall_id"] for p in found] == ["b-en", "a-ja", "c-de"]
+
+
+def test_printings_by_number_misses_answer_empty(catalog_conn: sqlite3.Connection) -> None:
+    assert catalog.printings_by_number(catalog_conn, "lea", "999") == []
+    assert catalog.printings_by_number(catalog_conn, "zzz", "1") == []
+    assert catalog.printings_by_number(catalog_conn, "  ", "1") == []
+    assert catalog.printings_by_number(catalog_conn, "lea", "  ") == []
+    assert catalog.printings_by_number(catalog_conn, "", "") == []
+
+
+def _siblings(
+    conn: sqlite3.Connection, name: str, scryfall_id: str, code: str, number: str
+) -> bool:
+    return catalog.has_sibling_printings(conn, name, scryfall_id, code, number)
+
+
+def test_a_promo_suffix_on_the_same_number_is_a_sibling(catalog_conn: sqlite3.Connection) -> None:
+    # Prerelease promos print the base corner and are stored as "263s".
+    _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+    _insert_card(catalog_conn, "ring-s", "Sol Ring", set_code="pc21", collector_number="263s")
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, "Sol Ring", "ring", "c21", "263")
+
+
+def test_a_star_variant_is_a_sibling(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(catalog_conn, "bolt-226", "Lightning Bolt", set_code="sta", collector_number="226")
+    _insert_card(
+        catalog_conn, "bolt-star", "Lightning Bolt", set_code="sta", collector_number="226★"
+    )
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, "Lightning Bolt", "bolt-226", "sta", "226")
+
+
+def test_a_list_reprint_of_the_set_and_number_is_a_sibling(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    # The List prints the base corner and is stored as plst "M21-152".
+    _insert_card(catalog_conn, "bolt-m21", "Lightning Bolt", set_code="m21", collector_number="152")
+    _insert_card(
+        catalog_conn, "bolt-plst", "Lightning Bolt", set_code="plst", collector_number="M21-152"
+    )
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, "Lightning Bolt", "bolt-m21", "m21", "152")
+
+
+def test_other_printings_that_print_another_corner_are_not_siblings(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+    # Another card at the promo number, a two-character extension, the same
+    # number in another set, and a List reprint of another set.
+    _insert_card(catalog_conn, "other-s", "Arcane Signet", set_code="pc21", collector_number="263s")
+    _insert_card(catalog_conn, "ring-ab", "Sol Ring", set_code="pc21", collector_number="263ab")
+    _insert_card(catalog_conn, "ring-c20", "Sol Ring", set_code="c20", collector_number="263")
+    _insert_card(catalog_conn, "ring-plst", "Sol Ring", set_code="plst", collector_number="C20-263")
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", "263")
+
+
+def test_a_printing_is_not_its_own_sibling(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(catalog_conn, "ring-s", "Sol Ring", set_code="pc21", collector_number="263s")
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, "Sol Ring", "ring-s", "pc21", "263")
+
+
+def test_wildcards_in_the_number_match_only_themselves(catalog_conn: sqlite3.Connection) -> None:
+    _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+    _insert_card(catalog_conn, "ring-x", "Sol Ring", set_code="pc21", collector_number="263a")
+    catalog_conn.commit()
+    for number in ("26*", "26?", "26[3]", "2*", "26_", "2%"):
+        assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", number), number
+
+
+@pytest.mark.parametrize(
+    ("printing", "other"),
+    [
+        # A longer number elsewhere is another card, not a variant.
+        (("fdn", "275", "Island"), ("sld", "2755")),
+        (("m21", "269", "Mountain"), ("bfz", "269a")),
+        (("cmm", "410", "Sol Ring"), ("ltc", "410z")),
+        (("blb", "1", "Banishing Light"), ("khc", "19")),
+    ],
+)
+def test_a_longer_number_in_another_set_is_not_a_sibling(
+    catalog_conn: sqlite3.Connection,
+    printing: tuple[str, str, str],
+    other: tuple[str, str],
+) -> None:
+    code, number, name = printing
+    _insert_card(catalog_conn, "this", name, set_code=code, collector_number=number)
+    _insert_card(catalog_conn, "that", name, set_code=other[0], collector_number=other[1])
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, name, "this", code, number)
+
+
+@pytest.mark.parametrize(
+    ("printing", "other"),
+    [
+        (("fdn", "184", "Rune-Scarred Demon"), ("pfdn", "184s")),
+        (("ktk", "86", "Rite of the Serpent"), ("ktk", "86y")),
+        (("fin", "232", "Kuja"), ("fin", "232†")),
+        (("m21", "152", "Lightning Bolt"), ("plst", "M21-152")),
+    ],
+)
+def test_a_variant_printing_the_same_corner_is_a_sibling(
+    catalog_conn: sqlite3.Connection,
+    printing: tuple[str, str, str],
+    other: tuple[str, str],
+) -> None:
+    code, number, name = printing
+    _insert_card(catalog_conn, "this", name, set_code=code, collector_number=number)
+    _insert_card(catalog_conn, "that", name, set_code=other[0], collector_number=other[1])
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, name, "this", code, number)

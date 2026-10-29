@@ -1,4 +1,4 @@
-"""Apple Vision read real pixels (VEG-231, ADR 0026).
+"""Apple Vision read real pixels (VEG-231, VEG-653, ADR 0026, ADR 0027).
 
 These drive the real engine on a drawn card, so they run only on macOS with
 pyobjc, under the vision marker.
@@ -16,6 +16,7 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 from scriptorium.scanner.ocr import OcrUnavailable, TextLine, UnreadableImage
+from scriptorium.scanner.printing import CornerRead, corner_region, parse_corner
 from scriptorium.scanner.region import title_region
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ pytestmark = [
 ]
 
 _GEORGIA = Path("/System/Library/Fonts/Supplemental/Georgia.ttf")
+_ARIAL = Path("/System/Library/Fonts/Supplemental/Arial.ttf")
 WIDTH, HEIGHT = 1280, 960
 TYPE_LINE = "Legendary Creature Vampire Knight"
 
@@ -47,6 +49,46 @@ def _card() -> Image.Image:
     draw.rectangle((340, 40, 940, 920), outline="black", width=6)
     draw.text((WIDTH // 2, 100), "Edgar Markov", font=_font(48), fill="black", anchor="mm")
     draw.text((WIDTH // 2, 540), TYPE_LINE, font=_font(32), fill="black", anchor="mm")
+    return img
+
+
+def _arial(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    if _ARIAL.exists():
+        return ImageFont.truetype(str(_ARIAL), size)
+    return ImageFont.load_default(size=size)
+
+
+# The page's 1080p capture, the frame the corner has to be legible in.
+FRAME_WIDTH, FRAME_HEIGHT = 1920, 1080
+# The corner text at 1080p on a card lined up to the guide. Vision misread the
+# rarity letter at 14 px, so this is the smallest size the parser is held to.
+_CORNER_PX = 16
+
+
+def _cornered_card() -> Image.Image:
+    """A card lined up to the 84 percent guide, white corner text on its border."""
+    card_height = int(FRAME_HEIGHT * 0.84)
+    card_width = int(card_height * 63 / 88)
+    left, top = (FRAME_WIDTH - card_width) // 2, (FRAME_HEIGHT - card_height) // 2
+    img = Image.new("RGB", (FRAME_WIDTH, FRAME_HEIGHT), (35, 35, 35))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle(
+        (left, top, left + card_width, top + card_height),
+        fill=(20, 20, 20),
+        outline="black",
+        width=10,
+    )
+    draw.rectangle(
+        (left + 22, top + 22, left + card_width - 22, top + card_height - 22),
+        fill=(236, 230, 215),
+    )
+    draw.text((left + 40, top + 40), "Academic Ascent", font=_font(40), fill="black")
+    small = _arial(_CORNER_PX)
+    number_y = top + card_height - 2 * _CORNER_PX - 14
+    set_y = top + card_height - _CORNER_PX - 8
+    draw.text((left + 30, number_y), "C 0002", font=small, fill="white")
+    draw.text((left + 30, set_y), "FRA • EN", font=small, fill="white")
+    draw.text((left + 150, set_y), "Randy Gallegos", font=small, fill="white")
     return img
 
 
@@ -97,6 +139,17 @@ def test_a_full_frame_read_finds_the_type_line_below_the_title() -> None:
     lines = _engine().read_lines(_png(_card()))
     title = _find(lines, "Edgar Markov")
     assert _find(lines, TYPE_LINE).box.y > title.box.y
+
+
+def test_reads_the_corner_of_a_card_at_1080p() -> None:
+    lines = _engine().read_lines(_png(_cornered_card()), region=corner_region())
+    assert parse_corner(lines) == CornerRead(("2", "0002"), "fra")
+
+
+def test_reads_the_corner_of_an_upside_down_card_when_asked_to_turn_it() -> None:
+    flipped = _png(_cornered_card().rotate(180))
+    lines = _engine().read_lines(flipped, upside_down=True, region=corner_region())
+    assert parse_corner(lines) == CornerRead(("2", "0002"), "fra")
 
 
 def test_bytes_vision_cannot_decode_are_unreadable() -> None:

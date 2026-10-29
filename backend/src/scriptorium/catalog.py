@@ -64,6 +64,11 @@ def _escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _escape_glob(term: str) -> str:
+    """Escape GLOB metacharacters so a number containing * ? or [ matches literally."""
+    return "".join(f"[{ch}]" if ch in "*?[" else ch for ch in term)
+
+
 def get_card(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] | None:
     """Return one printing by Scryfall ID with its faces, or ``None`` if absent."""
     row = conn.execute("SELECT * FROM cards WHERE scryfall_id = ?", (scryfall_id,)).fetchone()
@@ -109,6 +114,65 @@ def printings_by_name(conn: sqlite3.Connection, name: str) -> list[dict[str, Any
         {"term": term},
     ).fetchall()
     return [_row_to_card(row) for row in rows]
+
+
+def printings_by_number(
+    conn: sqlite3.Connection, set_code: str, collector_number: str
+) -> list[dict[str, Any]]:
+    """Return the printings at one set code and collector number, English first.
+
+    The scanner reads both off a card's corner (VEG-653, ADR 0027). A pair
+    usually names one printing, but a few hold several, in other languages or
+    under other names, so the caller picks among them by the name it read.
+
+    Both parts compare exactly, so SQLite searches idx_cards_set_collector on
+    both columns. The index collates BINARY, and a NOCASE compare on either
+    column would drop that column from the search, scanning a whole set or
+    every card. Scryfall publishes set codes lowercase and the importer
+    stores them as given, so the set code is lowercased here. The number is
+    taken as given. The corner parser already lowercases a letter suffix.
+    """
+    code = set_code.strip().lower()
+    number = collector_number.strip()
+    if not code or not number:
+        return []
+    rows = conn.execute(
+        "SELECT * FROM cards "
+        "WHERE set_code = ? AND collector_number = ? "
+        "ORDER BY (lang = 'en') DESC, scryfall_id",
+        (code, number),
+    ).fetchall()
+    return [_row_to_card(row) for row in rows]
+
+
+def has_sibling_printings(
+    conn: sqlite3.Connection, name: str, scryfall_id: str, set_code: str, collector_number: str
+) -> bool:
+    """Whether another printing of ``name`` prints the same corner as this one.
+
+    The scanner pins a printing from the set code and number on a card's
+    corner (VEG-653, ADR 0027), but some printings print another printing's
+    corner. Prerelease promos print the base corner and are stored as "184s"
+    in the "p" promo set, variants in the same set as "86y", "226★" or
+    "232†", and The List as plst "M21-152". So a printing of the same name
+    counts when it is in the read set or its promo set at the number plus
+    one character that is not a digit, or anywhere at "<SET>-<number>". A
+    digit would make it another card's number, as SLD's Island 2755 is, and
+    a suffix in another set is another set's card, as BFZ's Mountain 269a is.
+
+    The name compares NOCASE so the search rides idx_cards_name, which is
+    NOCASE. A plain compare would scan every card.
+    """
+    code = set_code.lower()
+    pattern = _escape_glob(collector_number) + "[^0-9]"
+    plst_number = f"{code.upper()}-{collector_number}"
+    row = conn.execute(
+        "SELECT COUNT(*) FROM cards "
+        "WHERE name = ? COLLATE NOCASE AND scryfall_id <> ? "
+        "AND ((set_code IN (?, ?) AND collector_number GLOB ?) OR collector_number = ?)",
+        (name, scryfall_id, code, f"p{code}", pattern, plst_number),
+    ).fetchone()
+    return bool(row[0])
 
 
 def search_cards(

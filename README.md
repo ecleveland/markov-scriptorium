@@ -61,6 +61,10 @@ still works. Set `SCRIPTORIUM_OCR=none` to turn scanning off, or `SCRIPTORIUM_OC
 to make startup fail when Vision cannot load. See
 [ADR 0026](docs/decisions/0026-scanner-recognition-engine-and-name-match.md).
 
+On a modern card the glass also reads the collector number and set code in the corner and
+lands on the exact printing. Older cards and misreads go through the printing picker as
+before. See [ADR 0027](docs/decisions/0027-scanner-corner-read-pins-the-printing.md).
+
 ### Frontend (React + Vite)
 
 From `frontend/`:

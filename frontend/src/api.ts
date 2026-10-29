@@ -774,6 +774,8 @@ export async function createBackup(): Promise<Backup> {
 export interface Reading {
   name: string
   confidence: number
+  /** The exact printing when the glass also read the card's corner, else null. */
+  printing: CardPrinting | null
 }
 
 export interface RecognizeResponse {
@@ -785,7 +787,8 @@ export interface RecognizeResponse {
  * Send one captured frame to the scanner and get back the names it read.
  * Readings are card names, not printings, so the Scan page hands the chosen
  * name to the same printing picker and form the Inscribe flow uses to settle
- * on a folio. When no engine is fitted or the engine fails the backend
+ * on a folio. A reading that also carries its printing lets the page skip the
+ * picker and open the form for that printing. When no engine is fitted or the engine fails the backend
  * answers 503, and an image it cannot decode answers 400, each with a detail
  * the page shows as is.
  */

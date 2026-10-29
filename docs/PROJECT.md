@@ -95,6 +95,7 @@ Visual card recognition that matches scans to Scryfall. Highly feasible — mult
 - The reader tries the title region first, then the same region rotated 180 degrees for an upside-down card, then the full frame.
 - rapidfuzz matches the text against the card and face names in the local catalog and answers up to five full names with a confidence.
 - The user picks the printing from the card in hand, through the existing printing picker.
+- After a confident name read, the reader also reads the collector number and set code in the corner and pins the printing when exactly one catalog row matches, decided in [ADR 0027](decisions/0027-scanner-corner-read-pins-the-printing.md). Otherwise the picker stays.
 
 **Killer UX:** **batch scanning** — lay 9 cards on a table, one photo, recognize all. Transformative for collection imports vs. one-at-a-time scanning. mtgscan handles this natively.
 

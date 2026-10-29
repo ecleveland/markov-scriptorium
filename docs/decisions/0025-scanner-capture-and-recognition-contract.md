@@ -93,3 +93,7 @@ handler behind a contract that is already fixed.
 recognition and adds three statuses after the checks above: a 503 when no
 engine is available, a 400 when the engine cannot decode the image, and a 503
 when the engine fails while reading. The 501 stub is gone.
+
+[ADR 0027](0027-scanner-corner-read-pins-the-printing.md) adds a nullable
+`printing` field to each reading, filled when the card's corner names exactly
+one printing in the catalog.

@@ -1,8 +1,9 @@
-"""Test doubles for the recognition pipeline (VEG-231, ADR 0026).
+"""Test doubles for the recognition pipeline (VEG-231, VEG-653, ADR 0026, ADR 0027).
 
 FakeOcr answers from canned lines, so pipeline and API tests never touch a
-real engine. The catalog helpers seed a throwaway SQLite file the same way
-test_cards_api does.
+real engine. A read of the bottom of the frame answers with the corner lines.
+The catalog helpers seed a throwaway SQLite file the same way test_cards_api
+does.
 """
 
 from __future__ import annotations
@@ -36,6 +37,11 @@ def line(
     return TextLine(text=text, confidence=confidence, box=Box(x, y, width, height))
 
 
+def corner_line(text: str, y: float, *, x: float = 0.25, width: float = 0.1) -> TextLine:
+    """A line in the card's bottom-left corner, left of the frame's centre."""
+    return line(text, y, x=x, width=width, height=0.02)
+
+
 class FakeOcr:
     """An engine that returns canned lines and records how it was asked."""
 
@@ -47,12 +53,16 @@ class FakeOcr:
         upside_down: list[TextLine] | None = None,
         full_frame: list[TextLine] | None = None,
         *,
+        corner: list[TextLine] | None = None,
         raise_: Exception | None = None,
+        corner_raise: Exception | None = None,
     ) -> None:
         self.upright = upright
         self.upside_down = upside_down or []
         self.full_frame = full_frame or []
+        self.corner = corner or []
         self.raise_ = raise_
+        self.corner_raise = corner_raise
         self.calls: list[tuple[bool, Box | None]] = []
         self.images: list[bytes] = []
 
@@ -63,6 +73,12 @@ class FakeOcr:
         self.images.append(image)
         if self.raise_ is not None:
             raise self.raise_
+        # Checked before the turn, so an upside-down corner read gets the
+        # corner lines and never the title's.
+        if region is not None and region.y >= 0.5:
+            if self.corner_raise is not None:
+                raise self.corner_raise
+            return self.corner
         if upside_down:
             return self.upside_down
         if region is None:

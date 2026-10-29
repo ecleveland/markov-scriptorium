@@ -1,12 +1,16 @@
 import type { Reading } from '../api'
+import { describePrinting } from '../components/printing'
 import { useArrowKeyList } from '../hooks/useArrowKeyList'
 
 interface Props {
   readings: Reading[]
-  onPick: (name: string) => void
+  onPick: (reading: Reading) => void
 }
 
-/** The names the scanner read off the card, best first, to pick one from. */
+/**
+ * The names the scanner read off the card, best first, to pick one from. A
+ * reading that pinned its printing names the set and number too.
+ */
 export function ReadingPicker({ readings, onPick }: Props) {
   const arrowKeys = useArrowKeyList()
   return (
@@ -22,9 +26,16 @@ export function ReadingPicker({ readings, onPick }: Props) {
           <button
             type="button"
             className="listbox__option"
-            onClick={() => onPick(reading.name)}
+            onClick={() => onPick(reading)}
           >
             {reading.name}{' '}
+            {reading.printing && (
+              <>
+                <span className="reading-picker__printing">
+                  {describePrinting(reading.printing)}
+                </span>{' '}
+              </>
+            )}
             <span className="reading-picker__confidence">
               {Math.round(reading.confidence * 100)}%
             </span>

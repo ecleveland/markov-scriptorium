@@ -113,6 +113,13 @@
   font-size: var(--text-sm);
 }
 
+/* The set and number, when the glass also read the card's corner. It sits
+   beside the name, and the confidence keeps to the far right. */
+.reading-picker__printing {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 .scan__session {
   margin-top: var(--space-6);
 }

@@ -1,10 +1,14 @@
-"""Scanner endpoints (VEG-230, VEG-231, ADR 0025, ADR 0026): read a card from a webcam still.
+"""Scanner endpoints (VEG-230, VEG-231, VEG-653, ADR 0025 to 0027): read a card from a still.
 
 The Scry a Card page captures a still with the browser camera and posts the
 image bytes here as the raw request body. The endpoint checks the image, reads
 its title bar with the OCR engine, and fuzzy matches the text against card
-names in the local catalog. The page turns a name into a folio with its
-printing picker, and always offers typing the name instead.
+names in the local catalog. After a confident name it reads the card's corner
+too, and when the collector number and set code name exactly one printing of
+a name it read, that reading carries the printing so the page can skip its
+printing picker. Otherwise the page turns a name into a folio with the
+picker, and always offers typing the name instead. A failure on the corner
+never costs the name. The readings still answer, with no printing.
 """
 
 from __future__ import annotations
@@ -12,14 +16,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+from contextlib import closing
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from scriptorium import catalog, db
 from scriptorium.scanner import pipeline
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import name_index
 from scriptorium.scanner.ocr import Ocr, OcrUnavailable, UnreadableImage
+from scriptorium.scanner.printing import CornerRead
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +85,71 @@ async def _read_capped(request: Request) -> bytearray:
     return body
 
 
-def _read_card(image: bytes, ocr: Ocr) -> list[pipeline.Reading]:
-    # name_index opens SQLite and may rebuild, so it runs on the worker thread
-    # with the OCR, never on the event loop.
-    return pipeline.recognize(image, ocr, name_index())
+def _pin(rows: list[dict[str, Any]], names: set[str]) -> dict[str, Any] | None:
+    kept = [row for row in rows if row["name"] in names]
+    # The corner reads "EN" on an English card. A printing in another
+    # language at the same pair is a different folio the user did not hold.
+    english = [row for row in kept if row["lang"] == "en"]
+    if english:
+        kept = english
+    return kept[0] if len(kept) == 1 else None
+
+
+def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> dict[str, Any] | None:
+    """The one printing at the corner's set and a number that a reading names.
+
+    The name read stays primary. Only readings at ACCEPT can take a printing,
+    so a misread corner cannot land on a doubtful name. A corner misread onto
+    another card's number pins nothing, and a pair that still holds several
+    printings of the name leaves the choice to the picker, and so does a
+    promo or List reprint that prints the same corner. The number candidates
+    are tried best first, and the first that pins wins.
+    """
+    names = {r.name for r in readings if r.confidence >= pipeline.ACCEPT}
+    if not names:
+        return None
+    try:
+        with closing(db.connect()) as conn:
+            for number in corner.collector_numbers:
+                rows = catalog.printings_by_number(conn, corner.set_code, number)
+                pinned = _pin(rows, names)
+                if pinned is None:
+                    continue
+                if catalog.has_sibling_printings(
+                    conn, pinned["name"], pinned["scryfall_id"], corner.set_code, number
+                ):
+                    # The corner matches this printing and one that prints
+                    # the same corner, so the picker has to ask.
+                    logger.debug(
+                        "corner %s %s matches %s and a sibling; no printing pinned",
+                        corner.set_code,
+                        number,
+                        pinned["scryfall_id"],
+                    )
+                    return None
+                return pinned
+    except sqlite3.Error:
+        # The name index read the catalog a moment ago, so this is most likely
+        # the nightly refresh's write lock. The picker still finds the printing.
+        logger.warning("the corner's printing lookup failed; no printing pinned", exc_info=True)
+    return None
+
+
+def _read_card(image: bytes, ocr: Ocr) -> list[dict[str, Any]]:
+    # name_index and the printing lookup open SQLite, and name_index may
+    # rebuild, so they run on the worker thread with the OCR, never on the
+    # event loop.
+    result = pipeline.recognize(image, ocr, name_index())
+    printing = None
+    if result.corner is not None:
+        printing = _pinned_printing(result.readings, result.corner)
+    pinned_name = printing["name"] if printing is not None else None
+    rows: list[dict[str, Any]] = []
+    for reading in result.readings:
+        # Reading names are unique, so at most one reading carries it.
+        attached = printing if reading.name == pinned_name else None
+        rows.append({"name": reading.name, "confidence": reading.confidence, "printing": attached})
+    return rows
 
 
 @router.post("/recognize")
@@ -102,9 +170,12 @@ async def recognize(
     engine cannot decode 400, and an engine that fails while reading, or a
     catalog that cannot be read, 503.
     Otherwise the answer is 200 with
-    ``{"readings": [{"name": str, "confidence": float}]}``. Readings are full
-    card names as ``cards.name`` holds them, best first, with confidence from
-    0 to 1, and the list is empty when nothing matched.
+    ``{"readings": [{"name": str, "confidence": float, "printing": dict | None}]}``.
+    Readings are full card names as ``cards.name`` holds them, best first,
+    with confidence from 0 to 1, and the list is empty when nothing matched.
+    ``printing`` is the catalog row the card's corner pinned, in the shape the
+    printing picker lists, on the one reading it belongs to. Every other
+    reading carries None.
     """
     media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if media_type not in ACCEPTED_TYPES:
@@ -127,6 +198,6 @@ async def recognize(
     except sqlite3.Error:
         # The nightly refresh can hold the catalog's write lock. The user can
         # retry or type the name, so this answers like a clouded glass.
-        logger.exception("the name index could not read the catalog")
+        logger.exception("the scanner could not read the catalog")
         raise HTTPException(status_code=503, detail=ENGINE_FAILED_DETAIL) from None
-    return {"readings": [{"name": r.name, "confidence": r.confidence} for r in readings]}
+    return {"readings": readings}

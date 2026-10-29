@@ -23,6 +23,8 @@ import type { Page, Route } from '@playwright/test'
 //
 // The scanner always reads the same two names off any frame, Sol Ring first,
 // so the Scrying Glass flow can run against the fake camera's test pattern.
+// Sol Ring comes with its Commander 2021 printing, as if the glass had read
+// the corner too. Lightning Bolt comes with none.
 //
 // Shapes mirror frontend/src/api.ts. Keep them in sync if the contracts change.
 
@@ -520,8 +522,8 @@ export async function stubApi(page: Page): Promise<void> {
     if (path === '/scanner/recognize' && method === 'POST') {
       return json(route, {
         readings: [
-          { name: 'Sol Ring', confidence: 0.91 },
-          { name: 'Lightning Bolt', confidence: 0.42 },
+          { name: 'Sol Ring', confidence: 0.91, printing: SOL_RING_PRINTING },
+          { name: 'Lightning Bolt', confidence: 0.42, printing: null },
         ],
       })
     }
