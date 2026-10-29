@@ -23,11 +23,12 @@ function device(deviceId: string, label: string): MediaDeviceInfo {
 }
 
 const selectDevice = vi.fn()
+const liveStream = {} as MediaStream
 
 function camera(overrides: Partial<Camera> = {}): Camera {
   return {
     status: 'live',
-    stream: null,
+    stream: liveStream,
     devices: [device('cam-desk', 'Desk camera')],
     deviceId: 'cam-desk',
     selectDevice,
@@ -48,6 +49,23 @@ afterEach(() => {
   URL.createObjectURL = originalCreate
   vi.clearAllMocks()
 })
+
+/**
+ * Let the video show a frame. jsdom has no requestVideoFrameCallback, so the
+ * component listens for timeupdate.
+ */
+function presentFrame() {
+  act(() => {
+    fireEvent.timeUpdate(screen.getByLabelText('Live camera'))
+  })
+}
+
+/** Render the active camera and let it paint its first frame. */
+function renderLive(onCapture = vi.fn()) {
+  const result = render(<CameraCapture active onCapture={onCapture} />)
+  presentFrame()
+  return result
+}
 
 describe('CameraCapture', () => {
   it('shows the live video and the card guide', () => {
@@ -131,13 +149,99 @@ describe('CameraCapture', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Lighting the glass…')
   })
 
+  it('holds Capture until the camera paints a frame', () => {
+    useCameraMock.mockReturnValue(camera())
+    render(<CameraCapture active onCapture={vi.fn()} />)
+
+    const button = screen.getByRole('button', { name: 'Capture' })
+    expect(button).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Lighting the glass…')
+
+    presentFrame()
+    expect(button).toBeEnabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('holds Capture again after the camera rests and wakes', () => {
+    useCameraMock.mockReturnValue(camera())
+    const { rerender } = renderLive()
+    const button = screen.getByRole('button', { name: 'Capture' })
+    expect(button).toBeEnabled()
+
+    rerender(<CameraCapture active={false} onCapture={vi.fn()} />)
+    rerender(<CameraCapture active onCapture={vi.fn()} />)
+    // The woken camera's first frame can be black.
+    expect(button).toBeDisabled()
+
+    presentFrame()
+    expect(button).toBeEnabled()
+  })
+
+  it('holds Capture after a camera switch', () => {
+    useCameraMock.mockReturnValue(camera())
+    const { rerender } = renderLive()
+    const button = screen.getByRole('button', { name: 'Capture' })
+    expect(button).toBeEnabled()
+
+    useCameraMock.mockReturnValue(camera({ stream: {} as MediaStream }))
+    rerender(<CameraCapture active onCapture={vi.fn()} />)
+    expect(button).toBeDisabled()
+
+    presentFrame()
+    expect(button).toBeEnabled()
+  })
+
+  it('uses requestVideoFrameCallback when the browser has it', () => {
+    // jsdom has none, which is why the other tests take the timeupdate path.
+    expect('requestVideoFrameCallback' in HTMLVideoElement.prototype).toBe(
+      false,
+    )
+    const request = vi.fn<HTMLVideoElement['requestVideoFrameCallback']>(
+      () => 7,
+    )
+    const cancel = vi.fn()
+    Object.assign(HTMLVideoElement.prototype, {
+      requestVideoFrameCallback: request,
+      cancelVideoFrameCallback: cancel,
+    })
+    try {
+      useCameraMock.mockReturnValue(camera())
+      const { unmount } = render(<CameraCapture active onCapture={vi.fn()} />)
+      const video = screen.getByLabelText('Live camera')
+      const button = screen.getByRole('button', { name: 'Capture' })
+
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(request.mock.contexts[0]).toBe(video)
+      // With the browser's own frame callback, the clock is not the signal.
+      presentFrame()
+      expect(button).toBeDisabled()
+
+      act(() => {
+        request.mock.calls[0][0](0, {} as VideoFrameCallbackMetadata)
+      })
+      expect(button).toBeEnabled()
+
+      unmount()
+      expect(cancel).toHaveBeenCalledWith(7)
+    } finally {
+      Reflect.deleteProperty(
+        HTMLVideoElement.prototype,
+        'requestVideoFrameCallback',
+      )
+      Reflect.deleteProperty(
+        HTMLVideoElement.prototype,
+        'cancelVideoFrameCallback',
+      )
+    }
+  })
+
   it('captures the frame, flipped when asked, and hands it up', async () => {
     const user = userEvent.setup()
     const blob = new Blob(['jpeg'], { type: 'image/jpeg' })
     captureMock.mockResolvedValue(blob)
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    render(<CameraCapture active onCapture={onCapture} />)
+    renderLive(onCapture)
 
     await user.click(screen.getByLabelText('Flip image'))
     await user.click(screen.getByRole('button', { name: 'Capture' }))
@@ -162,7 +266,7 @@ describe('CameraCapture', () => {
     )
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    render(<CameraCapture active onCapture={onCapture} />)
+    renderLive(onCapture)
 
     const button = screen.getByRole('button', { name: 'Capture' })
     fireEvent.click(button)
@@ -186,7 +290,7 @@ describe('CameraCapture', () => {
     )
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    const { unmount } = render(<CameraCapture active onCapture={onCapture} />)
+    const { unmount } = renderLive(onCapture)
 
     fireEvent.click(screen.getByRole('button', { name: 'Capture' }))
     unmount()
@@ -205,7 +309,7 @@ describe('CameraCapture', () => {
           'The chosen camera would not open, so the glass went back to the one before.',
       }),
     )
-    render(<CameraCapture active onCapture={vi.fn()} />)
+    renderLive()
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'The chosen camera would not open, so the glass went back to the one before.',
@@ -222,7 +326,7 @@ describe('CameraCapture', () => {
     )
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    render(<CameraCapture active onCapture={onCapture} />)
+    renderLive(onCapture)
 
     await user.click(screen.getByRole('button', { name: 'Capture' }))
 

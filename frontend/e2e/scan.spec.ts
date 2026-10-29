@@ -116,6 +116,7 @@ test('scries a card from the camera into the catalog', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Capture' })).toBeVisible()
   await expect.poll(() => trackEnabled(page)).toBe(true)
   await waitForFrame(page)
+  await expect(page.getByRole('button', { name: 'Capture' })).toBeEnabled()
   await page.getByRole('button', { name: 'Capture' }).click()
   await expect(page.getByAltText('The captured frame')).toBeVisible()
 })
