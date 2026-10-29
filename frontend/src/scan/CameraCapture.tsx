@@ -67,8 +67,10 @@ export function CameraCapture({ active, onCapture }: Props) {
       const id = video.requestVideoFrameCallback(() => setFresh(true))
       return () => video.cancelVideoFrameCallback(id)
     }
-    // Firefox before it had requestVideoFrameCallback, and jsdom, which has
-    // none. The clock moving means a frame has played.
+    // Firefox before 132, which had no requestVideoFrameCallback, and jsdom.
+    // A weaker signal: a stream's clock keeps moving while the track rests,
+    // so this fires about a quarter second after waking whether or not the
+    // camera has reopened. Good enough for a browser this old.
     const onFrame = () => setFresh(true)
     video.addEventListener('timeupdate', onFrame, { once: true })
     return () => video.removeEventListener('timeupdate', onFrame)
