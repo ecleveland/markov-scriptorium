@@ -15,19 +15,22 @@ const constraints = (deviceId?: string) => ({
   audio: false,
 })
 
-interface FakeTrack {
+type FakeTrack = EventTarget & {
   stop: ReturnType<typeof vi.fn>
   getSettings: () => { deviceId?: string }
   enabled: boolean
 }
 
-/** A stream with one video track reporting the device it came from. */
+/**
+ * A stream with one video track reporting the device it came from. The track
+ * is a real EventTarget, so a test can end it the way an unplug does.
+ */
 function fakeStream(deviceId: string | undefined) {
-  const track: FakeTrack = {
+  const track: FakeTrack = Object.assign(new EventTarget(), {
     stop: vi.fn(),
     getSettings: () => ({ deviceId }),
     enabled: true,
-  }
+  })
   const stream = {
     getTracks: () => [track],
     getVideoTracks: () => [track],
@@ -95,6 +98,13 @@ async function fireDeviceChange() {
   await act(async () => onDeviceChange?.())
 }
 
+/** End a track as the browser does when its camera is unplugged. */
+function endTrack(track: FakeTrack) {
+  act(() => {
+    track.dispatchEvent(new Event('ended'))
+  })
+}
+
 function domError(name: string): DOMException {
   return new DOMException(`${name} from the fake camera`, name)
 }
@@ -157,6 +167,177 @@ describe('useCamera', () => {
     expect(result.current.stream).toBe(stream)
     expect(result.current.deviceId).toBe('cam-desk')
     expect(result.current.status).toBe('live')
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it("drops the device id when the camera's id leaves the list", async () => {
+    const { stream } = fakeStream('cam-desk')
+    getUserMedia.mockResolvedValue(stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    expect(result.current.deviceId).toBe('cam-desk')
+
+    enumerateDevices.mockResolvedValue([BUILT_IN])
+    await fireDeviceChange()
+
+    await waitFor(() => expect(result.current.devices).toEqual([BUILT_IN]))
+    expect(result.current.deviceId).toBeNull()
+    // The id may only have rotated, so the stream is left alone.
+    expect(result.current.stream).toBe(stream)
+    expect(result.current.status).toBe('live')
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the device id when the list still has it', async () => {
+    getUserMedia.mockResolvedValue(fakeStream('cam-desk').stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    await fireDeviceChange()
+
+    expect(result.current.devices).toEqual([DESK, BUILT_IN])
+    expect(result.current.deviceId).toBe('cam-desk')
+  })
+
+  it('restores the device id when the camera is listed again', async () => {
+    getUserMedia.mockResolvedValue(fakeStream('cam-desk').stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    // A list read mid-change can briefly lack the live camera.
+    enumerateDevices.mockResolvedValue([])
+    await fireDeviceChange()
+    await waitFor(() => expect(result.current.deviceId).toBeNull())
+
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+    await fireDeviceChange()
+
+    await waitFor(() => expect(result.current.deviceId).toBe('cam-desk'))
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the picker on the pending camera when the list changes mid-switch', async () => {
+    getUserMedia
+      .mockResolvedValueOnce(fakeStream('cam-desk').stream)
+      .mockReturnValueOnce(new Promise<MediaStream>(() => {}))
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    act(() => result.current.selectDevice('cam-built-in'))
+
+    enumerateDevices.mockResolvedValue([BUILT_IN])
+    await fireDeviceChange()
+
+    await waitFor(() => expect(result.current.devices).toEqual([BUILT_IN]))
+    expect(result.current.status).toBe('starting')
+    expect(result.current.deviceId).toBe('cam-built-in')
+  })
+
+  it('reopens the default camera when the live one is unplugged', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    localStorage.setItem(STORAGE_KEY, 'cam-desk')
+    const first = fakeStream('cam-desk')
+    const second = fakeStream('cam-built-in')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockResolvedValueOnce(second.stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    endTrack(first.track)
+
+    expect(getUserMedia).toHaveBeenLastCalledWith(constraints())
+    await waitFor(() => expect(result.current.stream).toBe(second.stream))
+    expect(result.current.status).toBe('live')
+    expect(result.current.deviceId).toBe('cam-built-in')
+    expect(result.current.error).toBe(
+      'The camera was unplugged, so the glass went to the one the browser offers.',
+    )
+    // A camera that is gone is not tried first next visit.
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('reports it when no camera will open after an unplug', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const first = fakeStream('cam-desk')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockRejectedValueOnce(domError('NotFoundError'))
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    endTrack(first.track)
+
+    await waitFor(() => expect(result.current.status).toBe('error'))
+    expect(result.current.stream).toBeNull()
+    expect(result.current.error).toBe(
+      'No camera was found. Plug one in and reload.',
+    )
+  })
+
+  it('falls back to the default when a switch fails during an unplug reopen', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const first = fakeStream('cam-desk')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockReturnValueOnce(new Promise<MediaStream>(() => {}))
+      .mockRejectedValueOnce(domError('NotReadableError'))
+      .mockResolvedValueOnce(fakeStream('cam-built-in').stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    endTrack(first.track)
+    act(() => result.current.selectDevice('cam-2'))
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(4))
+    // The unplugged camera is gone, so the fallback is the default.
+    expect(getUserMedia).toHaveBeenLastCalledWith(constraints())
+  })
+
+  it('ignores an ended event from a stream it already replaced', async () => {
+    const first = fakeStream('cam-desk')
+    const second = fakeStream('cam-built-in')
+    getUserMedia
+      .mockResolvedValueOnce(first.stream)
+      .mockResolvedValueOnce(second.stream)
+    enumerateDevices.mockResolvedValue([DESK, BUILT_IN])
+
+    const { result } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+    act(() => result.current.selectDevice('cam-built-in'))
+    await waitFor(() => expect(result.current.stream).toBe(second.stream))
+
+    endTrack(first.track)
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    expect(result.current.stream).toBe(second.stream)
+    expect(result.current.status).toBe('live')
+  })
+
+  it('ignores an ended event after unmount', async () => {
+    const { stream, track } = fakeStream('cam-desk')
+    getUserMedia.mockResolvedValue(stream)
+
+    const { result, unmount } = renderHook(() => useCamera())
+    await waitFor(() => expect(result.current.status).toBe('live'))
+
+    unmount()
+    endTrack(track)
+
     expect(getUserMedia).toHaveBeenCalledTimes(1)
   })
 
