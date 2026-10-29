@@ -124,6 +124,40 @@ describe('CameraCapture', () => {
     expect(selectDevice).toHaveBeenCalledWith('cam-2')
   })
 
+  it('asks for a camera when the live one is not in the picker', async () => {
+    const user = userEvent.setup()
+    useCameraMock.mockReturnValue(
+      camera({
+        devices: [device('cam-desk', 'Desk camera'), device('cam-2', '')],
+        deviceId: null,
+      }),
+    )
+    render(<CameraCapture active onCapture={vi.fn()} />)
+
+    const picker = screen.getByLabelText('Camera')
+    // The first camera is not shown as chosen when it is not the live one.
+    expect(picker).toHaveValue('')
+    expect(
+      screen.getByRole('option', { name: 'Choose a camera' }),
+    ).toBeDisabled()
+
+    await user.selectOptions(picker, 'cam-2')
+    expect(selectDevice).toHaveBeenCalledWith('cam-2')
+  })
+
+  it('offers no placeholder when the live camera is listed', () => {
+    useCameraMock.mockReturnValue(
+      camera({
+        devices: [device('cam-desk', 'Desk camera'), device('cam-2', '')],
+      }),
+    )
+    render(<CameraCapture active onCapture={vi.fn()} />)
+
+    expect(
+      screen.queryByRole('option', { name: 'Choose a camera' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('turns the video over when Flip image is ticked', async () => {
     const user = userEvent.setup()
     useCameraMock.mockReturnValue(camera())

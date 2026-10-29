@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export type CameraStatus = 'idle' | 'starting' | 'live' | 'error'
 
@@ -20,6 +20,9 @@ const STORAGE_KEY = 'scriptorium.scan.deviceId'
 
 const SWITCH_FAILED =
   'The chosen camera would not open, so the glass went back to the one before.'
+
+const UNPLUGGED =
+  'The camera was unplugged, so the glass went to the one the browser offers.'
 
 const UNSUPPORTED =
   'This browser cannot open a camera here. The scanner needs a secure context such as localhost.'
@@ -140,7 +143,8 @@ function openedDevice(
  * cameras once permission is granted and again whenever one is plugged in or
  * out, and switches between them on request. Every track is stopped on
  * unmount and whenever a new stream replaces the old one, so the camera light
- * goes out when the page is left.
+ * goes out when the page is left. When the live camera is unplugged its
+ * track ends, and the hook opens the browser's default camera in its place.
  *
  * While `active` is false the camera rests: the video track is disabled, so
  * it sends black frames, but the stream stays open and comes back without a
@@ -186,6 +190,66 @@ export function useCamera({
     }))
   }, [])
 
+  // Declared together because each calls the other: an adopted stream is
+  // watched, and a watched stream that ends adopts its replacement.
+  const { adopt, watch } = useMemo(() => {
+    /** Adopt a stream if its request is still the latest, else stop it. */
+    function adopt(
+      request: number,
+      stream: MediaStream,
+      requested: string | null,
+      error: string | null,
+    ) {
+      if (request !== generation.current) {
+        stop(stream)
+        return
+      }
+      streamRef.current = stream
+      deviceRef.current = openedDevice(stream, requested)
+      setState((prev) => ({
+        ...prev,
+        status: 'live',
+        stream,
+        deviceId: deviceRef.current,
+        error,
+      }))
+      watch(stream, request)
+    }
+
+    /**
+     * Reopen the default camera when this stream's track ends. A track the
+     * hook stops itself never fires `ended`, so this only answers an unplug
+     * or the system taking the camera away. The listener is never removed:
+     * once its request is no longer the latest, the event does nothing.
+     */
+    function watch(stream: MediaStream, request: number) {
+      const track = stream.getVideoTracks()[0]
+      if (!track) return
+      track.addEventListener('ended', () => {
+        if (request !== generation.current) return
+        console.warn('The camera went away')
+        if (recall() === deviceRef.current) forget()
+        const next = ++generation.current
+        stop(streamRef.current)
+        streamRef.current = null
+        setState((prev) => ({
+          ...prev,
+          status: 'starting',
+          stream: null,
+          deviceId: null,
+          error: null,
+        }))
+        open(null)
+          .then((replacement) => adopt(next, replacement, null, UNPLUGGED))
+          .catch((err) => {
+            if (next === generation.current) fail(err)
+          })
+      })
+    }
+
+    return { adopt, watch }
+  }, [fail])
+
   useEffect(() => {
     if (!supported()) return
     mountedRef.current = true
@@ -193,7 +257,19 @@ export function useCamera({
     // list is read again. The live stream is left as it is.
     const relist = async () => {
       const devices = await listCameras()
-      if (mountedRef.current) setState((prev) => ({ ...prev, devices }))
+      if (!mountedRef.current) return
+      // An id missing from the list leaves the picker with nothing to show
+      // as chosen. The stream stays: the camera may still be live under an
+      // id the browser rotated, and if it is really gone its track ends and
+      // the ended handler reopens.
+      const gone =
+        deviceRef.current !== null &&
+        !devices.some((d) => d.deviceId === deviceRef.current)
+      setState((prev) => ({
+        ...prev,
+        devices,
+        ...(gone ? { deviceId: null } : {}),
+      }))
     }
     // Held here so cleanup unsubscribes from the object it subscribed to.
     const media = navigator.mediaDevices
@@ -217,6 +293,7 @@ export function useCamera({
           deviceId: deviceRef.current,
           error: null,
         })
+        watch(stream, request)
       })
       .catch((err) => {
         if (request === generation.current) fail(err)
@@ -229,7 +306,7 @@ export function useCamera({
       stop(streamRef.current)
       streamRef.current = null
     }
-  }, [fail])
+  }, [fail, watch])
 
   const selectDevice = useCallback(
     (id: string) => {
@@ -246,32 +323,11 @@ export function useCamera({
         error: null,
       }))
 
-      /** Adopt a stream if this is still the latest request, else stop it. */
-      const adopt = (
-        stream: MediaStream,
-        requested: string | null,
-        error: string | null,
-      ) => {
-        if (request !== generation.current) {
-          stop(stream)
-          return
-        }
-        streamRef.current = stream
-        deviceRef.current = openedDevice(stream, requested)
-        setState((prev) => ({
-          ...prev,
-          status: 'live',
-          stream,
-          deviceId: deviceRef.current,
-          error,
-        }))
-      }
-
       open(id)
         .then((stream) => {
           // Only a camera that opened is worth opening next visit.
           if (request === generation.current) remember(id)
-          adopt(stream, id, null)
+          adopt(request, stream, id, null)
         })
         .catch(async (err) => {
           if (request !== generation.current) return
@@ -279,13 +335,13 @@ export function useCamera({
           // The old stream is already stopped, so go back to that camera
           // rather than leave the page with no camera at all.
           try {
-            adopt(await open(previous), previous, SWITCH_FAILED)
+            adopt(request, await open(previous), previous, SWITCH_FAILED)
           } catch (reopenErr) {
             if (request === generation.current) fail(reopenErr)
           }
         })
     },
-    [fail],
+    [adopt, fail],
   )
 
   // Keyed on the stream too, so a stream that opens or is switched to while

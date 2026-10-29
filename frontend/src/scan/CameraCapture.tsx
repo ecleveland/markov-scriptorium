@@ -135,6 +135,11 @@ export function CameraCapture({ active, onCapture }: Props) {
               value={deviceId ?? ''}
               onChange={(event) => selectDevice(event.target.value)}
             >
+              {deviceId === null && (
+                <option value="" disabled>
+                  Choose a camera
+                </option>
+              )}
               {devices.map((device, index) => (
                 <option key={device.deviceId} value={device.deviceId}>
                   {device.label || `Camera ${index + 1}`}
