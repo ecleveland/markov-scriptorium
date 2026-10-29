@@ -47,10 +47,11 @@ _SET_CODE = re.compile(r"(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,6}")
 _LANGUAGE = "EN"
 _DOTS = "•·"
 _SET_LINE_TOKENS = re.compile(rf"[{_DOTS}]|[^\s{_DOTS}]+")
-# The collector number and set line sit on the card's left half. The power
-# and toughness box and the copyright line sit on the right, so a line centred
-# at or right of the frame's middle is never read. The card is centred on the
-# guide, so the frame's middle is the card's.
+# The collector number and set line start on the card's left half. The power
+# and toughness box and the copyright line start right of its middle, so a
+# line starting at or right of the frame's middle is never read. The left
+# edge, not the centre, because the set line runs on into the artist's name
+# and passes the middle on a card held right of the guide.
 _LEFT_OF = 0.5
 # The copyright line ("™ & © 2024 Wizards of the Coast") sits in the same band
 # on the right, and its year looks like a collector number. Its place on the
@@ -105,43 +106,70 @@ def _number(digits: str, suffix: str = "", *, anchored: bool = False) -> _Number
     return _Number(digits, suffix.lower(), anchored)
 
 
-def _number_in(token: str, *, fold: bool) -> _Number | None:
+def _numbers(digits: str, suffix: str, *, anchored: bool, fold: bool) -> list[_Number]:
+    """The number with its suffix, then with a capital suffix folded to a digit.
+
+    A trailing capital the digit map knows, as in "012S", is a suffix more
+    often than a misread 5, so the suffix reading comes first.
+    """
+    found = _number(digits, suffix, anchored=anchored)
+    if found is None:
+        return []
+    numbers = [found]
+    if fold and suffix.isupper() and suffix.translate(_DIGIT_FOLDS).isdigit():
+        folded = _number(digits + suffix.translate(_DIGIT_FOLDS), anchored=anchored)
+        if folded is not None and len(folded.digits) <= 4:
+            numbers.append(folded)
+    return numbers
+
+
+def _number_in(token: str, *, fold: bool, glued_rarity: bool) -> list[_Number]:
     match = _NUMBER_TOKEN.fullmatch(token)
-    if match is None:
+    if match is None and glued_rarity:
         glued = _RARITY_GLUED.fullmatch(token)
         if glued is not None:
-            return _number(glued.group(1), anchored=True)
+            return _numbers(glued.group(1), "", anchored=True, fold=False)
     if match is None and fold and any(ch.isdigit() for ch in token):
         match = _NUMBER_TOKEN.fullmatch(token.translate(_DIGIT_FOLDS))
     if match is None:
-        return None
+        return []
     if match.group(1) is not None:
-        return _number(match.group(1), match.group(2))
-    return _number(match.group(3), anchored=True)
+        return _numbers(match.group(1), match.group(2), anchored=False, fold=fold)
+    return _numbers(match.group(3), "", anchored=True, fold=False)
 
 
-def _number_on(text: str, *, set_line: bool) -> _Number | None:
-    """The collector number on one line, if it has one."""
+def _is_rarity(token: str) -> bool:
+    return len(token) == 1 and token.isupper()
+
+
+def _number_on(text: str, *, set_line: bool) -> list[_Number]:
+    """The collector number on one line, best reading first, if it has one."""
     # The whole line first and as read, so a rarity letter the digit map would
     # turn into a digit, such as the S in "S0123", is still taken as a letter.
     whole = _NUMBER_LINE.fullmatch(text)
     if whole is not None:
         anchored = whole.group(1) is not None or whole.group(4) is not None
-        return _number(whole.group(2), whole.group(3), anchored=anchored)
+        return _numbers(whole.group(2), whole.group(3), anchored=anchored, fold=not set_line)
     tokens = text.split()
-    best: _Number | None = None
-    for token in tokens:
+    best: list[_Number] = []
+    for i, token in enumerate(tokens):
         # The set line's other tokens are artists and set symbols. Folded,
-        # "SO1" there would read as a number.
-        found = _number_in(token, fold=not set_line)
+        # "SO1" there would read as a number. A capital glued to the number is
+        # the rarity letter only when the rarity has no token of its own, so
+        # in "C I023" the I is a misread 1.
+        found = _number_in(
+            token,
+            fold=not set_line,
+            glued_rarity=i == 0 or not _is_rarity(tokens[i - 1]),
+        )
         # "2 0002" is the rarity letter misread as a digit, so the longest
         # run is the number. The first wins a tie.
-        if found is not None and (best is None or len(found.digits) > len(best.digits)):
+        if found and (not best or len(found[0].digits) > len(best[0].digits)):
             best = found
     # A number read beside another token sat beside its rarity letter, however
     # misread. Alone it only counts as anchored with its set size.
-    if best is not None and (len(tokens) > 1 or "/" in text):
-        best = _Number(best.digits, best.suffix, anchored=True)
+    if len(tokens) > 1 or "/" in text:
+        best = [_Number(n.digits, n.suffix, anchored=True) for n in best]
     return best
 
 
@@ -186,15 +214,13 @@ def parse_corner(lines: list[TextLine]) -> CornerRead | None:
     numbers: list[_Number] = []
     set_code: str | None = None
     for ln in sorted(lines, key=lambda ln: (ln.box.y, ln.box.x)):
-        if ln.box.x + ln.box.width / 2 >= _LEFT_OF:
+        if ln.box.x >= _LEFT_OF:
             continue
         code, rest = _split_set_code(ln.text)
         if set_code is None:
             set_code = code
         if not _COPYRIGHT.search(rest):
-            found = _number_on(rest, set_line=_is_set_line(rest))
-            if found is not None:
-                numbers.append(found)
+            numbers.extend(_number_on(rest, set_line=_is_set_line(rest)))
     if not numbers or set_code is None:
         return None
     # sorted is stable, so lines of one rank keep their place on the card.

@@ -82,7 +82,20 @@ def test_letters_misread_inside_the_number_turn_back_into_digits() -> None:
 
 
 def test_a_trailing_capital_is_a_suffix_before_it_is_a_misread_digit() -> None:
-    assert _parse("C 01S", "FRA • EN") == CornerRead(("1s", "01s"), "fra")
+    # The folded reading follows the suffix one, in case the S was a 5.
+    assert _parse("C 01S", "FRA • EN") == CornerRead(("1s", "15", "01s"), "fra")
+    assert _parse("C 012S", "FRA • EN") == CornerRead(("12s", "125", "012s"), "fra")
+
+
+def test_a_trailing_capital_no_digit_resembles_stays_a_suffix_alone() -> None:
+    assert _parse("C 012A", "FRA • EN") == CornerRead(("12a", "012a"), "fra")
+
+
+def test_a_misread_leading_digit_beside_its_own_rarity_is_folded_back() -> None:
+    # The rarity letter has its own token, so the capital glued to the
+    # number is a misread digit, not a second rarity letter.
+    assert _parse("C I023", "FRA • EN") == CornerRead(("1023",), "fra")
+    assert _parse("C S23", "FRA • EN") == CornerRead(("523",), "fra")
 
 
 def test_a_word_with_no_digit_is_never_read_as_a_number() -> None:
@@ -164,8 +177,6 @@ def _right(text: str, y: float) -> TextLine:
 
 def test_lines_right_of_centre_never_give_the_number() -> None:
     lines = [
-        # Rules text is set across the middle of the card.
-        corner_line("a 1/1 white Soldier", 0.80, x=0.36, width=0.3),
         _right("2/2", 0.82),
         _right("4/4", 0.84),
         corner_line("C 0123", 0.88),
@@ -179,8 +190,17 @@ def test_a_set_size_shape_on_the_left_ranks_after_the_number_above_it() -> None:
     assert parse_corner(lines) == CornerRead(("123", "2", "0123"), "mom")
 
 
-def test_a_line_centred_on_the_middle_is_right_of_centre() -> None:
-    lines = [corner_line("C 0002", 0.88, x=0.45, width=0.1), corner_line("FRA • EN", 0.91)]
+def test_a_long_line_starting_on_the_left_is_kept() -> None:
+    # On a card held right of the guide the set line runs past the middle.
+    lines = [
+        corner_line("C 0002", 0.88, x=0.25, width=0.5),
+        corner_line("FRA • EN Randy Gallegos", 0.91, x=0.25, width=0.5),
+    ]
+    assert parse_corner(lines) == CornerRead(("2", "0002"), "fra")
+
+
+def test_a_line_starting_right_of_the_middle_is_dropped() -> None:
+    lines = [corner_line("C 0002", 0.88, x=0.55), corner_line("FRA • EN", 0.91)]
     assert parse_corner(lines) is None
 
 

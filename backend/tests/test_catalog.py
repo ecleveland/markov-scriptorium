@@ -461,7 +461,50 @@ def test_a_printing_is_not_its_own_sibling(catalog_conn: sqlite3.Connection) -> 
 
 def test_wildcards_in_the_number_match_only_themselves(catalog_conn: sqlite3.Connection) -> None:
     _insert_card(catalog_conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
-    _insert_card(catalog_conn, "ring-x", "Sol Ring", set_code="pc21", collector_number="2634")
+    _insert_card(catalog_conn, "ring-x", "Sol Ring", set_code="pc21", collector_number="263a")
     catalog_conn.commit()
-    assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", "26_")
-    assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", "2%")
+    for number in ("26*", "26?", "26[3]", "2*", "26_", "2%"):
+        assert not _siblings(catalog_conn, "Sol Ring", "ring", "c21", number), number
+
+
+@pytest.mark.parametrize(
+    ("printing", "other"),
+    [
+        # A longer number elsewhere is another card, not a variant.
+        (("fdn", "275", "Island"), ("sld", "2755")),
+        (("m21", "269", "Mountain"), ("bfz", "269a")),
+        (("cmm", "410", "Sol Ring"), ("ltc", "410z")),
+        (("blb", "1", "Banishing Light"), ("khc", "19")),
+    ],
+)
+def test_a_longer_number_in_another_set_is_not_a_sibling(
+    catalog_conn: sqlite3.Connection,
+    printing: tuple[str, str, str],
+    other: tuple[str, str],
+) -> None:
+    code, number, name = printing
+    _insert_card(catalog_conn, "this", name, set_code=code, collector_number=number)
+    _insert_card(catalog_conn, "that", name, set_code=other[0], collector_number=other[1])
+    catalog_conn.commit()
+    assert not _siblings(catalog_conn, name, "this", code, number)
+
+
+@pytest.mark.parametrize(
+    ("printing", "other"),
+    [
+        (("fdn", "184", "Rune-Scarred Demon"), ("pfdn", "184s")),
+        (("ktk", "86", "Rite of the Serpent"), ("ktk", "86y")),
+        (("fin", "232", "Kuja"), ("fin", "232†")),
+        (("m21", "152", "Lightning Bolt"), ("plst", "M21-152")),
+    ],
+)
+def test_a_variant_printing_the_same_corner_is_a_sibling(
+    catalog_conn: sqlite3.Connection,
+    printing: tuple[str, str, str],
+    other: tuple[str, str],
+) -> None:
+    code, number, name = printing
+    _insert_card(catalog_conn, "this", name, set_code=code, collector_number=number)
+    _insert_card(catalog_conn, "that", name, set_code=other[0], collector_number=other[1])
+    catalog_conn.commit()
+    assert _siblings(catalog_conn, name, "this", code, number)

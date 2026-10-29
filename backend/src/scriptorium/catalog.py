@@ -64,6 +64,11 @@ def _escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _escape_glob(term: str) -> str:
+    """Escape GLOB metacharacters so a number containing * ? or [ matches literally."""
+    return "".join(f"[{ch}]" if ch in "*?[" else ch for ch in term)
+
+
 def get_card(conn: sqlite3.Connection, scryfall_id: str) -> dict[str, Any] | None:
     """Return one printing by Scryfall ID with its faces, or ``None`` if absent."""
     row = conn.execute("SELECT * FROM cards WHERE scryfall_id = ?", (scryfall_id,)).fetchone()
@@ -147,22 +152,25 @@ def has_sibling_printings(
 
     The scanner pins a printing from the set code and number on a card's
     corner (VEG-653, ADR 0027), but some printings print another printing's
-    corner. Prerelease promos print the base corner and are stored as
-    "152s" in a promo set, star variants as "226★", and The List as plst
-    "M21-152". So a printing of the same name at the number plus one more
-    character, or at "<SET>-<number>", means the corner cannot tell them
-    apart.
+    corner. Prerelease promos print the base corner and are stored as "184s"
+    in the "p" promo set, variants in the same set as "86y", "226★" or
+    "232†", and The List as plst "M21-152". So a printing of the same name
+    counts when it is in the read set or its promo set at the number plus
+    one character that is not a digit, or anywhere at "<SET>-<number>". A
+    digit would make it another card's number, as SLD's Island 2755 is, and
+    a suffix in another set is another set's card, as BFZ's Mountain 269a is.
 
     The name compares NOCASE so the search rides idx_cards_name, which is
     NOCASE. A plain compare would scan every card.
     """
-    pattern = _escape_like(collector_number) + "_"
-    plst_number = f"{set_code.upper()}-{collector_number}"
+    code = set_code.lower()
+    pattern = _escape_glob(collector_number) + "[^0-9]"
+    plst_number = f"{code.upper()}-{collector_number}"
     row = conn.execute(
         "SELECT COUNT(*) FROM cards "
         "WHERE name = ? COLLATE NOCASE AND scryfall_id <> ? "
-        "AND (collector_number LIKE ? ESCAPE '\\' OR collector_number = ?)",
-        (name, scryfall_id, pattern, plst_number),
+        "AND ((set_code IN (?, ?) AND collector_number GLOB ?) OR collector_number = ?)",
+        (name, scryfall_id, code, f"p{code}", pattern, plst_number),
     ).fetchone()
     return bool(row[0])
 

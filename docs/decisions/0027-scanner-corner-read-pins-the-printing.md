@@ -48,10 +48,12 @@ What we verified about Vision on the corner:
 
 **Parse rules.**
 
-- Lines are sorted by position, and the parser reads only lines on the card's
-  left half, with their centre left of the frame's centre. The power and
-  toughness box and the copyright line sit on the right, and "2/2" would
-  otherwise parse as a collector number with a set size.
+- Lines are sorted by position, and the parser reads only lines whose left
+  edge is left of the frame's centre. The power and toughness box and the
+  copyright line start right of centre, and "2/2" would otherwise parse as a
+  collector number with a set size. The rule uses the left edge and not the
+  centre because the set line often runs into the artist's name, and on a card
+  held a little off the guide its centre crosses the middle.
 - The parser collects up to three collector number candidates in preference
   order. Lines with a rarity letter or a set size come first, then bare digit
   lines. The lookup tries each candidate with the set code until one pins.
@@ -92,11 +94,15 @@ can never override a good name read. Only readings at or above the accept bar
 are candidates. A misread corner that happens to match a doubtful lower name
 pins nothing.
 
-The pin is also refused when the catalog holds a sibling printing of the same
-name whose number is the read number plus one character, or the List form
-"SET-number". The List reprints, prerelease promos and star variants print
-the base card's corner. A silent pin on the regular printing would break the
-rule that a card is its printing. Those cards go through the picker.
+The pin is also refused when the catalog holds a sibling printing. A sibling
+is a printing of the same name in the read set or its promo set, "p" plus the
+code, whose number is the read number plus one non-digit character. Any
+printing at the List form "SET-number" is a sibling too. The List reprints,
+prerelease promos and star variants print the base card's corner. A silent pin
+on the regular printing would break the rule that a card is its printing.
+Those cards go through the picker. The scope matters. Without it a quarter of
+basic lands could never pin, because some other set holds the same land at a
+longer or suffixed number.
 
 **The contract grows one field.** Every reading now carries `printing`. It is
 either null or the full printing object in the shape `/cards/search` returns:

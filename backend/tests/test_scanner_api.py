@@ -249,6 +249,16 @@ def test_a_promo_printed_with_the_same_corner_pins_nothing() -> None:
     assert all(r["printing"] is None for r in readings)
 
 
+def test_a_longer_number_in_another_set_still_lets_the_corner_pin() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "island-fdn", "Island", set_code="fdn", collector_number="275")
+        insert_card(conn, "island-sld", "Island", set_code="sld", collector_number="2755")
+        conn.commit()
+    corner = [corner_line("L 0275", 0.93), corner_line("FDN • EN", 0.95)]
+    readings = _readings_for("Island", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "island-fdn"
+
+
 def test_a_list_reprint_printed_with_the_same_corner_pins_nothing() -> None:
     with closing(db.connect()) as conn:
         insert_card(conn, "bolt-m21", "Lightning Bolt", set_code="m21", collector_number="152")
