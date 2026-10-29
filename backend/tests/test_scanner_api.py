@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import sys
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -393,6 +394,18 @@ def test_a_misconfigured_engine_stops_startup(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("SCRIPTORIUM_OCR", "bogus")
     with pytest.raises(OcrUnavailable, match="bogus"), TestClient(app):
         pass
+
+
+@pytest.mark.usefixtures("fresh_selection")
+def test_startup_off_macos_never_probes_a_real_tesseract(monkeypatch: pytest.MonkeyPatch) -> None:
+    # On Linux with tesseract installed, auto would probe the real binary at
+    # startup. The conftest hides it outside the tesseract marker, so the app
+    # starts with no engine.
+    monkeypatch.delenv("SCRIPTORIUM_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    with TestClient(app) as started:
+        assert started.get("/").status_code == 200
+    assert select_engine() is None
 
 
 @pytest.mark.usefixtures("fresh_selection")

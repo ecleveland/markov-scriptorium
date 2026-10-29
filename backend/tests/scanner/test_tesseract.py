@@ -526,6 +526,14 @@ def test_any_colour_mode_reaches_tesseract_as_a_greyscale_png(
     assert sent.mode == "L"
 
 
+def test_a_mode_pillow_cannot_grey_is_unreadable_before_any_run(fake_run: FakeRun) -> None:
+    # Pillow decodes a LAB TIFF but cannot convert LAB to L.
+    lab = encoded(Image.new("LAB", (8, 8)), "TIFF")
+    with pytest.raises(UnreadableImage):
+        TesseractOcr(BINARY).read_lines(lab)
+    assert fake_run.calls == []
+
+
 def test_an_image_over_the_pixel_cap_is_unreadable_before_any_run(
     fake_run: FakeRun, monkeypatch: pytest.MonkeyPatch
 ) -> None:

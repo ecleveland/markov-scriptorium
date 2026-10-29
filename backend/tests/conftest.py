@@ -32,11 +32,13 @@ def _no_real_vision(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPa
 
 @pytest.fixture(autouse=True)
 def _no_real_tesseract(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail any test that runs the real Tesseract binary without the tesseract marker (VEG-649).
+    """Keep unmarked tests off the real Tesseract binary (VEG-649).
 
-    The unit tests drive ``read_lines`` and ``probe`` with ``subprocess.run``
-    faked, so the guard refuses only a call that would reach the real one. A
-    real run depends on what the machine has installed.
+    A real run depends on what the machine has installed. The lookup finds
+    nothing, so ``auto`` on Linux starts the app with no engine and never
+    probes. A direct ``read_lines`` or ``probe`` fails, unless the test has
+    faked ``subprocess.run`` as the unit tests do. Tests that import
+    ``find_tesseract`` by name still reach the real one.
     """
     if request.node.get_closest_marker("tesseract") is not None:
         return
@@ -65,3 +67,6 @@ def _no_real_tesseract(request: pytest.FixtureRequest, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(tesseract.TesseractOcr, "read_lines", guarded_read)
     monkeypatch.setattr(tesseract, "probe", guarded_probe)
+    # An AssertionError from the probe is not OcrUnavailable, so it would stop
+    # startup in every lifespan test on a Linux machine with tesseract.
+    monkeypatch.setattr(tesseract, "find_tesseract", lambda: None)

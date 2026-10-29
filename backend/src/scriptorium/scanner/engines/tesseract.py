@@ -118,7 +118,11 @@ def prepare(crop: Image.Image) -> Prepared:
     # Tesseract greys the image itself. Greying first keeps autocontrast from
     # stretching each colour channel apart, and makes the resize a third of
     # the work.
-    crop = crop.convert("L")
+    try:
+        crop = crop.convert("L")
+    except (OSError, ValueError) as exc:
+        # Pillow decodes some modes it cannot convert, LAB among them.
+        raise UnreadableImage(f"Pillow could not grey a {crop.mode} image: {exc}") from exc
     scale = min(_MAX_SCALE, max(1.0, _TARGET_HEIGHT / crop.height))
     if scale > 1.0:
         size = (round(crop.width * scale), round(crop.height * scale))
