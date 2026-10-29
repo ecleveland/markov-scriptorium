@@ -76,7 +76,20 @@ test('scries a card from the camera into the catalog', async ({ page }) => {
   const body = request.postDataBuffer()
   expect(body?.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]))
 
+  // The reading names its printing, so the glass goes straight to the form.
   await page.getByRole('button', { name: /Sol Ring.*91%/ }).click()
+  await expect(
+    page.getByRole('heading', { level: 2, name: /Sol Ring.*Commander 2021/ }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: /Choose a printing/ }),
+  ).toHaveCount(0)
+
+  // The picker is still a click away.
+  await page.getByRole('button', { name: 'Change printing' }).click()
+  await expect(
+    page.getByRole('heading', { name: /Choose a printing of “Sol Ring”/ }),
+  ).toBeVisible()
   await page.getByRole('button', { name: /Commander 2021/ }).click()
   await page.getByRole('button', { name: 'Inscribe' }).click()
 

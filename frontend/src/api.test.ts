@@ -554,15 +554,30 @@ describe('object error details', () => {
 
 describe('recognizeCard', () => {
   it('posts the image bytes with their own type and returns the readings', async () => {
+    // A reading carries its printing when the glass also read the corner.
     const readings = [
-      { name: 'Sol Ring', confidence: 0.91 },
-      { name: 'Lightning Bolt', confidence: 0.42 },
+      {
+        name: 'Sol Ring',
+        confidence: 0.91,
+        printing: printing({
+          scryfall_id: 'sol-ring-c21',
+          name: 'Sol Ring',
+          set_code: 'c21',
+          set_name: 'Commander 2021',
+          collector_number: '263',
+        }),
+      },
+      { name: 'Lightning Bolt', confidence: 0.42, printing: null },
     ]
     const fetchMock = mockFetch({ readings })
     const image = new Blob(['jpeg bytes'], { type: 'image/jpeg' })
     const controller = new AbortController()
 
-    expect(await recognizeCard(image, controller.signal)).toEqual({ readings })
+    const response = await recognizeCard(image, controller.signal)
+    expect(response).toEqual({ readings })
+    expect(
+      response.readings.map((reading) => reading.printing?.set_code),
+    ).toEqual(['c21', undefined])
     expect(fetchMock).toHaveBeenCalledWith('/api/scanner/recognize', {
       method: 'POST',
       headers: { 'Content-Type': 'image/jpeg' },

@@ -195,13 +195,25 @@ export function ScanPage() {
               ) : step.readings.length > 0 ? (
                 <ReadingPicker
                   readings={step.readings}
-                  onPick={(name) =>
-                    setStep({
-                      kind: 'name',
-                      still: step.still,
-                      name,
-                      from: step,
-                    })
+                  onPick={(reading) =>
+                    // A reading that pinned its printing skips the picker.
+                    // "Change printing" on the form still opens it.
+                    setStep(
+                      reading.printing
+                        ? {
+                            kind: 'printing',
+                            still: step.still,
+                            name: reading.name,
+                            from: step,
+                            printing: reading.printing,
+                          }
+                        : {
+                            kind: 'name',
+                            still: step.still,
+                            name: reading.name,
+                            from: step,
+                          },
+                    )
                   }
                 />
               ) : (
