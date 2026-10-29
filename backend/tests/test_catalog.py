@@ -345,3 +345,60 @@ def test_printings_by_name_front_face_does_not_swallow_plain_names(
     # "Lightning" is the front-face-shaped prefix of nothing here; the bare word
     # resolves to no printing (the two Bolts are "Lightning Bolt", not "Lightning").
     assert catalog.printings_by_name(catalog_conn, "Lightning") == []
+
+
+def test_printings_by_number_finds_the_printing_at_a_set_and_number(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    """The scanner's corner read (VEG-653) pins a printing by set and collector number."""
+    _insert_card(
+        catalog_conn,
+        "ascent-1",
+        "Academic Ascent",
+        set_code="fra",
+        collector_number="2",
+        finishes='["nonfoil","foil"]',
+    )
+    _insert_card(catalog_conn, "other-1", "Counterspell", set_code="fra", collector_number="3")
+    catalog_conn.commit()
+    printings = catalog.printings_by_number(catalog_conn, "fra", "2")
+    assert [p["scryfall_id"] for p in printings] == ["ascent-1"]
+    # JSON columns come back deserialized, like the other catalog reads.
+    assert printings[0]["finishes"] == ["nonfoil", "foil"]
+    assert "card_faces" not in printings[0]
+
+
+def test_printings_by_number_ignores_case_on_the_set_code_only(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    _insert_card(
+        catalog_conn, "bolt-221a", "Lightning Bolt", set_code="2x2", collector_number="221a"
+    )
+    catalog_conn.commit()
+    found = catalog.printings_by_number(catalog_conn, " 2X2 ", " 221a ")
+    assert [p["scryfall_id"] for p in found] == ["bolt-221a"]
+    # The number compares exactly, so the lookup can use both columns of the
+    # set and number index. The corner parser already lowercases a suffix.
+    assert catalog.printings_by_number(catalog_conn, "2x2", "221A") == []
+
+
+def test_printings_by_number_puts_english_first(catalog_conn: sqlite3.Connection) -> None:
+    # The Japanese row sorts first by id, so only the language rule puts it second.
+    _insert_card(
+        catalog_conn, "a-ja", "Lightning Bolt", set_code="sta", collector_number="42", lang="ja"
+    )
+    _insert_card(catalog_conn, "b-en", "Lightning Bolt", set_code="sta", collector_number="42")
+    _insert_card(
+        catalog_conn, "c-de", "Lightning Bolt", set_code="sta", collector_number="42", lang="de"
+    )
+    catalog_conn.commit()
+    found = catalog.printings_by_number(catalog_conn, "sta", "42")
+    assert [p["scryfall_id"] for p in found] == ["b-en", "a-ja", "c-de"]
+
+
+def test_printings_by_number_misses_answer_empty(catalog_conn: sqlite3.Connection) -> None:
+    assert catalog.printings_by_number(catalog_conn, "lea", "999") == []
+    assert catalog.printings_by_number(catalog_conn, "zzz", "1") == []
+    assert catalog.printings_by_number(catalog_conn, "  ", "1") == []
+    assert catalog.printings_by_number(catalog_conn, "lea", "  ") == []
+    assert catalog.printings_by_number(catalog_conn, "", "") == []

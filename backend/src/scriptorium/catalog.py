@@ -111,6 +111,35 @@ def printings_by_name(conn: sqlite3.Connection, name: str) -> list[dict[str, Any
     return [_row_to_card(row) for row in rows]
 
 
+def printings_by_number(
+    conn: sqlite3.Connection, set_code: str, collector_number: str
+) -> list[dict[str, Any]]:
+    """Return the printings at one set code and collector number, English first.
+
+    The scanner reads both off a card's corner (VEG-653, ADR 0027). A pair
+    usually names one printing, but a few hold several, in other languages or
+    under other names, so the caller picks among them by the name it read.
+
+    Both parts compare exactly, so SQLite searches idx_cards_set_collector on
+    both columns. The index collates BINARY, and a NOCASE compare on either
+    column would drop that column from the search, scanning a whole set or
+    every card. Scryfall publishes set codes lowercase and the importer
+    stores them as given, so the set code is lowercased here. The number is
+    taken as given. The corner parser already lowercases a letter suffix.
+    """
+    code = set_code.strip().lower()
+    number = collector_number.strip()
+    if not code or not number:
+        return []
+    rows = conn.execute(
+        "SELECT * FROM cards "
+        "WHERE set_code = ? AND collector_number = ? "
+        "ORDER BY (lang = 'en') DESC, scryfall_id",
+        (code, number),
+    ).fetchall()
+    return [_row_to_card(row) for row in rows]
+
+
 def search_cards(
     conn: sqlite3.Connection, query: str, *, limit: int = 20, offset: int = 0
 ) -> tuple[list[dict[str, Any]], int]:

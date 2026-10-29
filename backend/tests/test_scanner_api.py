@@ -1,4 +1,4 @@
-"""Tests for the scanner recognition endpoint (VEG-230, VEG-231, ADR 0025, ADR 0026).
+"""Tests for the scanner recognition endpoint (VEG-230, VEG-231, VEG-653, ADR 0025 to 0027).
 
 The checks on the image run before any recognition, in the order ADR 0025
 fixes. Recognition runs through a FakeOcr installed over the get_ocr
@@ -23,7 +23,7 @@ from scriptorium.api.scanner import MAX_IMAGE_BYTES, get_ocr
 from scriptorium.main import app
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import invalidate
-from scriptorium.scanner.ocr import OcrUnavailable, UnreadableImage
+from scriptorium.scanner.ocr import OcrUnavailable, TextLine, UnreadableImage
 from tests.scanner.fakes import FakeOcr, insert_card, line, seed_catalog
 
 client = TestClient(app)
@@ -39,13 +39,23 @@ UNREADABLE = "The glass could not make sense of that image. Capture the card aga
 ENGINE_FAILED = (
     "The glass clouded over while reading. Try the capture again, or type the name instead."
 )
-EDGAR_READ = {"readings": [{"name": "Edgar Markov", "confidence": 1.0}]}
+EDGAR_READ = {"readings": [{"name": "Edgar Markov", "confidence": 1.0, "printing": None}]}
+# The bottom-left corner of a Fragments common, as Vision reads it at 1080p.
+FRA_2 = [line("C 0002", 0.93, x=0.25, width=0.08), line("FRA • EN", 0.95, x=0.25, width=0.1)]
 
 
 @pytest.fixture(autouse=True)
 def _throwaway_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "test.db"))
-    seed_catalog(("edgar", "Edgar Markov"), ("bolt", "Lightning Bolt"))
+    seed_catalog(
+        ("edgar", "Edgar Markov"),
+        ("bolt", "Lightning Bolt"),
+        (
+            "ascent",
+            "Academic Ascent",
+            {"set_code": "fra", "collector_number": "2", "set_name": "Fragments"},
+        ),
+    )
     invalidate()
     yield
     invalidate()
@@ -102,8 +112,8 @@ def test_the_card_read_in_full_comes_before_one_found_by_trimming() -> None:
         200,
         {
             "readings": [
-                {"name": "Nicol Bolas, the Ravager", "confidence": 1.0},
-                {"name": "Nicol Bolas", "confidence": 1.0},
+                {"name": "Nicol Bolas, the Ravager", "confidence": 1.0, "printing": None},
+                {"name": "Nicol Bolas", "confidence": 1.0, "printing": None},
             ]
         },
     )
@@ -113,6 +123,132 @@ def test_a_still_with_no_name_reads_as_no_readings() -> None:
     noise = [line("zzqqxj wpvk", 0.1)]
     _fit(FakeOcr(noise, upside_down=noise, full_frame=noise))
     assert _post(JPEG, "image/jpeg") == (200, {"readings": []})
+
+
+# --- the corner (VEG-653) ---------------------------------------------------
+
+
+def _readings_for(title: str, corner: list[TextLine]) -> list[dict[str, Any]]:
+    _fit(FakeOcr([line(title, 0.1)], corner=corner))
+    status, payload = _post(JPEG, "image/jpeg")
+    assert status == 200
+    readings: list[dict[str, Any]] = payload["readings"]
+    return readings
+
+
+def test_the_corner_pins_the_printing_of_the_name_read() -> None:
+    with closing(db.connect()) as conn:
+        # A near name gives a second reading, which must stay unpinned.
+        insert_card(conn, "descent", "Academic Descent")
+        conn.commit()
+    readings = _readings_for("Academic Ascent", FRA_2)
+    assert [r["name"] for r in readings[:2]] == ["Academic Ascent", "Academic Descent"]
+    printing = readings[0]["printing"]
+    assert printing["scryfall_id"] == "ascent"
+    assert printing["set_code"] == "fra"
+    assert printing["collector_number"] == "2"
+    assert printing["set_name"] == "Fragments"
+    assert "card_faces" not in printing
+    assert all(r["printing"] is None for r in readings[1:])
+
+
+def test_a_corner_pointing_at_another_card_pins_nothing() -> None:
+    # Sol Ring and Savage Twister share cmd 222 in the real catalog. A misread
+    # corner must never turn the name read into a different card.
+    with closing(db.connect()) as conn:
+        insert_card(conn, "twister", "Savage Twister", set_code="cmd", collector_number="222")
+        insert_card(conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+        conn.commit()
+    corner = [line("U 0222", 0.93), line("CMD • EN", 0.95)]
+    readings = _readings_for("Sol Ring", corner)
+    assert readings[0]["name"] == "Sol Ring"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_pair_holding_the_name_twice_pins_nothing() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-a", "Lightning Bolt", set_code="2x2", collector_number="117")
+        insert_card(conn, "bolt-b", "Lightning Bolt", set_code="2x2", collector_number="117")
+        conn.commit()
+    corner = [line("U 0117", 0.93), line("2X2 • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["name"] == "Lightning Bolt"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_an_english_printing_wins_over_another_language_at_the_pair() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(
+            conn, "bolt-ja", "Lightning Bolt", set_code="sta", collector_number="42", lang="ja"
+        )
+        insert_card(conn, "bolt-en", "Lightning Bolt", set_code="sta", collector_number="42")
+        conn.commit()
+    corner = [line("U 0042", 0.93), line("STA • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "bolt-en"
+
+
+def test_a_corner_missing_from_the_catalog_pins_nothing() -> None:
+    corner = [line("C 0099", 0.93), line("FRA • EN", 0.95)]
+    readings = _readings_for("Academic Ascent", corner)
+    assert readings[0]["name"] == "Academic Ascent"
+    assert readings[0]["printing"] is None
+
+
+def test_a_corner_never_pins_a_reading_under_accept() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "ring", "Sol Ring", set_code="c21", collector_number="263")
+        insert_card(conn, "talisman", "Sol Talisman", set_code="mh1", collector_number="112")
+        conn.commit()
+    # A line confidence of 0 shades the exact second name to 0.70.
+    title = [line("Sol Ring", 0.1), line("Sol Talisman", 0.15, confidence=0.0)]
+    _fit(FakeOcr(title, corner=[line("R 0112", 0.93), line("MH1 • EN", 0.95)]))
+    status, payload = _post(JPEG, "image/jpeg")
+    assert status == 200
+    readings = payload["readings"]
+    assert [(r["name"], r["confidence"]) for r in readings] == [
+        ("Sol Ring", 1.0),
+        ("Sol Talisman", 0.7),
+    ]
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_lone_year_read_before_the_number_still_pins() -> None:
+    corner = [line("2024", 0.91), *FRA_2]
+    readings = _readings_for("Academic Ascent", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "ascent"
+
+
+def test_a_number_the_catalog_stores_padded_pins_as_read() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "padded", "Padded Promo", set_code="ppad", collector_number="001")
+        conn.commit()
+    readings = _readings_for("Padded Promo", [line("C 001", 0.93), line("PPAD • EN", 0.95)])
+    assert readings[0]["printing"]["scryfall_id"] == "padded"
+
+
+@pytest.mark.parametrize(
+    "error", [OcrUnavailable("Vision failed"), UnreadableImage("bad bytes")], ids=type
+)
+def test_a_failed_corner_read_still_answers_the_name(error: Exception) -> None:
+    _fit(FakeOcr([line("Academic Ascent", 0.1)], corner=FRA_2, corner_raise=error))
+    status, payload = _post(JPEG, "image/jpeg")
+    assert status == 200
+    assert payload["readings"][0]["name"] == "Academic Ascent"
+    assert all(r["printing"] is None for r in payload["readings"])
+
+
+def test_a_locked_catalog_at_the_corner_lookup_still_answers_the_name(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def locked(*_: object) -> list[dict[str, Any]]:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr("scriptorium.catalog.printings_by_number", locked)
+    readings = _readings_for("Academic Ascent", FRA_2)
+    assert readings[0]["name"] == "Academic Ascent"
+    assert all(r["printing"] is None for r in readings)
+    assert any(r.levelname == "WARNING" for r in caplog.records)
 
 
 def test_no_engine_answers_unavailable() -> None:
