@@ -14,16 +14,19 @@ import { ScanPage } from './ScanPage'
 
 // The camera has its own tests. Here a stand-in keeps the parts the page
 // cares about: a Capture button that hands up a frame with the URL in `camera.url`, a Flip checkbox
-// with its own state, and a count of how often it mounts. The state and the
-// count only survive if the page keeps the camera mounted between cards.
+// with its own state, a count of how often it mounts, and whether the page
+// has it active. The state and the count only survive if the page keeps the
+// camera mounted between cards.
 const camera = vi.hoisted(() => ({ mounts: 0, url: 'blob:preview' }))
 
 vi.mock('./CameraCapture', async () => {
   const { useEffect, useState } = await import('react')
   return {
     CameraCapture: function CameraStub({
+      active,
       onCapture,
     }: {
+      active: boolean
       onCapture: (image: Blob, previewUrl: string) => void
     }) {
       const [flip, setFlip] = useState(false)
@@ -31,7 +34,7 @@ vi.mock('./CameraCapture', async () => {
         camera.mounts += 1
       }, [])
       return (
-        <div>
+        <div data-testid="camera-stub" data-active={String(active)}>
           <label>
             <input
               type="checkbox"
@@ -470,6 +473,39 @@ describe('ScanPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Flip image')).toBeChecked()
     // One mount means one camera stream for the whole visit.
+    expect(camera.mounts).toBe(1)
+  })
+
+  it('rests the camera off the capture step and wakes it on return', async () => {
+    recognizeMock.mockResolvedValue({ readings: READINGS })
+    inscribeMock.mockResolvedValue(lot({ id: 6 }))
+    const user = userEvent.setup()
+    render(<ScanPage />)
+    const stub = screen.getByTestId('camera-stub')
+    expect(stub).toHaveAttribute('data-active', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Capture' }))
+    expect(stub).toHaveAttribute('data-active', 'false')
+
+    await user.click(screen.getByRole('button', { name: 'Retake' }))
+    expect(stub).toHaveAttribute('data-active', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Capture' }))
+    expect(stub).toHaveAttribute('data-active', 'false')
+    await user.click(screen.getByRole('button', { name: 'Read the card' }))
+    const reading = await screen.findByRole('button', { name: /Sol Ring/ })
+    expect(stub).toHaveAttribute('data-active', 'false')
+    await user.click(reading)
+    expect(stub).toHaveAttribute('data-active', 'false')
+    await user.click(
+      await screen.findByRole('button', { name: /Commander 2021/ }),
+    )
+    expect(stub).toHaveAttribute('data-active', 'false')
+    await user.click(screen.getByRole('button', { name: 'Inscribe' }))
+
+    await screen.findByRole('button', { name: 'Capture' })
+    expect(stub).toHaveAttribute('data-active', 'true')
+    // The same camera throughout, rested and woken rather than remounted.
     expect(camera.mounts).toBe(1)
   })
 

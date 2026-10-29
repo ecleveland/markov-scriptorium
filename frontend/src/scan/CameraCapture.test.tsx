@@ -52,7 +52,7 @@ afterEach(() => {
 describe('CameraCapture', () => {
   it('shows the live video and the card guide', () => {
     useCameraMock.mockReturnValue(camera())
-    const { container } = render(<CameraCapture onCapture={vi.fn()} />)
+    const { container } = render(<CameraCapture active onCapture={vi.fn()} />)
 
     expect(screen.getByLabelText('Live camera').tagName).toBe('VIDEO')
     expect(container.querySelector('.camera__guide')).toHaveAttribute(
@@ -61,10 +61,21 @@ describe('CameraCapture', () => {
     )
   })
 
+  it('rests the camera when it is not active', () => {
+    useCameraMock.mockReturnValue(camera())
+    const { rerender } = render(
+      <CameraCapture active={false} onCapture={vi.fn()} />,
+    )
+    expect(useCameraMock).toHaveBeenLastCalledWith({ active: false })
+
+    rerender(<CameraCapture active onCapture={vi.fn()} />)
+    expect(useCameraMock).toHaveBeenLastCalledWith({ active: true })
+  })
+
   it('hands the stream to the video', () => {
     const stream = {} as MediaStream
     useCameraMock.mockReturnValue(camera({ stream }))
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     const video = screen.getByLabelText('Live camera') as HTMLVideoElement
     expect(video.srcObject).toBe(stream)
@@ -72,7 +83,7 @@ describe('CameraCapture', () => {
 
   it('offers no camera picker when there is one camera', () => {
     useCameraMock.mockReturnValue(camera())
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     expect(screen.queryByLabelText('Camera')).not.toBeInTheDocument()
   })
@@ -84,7 +95,7 @@ describe('CameraCapture', () => {
         devices: [device('cam-desk', 'Desk camera'), device('cam-2', '')],
       }),
     )
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     const picker = screen.getByLabelText('Camera')
     expect(picker).toHaveValue('cam-desk')
@@ -98,7 +109,7 @@ describe('CameraCapture', () => {
   it('turns the video over when Flip image is ticked', async () => {
     const user = userEvent.setup()
     useCameraMock.mockReturnValue(camera())
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     const video = screen.getByLabelText('Live camera')
     const flip = screen.getByLabelText('Flip image')
@@ -114,7 +125,7 @@ describe('CameraCapture', () => {
 
   it('keeps Capture disabled and lights the glass while starting', () => {
     useCameraMock.mockReturnValue(camera({ status: 'starting', devices: [] }))
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: 'Capture' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('Lighting the glass…')
@@ -126,7 +137,7 @@ describe('CameraCapture', () => {
     captureMock.mockResolvedValue(blob)
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    render(<CameraCapture onCapture={onCapture} />)
+    render(<CameraCapture active onCapture={onCapture} />)
 
     await user.click(screen.getByLabelText('Flip image'))
     await user.click(screen.getByRole('button', { name: 'Capture' }))
@@ -151,7 +162,7 @@ describe('CameraCapture', () => {
     )
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    render(<CameraCapture onCapture={onCapture} />)
+    render(<CameraCapture active onCapture={onCapture} />)
 
     const button = screen.getByRole('button', { name: 'Capture' })
     fireEvent.click(button)
@@ -175,7 +186,7 @@ describe('CameraCapture', () => {
     )
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    const { unmount } = render(<CameraCapture onCapture={onCapture} />)
+    const { unmount } = render(<CameraCapture active onCapture={onCapture} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Capture' }))
     unmount()
@@ -194,7 +205,7 @@ describe('CameraCapture', () => {
           'The chosen camera would not open, so the glass went back to the one before.',
       }),
     )
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'The chosen camera would not open, so the glass went back to the one before.',
@@ -211,7 +222,7 @@ describe('CameraCapture', () => {
     )
     useCameraMock.mockReturnValue(camera())
     const onCapture = vi.fn()
-    render(<CameraCapture onCapture={onCapture} />)
+    render(<CameraCapture active onCapture={onCapture} />)
 
     await user.click(screen.getByRole('button', { name: 'Capture' }))
 
@@ -230,7 +241,7 @@ describe('CameraCapture', () => {
         error: 'No camera was found. Plug one in and reload.',
       }),
     )
-    render(<CameraCapture onCapture={vi.fn()} />)
+    render(<CameraCapture active onCapture={vi.fn()} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'No camera was found. Plug one in and reload.',

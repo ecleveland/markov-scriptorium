@@ -157,10 +157,14 @@ export function ScanPage() {
       </div>
 
       {/* Mounted for the whole visit and hidden off the camera step, so the
-          stream stays open and the flip setting holds from card to card.
-          The hidden attribute also takes it out of the accessibility tree. */}
+          stream stays open, rested while hidden, and the flip setting holds
+          from card to card. The hidden attribute also takes it out of the
+          accessibility tree. */}
       <div hidden={step.kind !== 'camera'}>
-        <CameraCapture onCapture={handleCapture} />
+        <CameraCapture
+          active={step.kind === 'camera'}
+          onCapture={handleCapture}
+        />
       </div>
 
       {step.kind === 'captured' && (
