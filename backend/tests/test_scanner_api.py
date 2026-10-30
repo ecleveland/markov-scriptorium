@@ -8,6 +8,8 @@ dependency and a small seeded catalog, so no test touches a real engine.
 from __future__ import annotations
 
 import asyncio
+import io
+import logging
 import sqlite3
 import sys
 from collections.abc import Iterator
@@ -17,14 +19,17 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from starlette.types import Message, Scope
 
 from scriptorium import db
-from scriptorium.api.scanner import MAX_IMAGE_BYTES, get_ocr
+from scriptorium.api.scanner import MAX_IMAGE_BYTES, _pinned_printing, get_ocr
 from scriptorium.main import app
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import invalidate
 from scriptorium.scanner.ocr import OcrUnavailable, TextLine, UnreadableImage
+from scriptorium.scanner.pipeline import Reading
+from scriptorium.scanner.printing import CornerRead
 from tests.scanner.fakes import FakeOcr, corner_line, insert_card, line, seed_catalog
 
 client = TestClient(app)
@@ -322,6 +327,75 @@ def test_a_locked_catalog_at_the_corner_lookup_still_answers_the_name(
     assert readings[0]["name"] == "Academic Ascent"
     assert all(r["printing"] is None for r in readings)
     assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+# --- the corner in the log (VEG-657) -----------------------------------------
+
+
+def _debug_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name.startswith("scriptorium")]
+
+
+def test_a_corner_missing_from_the_catalog_logs_each_lookup(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    corner = [corner_line("C 0099", 0.93), corner_line("FRA • EN", 0.95)]
+    _readings_for("Academic Ascent", corner)
+    messages = _debug_messages(caplog)
+    assert "corner fra 99: 0 printings in the catalog, 0 of a name read" in messages
+    assert "corner fra 0099: 0 printings in the catalog, 0 of a name read" in messages
+    assert messages[-1] == "corner fra ('99', '0099') pinned nothing"
+
+
+def test_a_pinned_corner_logs_the_printing(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    _readings_for("Academic Ascent", FRA_2)
+    messages = _debug_messages(caplog)
+    assert "corner fra 2: 1 printings in the catalog, 1 of a name read" in messages
+    assert "corner fra 2 pinned ascent" in messages
+
+
+def test_a_pair_holding_the_name_twice_logs_both(caplog: pytest.LogCaptureFixture) -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-a", "Lightning Bolt", set_code="2x2", collector_number="117")
+        insert_card(conn, "bolt-b", "Lightning Bolt", set_code="2x2", collector_number="117")
+        conn.commit()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    _readings_for("Lightning Bolt", [corner_line("U 0117", 0.93), corner_line("2X2 • EN", 0.95)])
+    messages = _debug_messages(caplog)
+    assert "corner 2x2 117: 2 printings in the catalog, 2 of a name read" in messages
+    assert messages[-1] == "corner 2x2 ('117', '0117') pinned nothing"
+
+
+def test_no_reading_at_accept_logs_the_corner_it_skipped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The endpoint reads the corner only after a reading reaches ACCEPT, so
+    # this guard is reached only by calling the lookup directly.
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    corner = CornerRead(("112", "0112"), "mh1")
+    assert _pinned_printing([Reading("Sol Talisman", 0.7)], corner) is None
+    assert _debug_messages(caplog) == [
+        "no reading at ACCEPT; corner mh1 ('112', '0112') not looked up"
+    ]
+
+
+def test_a_frame_that_will_not_decode_logs_its_size_as_unknown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    assert _post(JPEG, "image/jpeg") == (200, EDGAR_READ)
+    assert f"frame: {len(JPEG)} bytes, size unknown" in _debug_messages(caplog)
+
+
+def test_a_real_frame_logs_its_size(caplog: pytest.LogCaptureFixture) -> None:
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 6)).save(buffer, "JPEG")
+    frame = buffer.getvalue()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    assert _post(frame, "image/jpeg") == (200, EDGAR_READ)
+    assert f"frame: {len(frame)} bytes, 8x6" in _debug_messages(caplog)
 
 
 def test_no_engine_answers_unavailable() -> None:

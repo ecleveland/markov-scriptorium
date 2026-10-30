@@ -5,6 +5,7 @@ The pipeline runs against FakeOcr and a real NameIndex over a seeded catalog.
 
 from __future__ import annotations
 
+import logging
 import sys
 from collections.abc import Iterator
 from contextlib import closing
@@ -237,6 +238,56 @@ def test_a_failed_corner_read_never_costs_the_name(
     assert result.corner is None
     assert len(ocr.calls) == 2
     assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+def _messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name.startswith("scriptorium")]
+
+
+def test_a_corner_read_logs_its_lines_and_what_parsed(
+    index: NameIndex, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    recognize(IMAGE, FakeOcr([EDGAR], corner=CORNER), index)
+    messages = _messages(caplog)
+    assert any(m.startswith("corner lines: ") and "C 0002" in m for m in messages)
+    assert any(m.startswith("corner parsed: CornerRead(") for m in messages)
+
+
+def test_a_title_pass_logs_its_lines_and_the_names_it_gave(
+    index: NameIndex, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    recognize(IMAGE, FakeOcr([EDGAR]), index)
+    messages = _messages(caplog)
+    assert any(m.startswith("title pass upside_down=False") and "1 lines" in m for m in messages)
+    assert "title pass gave {'Edgar Markov': 1.0}" in messages
+
+
+def test_a_weak_title_logs_why_the_corner_was_not_read(
+    index: NameIndex, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    ocr = FakeOcr([line("Edgar Markov", 0.1, confidence=0.3)], corner=CORNER)
+    recognize(IMAGE, ocr, index)
+    assert "corner not read: no title at ACCEPT" in _messages(caplog)
+
+
+def test_an_engine_without_corners_logs_why_the_corner_was_not_read(
+    index: NameIndex, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    recognize(IMAGE, FakeOcr([EDGAR], corner=CORNER, reads_corners=False), index)
+    assert "corner not read: engine does not read corners" in _messages(caplog)
+
+
+def test_a_title_found_in_the_full_frame_logs_why_the_corner_was_not_read(
+    index: NameIndex, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    ocr = FakeOcr([], upside_down=[], full_frame=[line("Edgar Markov", 0.4)], corner=CORNER)
+    recognize(IMAGE, ocr, index)
+    assert "corner not read: title found only on the whole frame" in _messages(caplog)
 
 
 # --- select_engine ------------------------------------------------------------
