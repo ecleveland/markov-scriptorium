@@ -83,3 +83,18 @@ def test_every_level_lines_up_with_uvicorn(
     assert formatted(logging.INFO) == "INFO:     scriptorium: x"
     assert formatted(logging.DEBUG) == "DEBUG:    scriptorium: x"
     assert formatted(logging.WARNING) == "WARNING:  scriptorium: x"
+
+
+def test_notset_falls_back_to_info_with_a_warning(
+    scriptorium_logger: logging.Logger,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # NOTSET would hand the level to the root logger, which sits at WARNING,
+    # so the scriptorium's INFO lines would vanish without a word.
+    monkeypatch.setenv("SCRIPTORIUM_LOG_LEVEL", "NOTSET")
+    configure_logging()
+    assert scriptorium_logger.level == logging.INFO
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "NOTSET" in warnings[0].getMessage()

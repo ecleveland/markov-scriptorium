@@ -51,6 +51,9 @@ def configure_logging() -> None:
     """
     raw = os.environ.get("SCRIPTORIUM_LOG_LEVEL", "INFO")
     level = logging.getLevelNamesMapping().get(raw.strip().upper())
+    # NOTSET would defer to the root logger's WARNING and hide every INFO line.
+    if level == logging.NOTSET:
+        level = None
     logger.setLevel(logging.INFO if level is None else level)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stderr)

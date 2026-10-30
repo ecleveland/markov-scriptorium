@@ -14,14 +14,12 @@ never costs the name. The readings still answer, with no printing.
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
 import sqlite3
 from contextlib import closing
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from PIL import Image
 
 from scriptorium import catalog, db
 from scriptorium.scanner import pipeline
@@ -154,6 +152,11 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
 
 
 def _log_frame(image: bytes) -> None:
+    # Pillow loads only when the frame's size is wanted, at DEBUG.
+    import io
+
+    from PIL import Image
+
     # Image.open reads only the header, so the size costs no decode. The
     # engine judges the bytes, so a frame Pillow cannot place still goes on.
     try:
