@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, closing, suppress
 from datetime import UTC, datetime
@@ -26,6 +27,43 @@ from scriptorium.scanner.ocr import OcrUnavailable
 from scriptorium.scryfall.refresh import is_stale, maybe_refresh, read_status, refresh_catalog
 
 logger = logging.getLogger("scriptorium")
+
+
+class _UvicornAlignedFormatter(logging.Formatter):
+    """Pads the level the way uvicorn does, so every line starts its name at one column."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        record.levelprefix = f"{record.levelname}:".ljust(9)
+        return super().format(record)
+
+
+# Matches uvicorn's own prefixes in the same terminal, as in "WARNING:  ".
+_LOG_FORMAT = "%(levelprefix)s %(name)s: %(message)s"
+
+
+def configure_logging() -> None:
+    """Set the scriptorium logger's level from SCRIPTORIUM_LOG_LEVEL, default INFO.
+
+    uvicorn configures only its own loggers, so without a handler here the
+    scriptorium lines never print, and ``uvicorn --log-level`` cannot reach
+    them. The logger still propagates, so pytest's caplog sees its records.
+    Calling this again changes the level and adds no second handler.
+    """
+    raw = os.environ.get("SCRIPTORIUM_LOG_LEVEL", "INFO")
+    level = logging.getLevelNamesMapping().get(raw.strip().upper())
+    # NOTSET would defer to the root logger's WARNING and hide every INFO line.
+    if level == logging.NOTSET:
+        level = None
+    logger.setLevel(logging.INFO if level is None else level)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(_UvicornAlignedFormatter(_LOG_FORMAT))
+        logger.addHandler(handler)
+    if level is None:
+        logger.warning("SCRIPTORIUM_LOG_LEVEL=%r is no log level; logging at INFO", raw)
+
+
+configure_logging()
 
 # Values that disable the startup refresh; anything else (including unset) leaves
 # it on, so a fresh install keeps its catalog current without configuration.

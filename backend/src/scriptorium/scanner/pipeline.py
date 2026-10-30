@@ -73,11 +73,19 @@ def _read(
 ) -> dict[str, _Rank]:
     found: dict[str, _Rank] = {}
     lines = ocr.read_lines(image, upside_down=upside_down, region=region)
+    logger.debug(
+        "title pass upside_down=%s region=%s read %d lines: %s",
+        upside_down,
+        region,
+        len(lines),
+        [(ln.text, round(ln.confidence, 2)) for ln in lines],
+    )
     for candidate in pick_title_candidates(lines):
         line_confidence = min(max(candidate.confidence, 0.0), 1.0)
         shade = _MATCH_SHARE + (1 - _MATCH_SHARE) * line_confidence
         for position, (name, ratio) in enumerate(index.match(candidate.text)):
             _keep_better(found, name, (ratio * shade * weight, -position))
+    logger.debug("title pass gave %s", {name: round(rank[0], 3) for name, rank in found.items()})
     return found
 
 
@@ -93,7 +101,10 @@ def _read_corner(image: bytes, ocr: Ocr, *, upside_down: bool) -> CornerRead | N
         # The name is already read, and the picker still finds its printing.
         logger.warning("the corner read failed; the name stands alone", exc_info=True)
         return None
-    return parse_corner(lines)
+    logger.debug("corner lines: %s", [(ln.text, round(ln.confidence, 2)) for ln in lines])
+    parsed = parse_corner(lines)
+    logger.debug("corner parsed: %s", parsed)
+    return parsed
 
 
 def recognize(image: bytes, ocr: Ocr, index: NameIndex, *, limit: int = 5) -> Recognition:
@@ -116,16 +127,24 @@ def recognize(image: bytes, ocr: Ocr, index: NameIndex, *, limit: int = 5) -> Re
     # It stays None for the whole-frame pass: that card is off the guide, so
     # the guide's corner region would read whatever else the frame holds.
     accepted_upside_down: bool | None = None
+    reached_accept = False
     for upside_down, read_region, weight in passes:
         found = _read(image, ocr, index, upside_down=upside_down, region=read_region, weight=weight)
         for name, rank in found.items():
             _keep_better(best, name, rank)
         if best and max(c for c, _ in best.values()) >= ACCEPT:
+            reached_accept = True
             if read_region is not None:
                 accepted_upside_down = upside_down
             break
     corner: CornerRead | None = None
-    if accepted_upside_down is not None and ocr.reads_corners:
+    if not reached_accept:
+        logger.debug("corner not read: no title at ACCEPT")
+    elif accepted_upside_down is None:
+        logger.debug("corner not read: title found only on the whole frame")
+    elif not ocr.reads_corners:
+        logger.debug("corner not read: engine does not read corners")
+    else:
         corner = _read_corner(image, ocr, upside_down=accepted_upside_down)
     # Round before ranking so the order matches the numbers the page shows.
     rounded = [(round(c, 3), -neg_position, name) for name, (c, neg_position) in best.items()]

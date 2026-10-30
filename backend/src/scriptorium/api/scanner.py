@@ -85,8 +85,7 @@ async def _read_capped(request: Request) -> bytearray:
     return body
 
 
-def _pin(rows: list[dict[str, Any]], names: set[str]) -> dict[str, Any] | None:
-    kept = [row for row in rows if row["name"] in names]
+def _pin(kept: list[dict[str, Any]]) -> dict[str, Any] | None:
     # The corner reads "EN" on an English card. A printing in another
     # language at the same pair is a different folio the user did not hold.
     english = [row for row in kept if row["lang"] == "en"]
@@ -107,12 +106,25 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
     """
     names = {r.name for r in readings if r.confidence >= pipeline.ACCEPT}
     if not names:
+        logger.debug(
+            "no reading at ACCEPT; corner %s %s not looked up",
+            corner.set_code,
+            corner.collector_numbers,
+        )
         return None
     try:
         with closing(db.connect()) as conn:
             for number in corner.collector_numbers:
                 rows = catalog.printings_by_number(conn, corner.set_code, number)
-                pinned = _pin(rows, names)
+                kept = [row for row in rows if row["name"] in names]
+                logger.debug(
+                    "corner %s %s: %d printings in the catalog, %d of a name read",
+                    corner.set_code,
+                    number,
+                    len(rows),
+                    len(kept),
+                )
+                pinned = _pin(kept)
                 if pinned is None:
                     continue
                 if catalog.has_sibling_printings(
@@ -127,7 +139,11 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
                         pinned["scryfall_id"],
                     )
                     return None
+                logger.debug(
+                    "corner %s %s pinned %s", corner.set_code, number, pinned["scryfall_id"]
+                )
                 return pinned
+            logger.debug("corner %s %s pinned nothing", corner.set_code, corner.collector_numbers)
     except sqlite3.Error:
         # The name index read the catalog a moment ago, so this is most likely
         # the nightly refresh's write lock. The picker still finds the printing.
@@ -135,10 +151,28 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
     return None
 
 
+def _log_frame(image: bytes) -> None:
+    # Pillow loads only when the frame's size is wanted, at DEBUG.
+    import io
+
+    from PIL import Image
+
+    # Image.open reads only the header, so the size costs no decode. The
+    # engine judges the bytes, so a frame Pillow cannot place still goes on.
+    try:
+        width, height = Image.open(io.BytesIO(image)).size
+    except Exception:
+        logger.debug("frame: %d bytes, size unknown", len(image))
+        return
+    logger.debug("frame: %d bytes, %dx%d", len(image), width, height)
+
+
 def _read_card(image: bytes, ocr: Ocr) -> list[dict[str, Any]]:
     # name_index and the printing lookup open SQLite, and name_index may
     # rebuild, so they run on the worker thread with the OCR, never on the
     # event loop.
+    if logger.isEnabledFor(logging.DEBUG):
+        _log_frame(image)
     result = pipeline.recognize(image, ocr, name_index())
     printing = None
     if result.corner is not None:

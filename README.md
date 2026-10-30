@@ -75,6 +75,13 @@ before. See [ADR 0027](docs/decisions/0027-scanner-corner-read-pins-the-printing
 corner pin needs Vision, so on Tesseract every scan goes through the picker. See
 [ADR 0028](docs/decisions/0028-tesseract-as-the-second-scanner-engine.md).
 
+When the glass reads a name but lands on no printing, set `SCRIPTORIUM_LOG_LEVEL=DEBUG`
+and scan again. The backend log then shows the title and corner reads, the corner as parsed,
+and what the catalog held for each collector number tried. A corner read well that still
+pins nothing is most often a List reprint or promo printed with the same corner, and the log
+reports that a sibling printing blocked the pin. The variable defaults to `INFO`.
+`uvicorn --log-level` sets only uvicorn's own loggers, never the scriptorium's.
+
 ### Frontend (React + Vite)
 
 From `frontend/`:
