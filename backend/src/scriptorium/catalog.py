@@ -145,6 +145,20 @@ def printings_by_number(
     return [_row_to_card(row) for row in rows]
 
 
+def set_exists(conn: sqlite3.Connection, set_code: str) -> bool:
+    """Whether the catalog holds any card in the set ``set_code``.
+
+    The scanner tries a corner's collector number alone only when the set
+    code it read names no set (VEG-681, ADR 0029). The set code is lowercased
+    as in printings_by_number, so the search rides idx_cards_set_code.
+    """
+    code = set_code.strip().lower()
+    if not code:
+        return False
+    row = conn.execute("SELECT 1 FROM cards WHERE set_code = ? LIMIT 1", (code,)).fetchone()
+    return row is not None
+
+
 def has_sibling_printings(
     conn: sqlite3.Connection, name: str, scryfall_id: str, set_code: str, collector_number: str
 ) -> bool:

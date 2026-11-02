@@ -6,15 +6,18 @@ its title bar with the OCR engine, and fuzzy matches the text against card
 names in the local catalog. After a confident name it reads the card's corner
 too, and when the collector number and set code name exactly one printing of
 a name it read, that reading carries the printing so the page can skip its
-printing picker. Otherwise the page turns a name into a folio with the
-picker, and always offers typing the name instead. A failure on the corner
-never costs the name. The readings still answer, with no printing.
+printing picker. When the set code is unread or names no set the catalog
+holds, the number alone pins when it names exactly one printing of a name
+read (VEG-681, ADR 0029). Otherwise the page turns a name into a folio with
+the picker, and always offers typing the name instead. A failure on the
+corner never costs the name. The readings still answer, with no printing.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sqlite3
 from contextlib import closing
 from typing import Annotated, Any
@@ -94,6 +97,108 @@ def _pin(kept: list[dict[str, Any]]) -> dict[str, Any] | None:
     return kept[0] if len(kept) == 1 else None
 
 
+def _pinned_by_set(
+    conn: sqlite3.Connection, names: set[str], corner: CornerRead, set_code: str
+) -> dict[str, Any] | None:
+    """The one printing of a name read at the set code and a number the corner read."""
+    for number in corner.collector_numbers:
+        rows = catalog.printings_by_number(conn, set_code, number)
+        kept = [row for row in rows if row["name"] in names]
+        logger.debug(
+            "corner %s %s: %d printings in the catalog, %d of a name read",
+            set_code,
+            number,
+            len(rows),
+            len(kept),
+        )
+        pinned = _pin(kept)
+        if pinned is None:
+            continue
+        if catalog.has_sibling_printings(
+            conn, pinned["name"], pinned["scryfall_id"], set_code, number
+        ):
+            # The corner matches this printing and one that prints the same
+            # corner, so the picker has to ask.
+            logger.debug(
+                "corner %s %s matches %s and a sibling; no printing pinned",
+                set_code,
+                number,
+                pinned["scryfall_id"],
+            )
+            return None
+        logger.debug("corner %s %s pinned %s", set_code, number, pinned["scryfall_id"])
+        return pinned
+    logger.debug("corner %s %s pinned nothing", set_code, corner.collector_numbers)
+    return None
+
+
+def _number_siblings(printings: list[dict[str, Any]], pinned: dict[str, Any], number: str) -> bool:
+    # ADR 0027's sibling rule looks in the read set and its promo set. With
+    # the set unknown it widens to every set, so it covers every case
+    # has_sibling_printings does: the number plus one character that is not
+    # a digit, as in "933★" or "184s", and the List form "SET-number". Only
+    # the pinned name's rows count, as there; a variant of another name read
+    # is another card.
+    variant = re.compile(re.escape(number) + r"[^0-9]")
+    return any(
+        row["scryfall_id"] != pinned["scryfall_id"]
+        and row["name"] == pinned["name"]
+        and (
+            variant.fullmatch(row["collector_number"]) is not None
+            or row["collector_number"].endswith(f"-{number}")
+        )
+        for row in printings
+    )
+
+
+def _pinned_by_number(
+    conn: sqlite3.Connection, names: set[str], corner: CornerRead
+) -> dict[str, Any] | None:
+    """The one printing of a name read that carries a number the corner read.
+
+    The lookup by name also matches a card by its front face, so only rows
+    whose own name was read are kept, as the set's lookup keeps them. That
+    also keeps a row out twice when both a front face and its full name were
+    read. The first number that any printing carries decides. With the set
+    unknown, a later number could land in any set, so it is never tried.
+    """
+    printings = [
+        row
+        for name in names
+        for row in catalog.printings_by_name(conn, name)
+        if row["name"] == name
+    ]
+    for number in corner.collector_numbers:
+        kept = [row for row in printings if row["collector_number"] == number]
+        logger.debug(
+            "corner set %s unread or unknown; number %s: %d printings of a name read",
+            corner.set_code,
+            number,
+            len(kept),
+        )
+        if not kept:
+            continue
+        pinned = _pin(kept)
+        if pinned is None:
+            logger.debug(
+                "number %s held by %d printings of a name read; no printing pinned",
+                number,
+                len(kept),
+            )
+            return None
+        if _number_siblings(printings, pinned, number):
+            logger.debug(
+                "number %s matches %s and a sibling; no printing pinned",
+                number,
+                pinned["scryfall_id"],
+            )
+            return None
+        logger.debug("number %s pinned %s", number, pinned["scryfall_id"])
+        return pinned
+    logger.debug("number %s pinned nothing", corner.collector_numbers)
+    return None
+
+
 def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> dict[str, Any] | None:
     """The one printing at the corner's set and a number that a reading names.
 
@@ -103,6 +208,14 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
     printings of the name leaves the choice to the picker, and so does a
     promo or List reprint that prints the same corner. The number candidates
     are tried best first, and the first that pins wins.
+
+    When the set code is unread or names no set the catalog holds, the
+    number alone pins among the printings of the names read, under the same
+    rules (ADR 0029). There the first number any printing carries decides,
+    and a sibling in any set blocks the pin. A number alone never looks at
+    any other card. A set code the catalog holds may be right with the
+    number misread, so it never falls back to the number alone and the
+    picker asks.
     """
     names = {r.name for r in readings if r.confidence >= pipeline.ACCEPT}
     if not names:
@@ -114,36 +227,15 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
         return None
     try:
         with closing(db.connect()) as conn:
-            for number in corner.collector_numbers:
-                rows = catalog.printings_by_number(conn, corner.set_code, number)
-                kept = [row for row in rows if row["name"] in names]
+            if corner.set_code is None:
+                return _pinned_by_number(conn, names, corner)
+            if not catalog.set_exists(conn, corner.set_code):
                 logger.debug(
-                    "corner %s %s: %d printings in the catalog, %d of a name read",
+                    "corner set %s is no set in the catalog; trying the number alone",
                     corner.set_code,
-                    number,
-                    len(rows),
-                    len(kept),
                 )
-                pinned = _pin(kept)
-                if pinned is None:
-                    continue
-                if catalog.has_sibling_printings(
-                    conn, pinned["name"], pinned["scryfall_id"], corner.set_code, number
-                ):
-                    # The corner matches this printing and one that prints
-                    # the same corner, so the picker has to ask.
-                    logger.debug(
-                        "corner %s %s matches %s and a sibling; no printing pinned",
-                        corner.set_code,
-                        number,
-                        pinned["scryfall_id"],
-                    )
-                    return None
-                logger.debug(
-                    "corner %s %s pinned %s", corner.set_code, number, pinned["scryfall_id"]
-                )
-                return pinned
-            logger.debug("corner %s %s pinned nothing", corner.set_code, corner.collector_numbers)
+                return _pinned_by_number(conn, names, corner)
+            return _pinned_by_set(conn, names, corner, corner.set_code)
     except sqlite3.Error:
         # The name index read the catalog a moment ago, so this is most likely
         # the nightly refresh's write lock. The picker still finds the printing.

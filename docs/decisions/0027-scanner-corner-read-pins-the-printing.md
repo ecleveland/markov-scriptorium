@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-10-29)
 
+Amended by [0029](0029-collector-number-alone-pins-among-the-names-printings.md), which lets the collector number pin among the name's printings when the set code misreads.
+
 Resolves [VEG-653] and extends [ADR 0026](0026-scanner-recognition-engine-and-name-match.md)
 and the [ADR 0025](0025-scanner-capture-and-recognition-contract.md) contract.
 Decides when the scanner reads the collector number and set code off a card,

@@ -121,8 +121,41 @@ def test_the_language_code_is_not_a_set_code() -> None:
 
 
 def test_a_set_code_needs_a_letter() -> None:
-    # No set code is all digits, so an all-digit token beside "EN" is a number.
-    assert _parse("C 0002", "123 • EN") is None
+    # No set code is all digits, so the all-digit token beside "EN" is a
+    # number candidate and the set code stays unread.
+    assert _parse("C 0002", "123 • EN") == CornerRead(("2", "123", "0002"), None)
+
+
+# --- a set line that misreads (VEG-681) ----------------------------------------
+
+
+def test_the_firkraag_corner_reads_its_number_and_misread_set() -> None:
+    # Vision's lines for CLB 933 on 2026-10-30. The dot came back as "*"
+    # glued to "EN", and CLB as CLD.
+    assert _parse("933", "M", "CLD *EN NANOREW MAR") == CornerRead(("933",), "cld")
+
+
+@pytest.mark.parametrize("set_line", ["FRA *EN", "FRA •EN", "FRA .EN", "FRA EN."])
+def test_a_mark_glued_to_the_language_still_marks_the_set_line(set_line: str) -> None:
+    assert _parse("C 0002", set_line) == CornerRead(("2", "0002"), "fra")
+
+
+def test_a_set_line_with_no_code_that_fits_leaves_the_set_unread() -> None:
+    assert _parse("C 0002", "?? • EN") == CornerRead(("2", "0002"), None)
+
+
+def test_a_dot_alone_with_no_code_is_not_a_corner() -> None:
+    # A modal card's rules text prints bullet lines that can fall inside the
+    # corner region.
+    assert _parse("C 0002", "• Deal 2 damage") is None
+
+
+def test_the_language_code_alone_marks_a_set_line_with_no_code() -> None:
+    assert _parse("933", "?? *EN") == CornerRead(("933",), None)
+
+
+def test_a_word_ending_in_the_language_code_is_not_a_set_line() -> None:
+    assert _parse("C 0002", "QUEEN") is None
 
 
 @pytest.mark.parametrize(

@@ -47,6 +47,10 @@ _SET_CODE = re.compile(r"(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,6}")
 _LANGUAGE = "EN"
 _DOTS = "•·"
 _SET_LINE_TOKENS = re.compile(rf"[{_DOTS}]|[^\s{_DOTS}]+")
+# Vision can read the dot as another mark glued to the language code, as in
+# "*EN" or "EN.", so marks on either side of it still leave the language code.
+# Letters or digits on either side make another word, such as "QUEEN".
+_LANGUAGE_TOKEN = re.compile(rf"[\W_]*{_LANGUAGE}[\W_]*")
 # The collector number and set line start on the card's left half. The power
 # and toughness box and the copyright line start right of its middle, so a
 # line starting at or right of the frame's middle is never read. The left
@@ -61,7 +65,11 @@ _COPYRIGHT = re.compile(r"[©™]|\(TM\)|\bwizards\b", re.IGNORECASE)
 
 @dataclass(frozen=True, slots=True)
 class CornerRead:
-    """Collector number candidates and the set code the corner showed."""
+    """Collector number candidates and the set code the corner showed.
+
+    The set code is None when the corner showed a set line but no token on it
+    fit a set code, so only the number was read.
+    """
 
     # Up to _MAX_NUMBERS, best first and without repeats. Every number comes
     # first with its leading zeros stripped, because Scryfall stores "2"
@@ -69,7 +77,7 @@ class CornerRead:
     # the catalog stores padded. A letter suffix stays, lowercased by the
     # parser, because the catalog stores it lowercase.
     collector_numbers: tuple[str, ...]
-    set_code: str
+    set_code: str | None
 
 
 def corner_region(aspect: float = 4 / 3) -> Box:
@@ -183,12 +191,14 @@ def _split_set_code(text: str) -> tuple[str | None, str]:
     alike ("2X2", "M21", "O7E").
     """
     tokens = _SET_LINE_TOKENS.findall(text)
-    marks = [i for i, token in enumerate(tokens) if token == _LANGUAGE or token in _DOTS]
+    marks = [i for i, token in enumerate(tokens) if _is_language(token) or token in _DOTS]
     if not marks:
         return None, text
     before = marks[0] - 1
     fits = [
-        i for i, token in enumerate(tokens) if token != _LANGUAGE and _SET_CODE.fullmatch(token)
+        i
+        for i, token in enumerate(tokens)
+        if not _is_language(token) and _SET_CODE.fullmatch(token)
     ]
     if not fits:
         return None, text
@@ -197,31 +207,48 @@ def _split_set_code(text: str) -> tuple[str | None, str]:
     return tokens[chosen].lower(), rest
 
 
+def _is_language(token: str) -> bool:
+    return _LANGUAGE_TOKEN.fullmatch(token) is not None
+
+
+def _has_language(text: str) -> bool:
+    return any(_is_language(token) for token in _SET_LINE_TOKENS.findall(text))
+
+
 def _is_set_line(text: str) -> bool:
-    return any(dot in text for dot in _DOTS) or _LANGUAGE in _SET_LINE_TOKENS.findall(text)
+    return any(dot in text for dot in _DOTS) or _has_language(text)
 
 
 def parse_corner(lines: list[TextLine]) -> CornerRead | None:
     """The collector number candidates and set code read in ``lines``, or None.
 
-    Both must be found. Half a pair would pin nothing, because one collector
-    number appears in hundreds of sets. Lines are read top to bottom and left
-    to right by where they sit, because Vision does not promise an order.
-    Numbers read beside a rarity letter or set size rank first, then bare
-    digit lines. Every number with its zeros stripped comes before any number
-    as read.
+    A number and a set line must both be found. A number alone would pin
+    nothing, because one collector number appears in hundreds of sets, and a
+    set line is what marks the lines as a corner. The language code or a dot
+    marks a set line. When no token on it fits a set code, only the language
+    code counts, because a modal card's rules text prints bullet lines that
+    can fall inside the corner region. Such a read comes back with the set
+    code None, and the caller looks for the number among the name's
+    printings alone.
+
+    Lines are read top to bottom and left to right by where they sit, because
+    Vision does not promise an order. Numbers read beside a rarity letter or
+    set size rank first, then bare digit lines. Every number with its zeros
+    stripped comes before any number as read.
     """
     numbers: list[_Number] = []
     set_code: str | None = None
+    language_seen = False
     for ln in sorted(lines, key=lambda ln: (ln.box.y, ln.box.x)):
         if ln.box.x >= _LEFT_OF:
             continue
+        language_seen = language_seen or _has_language(ln.text)
         code, rest = _split_set_code(ln.text)
         if set_code is None:
             set_code = code
         if not _COPYRIGHT.search(rest):
             numbers.extend(_number_on(rest, set_line=_is_set_line(rest)))
-    if not numbers or set_code is None:
+    if not numbers or (set_code is None and not language_seen):
         return None
     # sorted is stable, so lines of one rank keep their place on the card.
     ranked = sorted(numbers, key=lambda n: not n.anchored)

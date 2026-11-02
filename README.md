@@ -79,7 +79,9 @@ When the glass reads a name but lands on no printing, set `SCRIPTORIUM_LOG_LEVEL
 and scan again. The backend log then shows the title and corner reads, the corner as parsed,
 and what the catalog held for each collector number tried. A corner read well that still
 pins nothing is most often a List reprint or promo printed with the same corner, and the log
-reports that a sibling printing blocked the pin. The variable defaults to `INFO`.
+reports that a sibling printing blocked the pin. A set code that misreads as no set at all
+no longer blocks the pin when the number names exactly one printing of the card read.
+The variable defaults to `INFO`.
 `uvicorn --log-level` sets only uvicorn's own loggers, never the scriptorium's.
 
 ### Frontend (React + Vite)
