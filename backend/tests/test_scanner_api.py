@@ -28,7 +28,7 @@ from scriptorium.main import app
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import invalidate
 from scriptorium.scanner.ocr import OcrUnavailable, TextLine, UnreadableImage
-from scriptorium.scanner.pipeline import Reading
+from scriptorium.scanner.pipeline import ACCEPT, Reading
 from scriptorium.scanner.printing import CornerRead
 from tests.scanner.fakes import FakeOcr, corner_line, insert_card, line, seed_catalog
 
@@ -407,6 +407,74 @@ def test_a_variant_in_another_set_blocks_the_number_alone() -> None:
     readings = _readings_for(FIRKRAAG, corner)
     assert readings[0]["name"] == FIRKRAAG
     assert all(r["printing"] is None for r in readings)
+
+
+def test_a_glued_mark_pins_the_number_beside_it_not_the_artists_run() -> None:
+    _seed_firkraag()
+    with closing(db.connect()) as conn:
+        insert_card(conn, "firkraag-102", FIRKRAAG, set_code="clb", collector_number="102")
+        conn.commit()
+    corner = [corner_line("933", 0.91), corner_line("CLD *EN 1O2", 0.95)]
+    readings = _readings_for(FIRKRAAG, corner)
+    assert readings[0]["printing"]["scryfall_id"] == "firkraag-933"
+
+
+def test_the_number_alone_keeps_only_rows_of_the_name_read() -> None:
+    # The lookup by name also matches the token by its front face. The name
+    # index drops a token name that a card shares, and the token's full name
+    # scores under ACCEPT, so only the card is a name read.
+    with closing(db.connect()) as conn:
+        insert_card(conn, "keeper", "Bloodline Keeper", set_code="aaa", collector_number="90")
+        insert_card(
+            conn,
+            "keeper-token",
+            "Bloodline Keeper // Vampire Aristocrat",
+            set_code="taaa",
+            collector_number="90",
+            layout="double_faced_token",
+            faces=("Bloodline Keeper", "Vampire Aristocrat"),
+        )
+        conn.commit()
+    corner = [corner_line("R 0090", 0.93), corner_line("?? • EN", 0.95)]
+    readings = _readings_for("Bloodline Keeper", corner)
+    assert [r["name"] for r in readings if r["confidence"] >= ACCEPT] == ["Bloodline Keeper"]
+    assert readings[0]["printing"]["scryfall_id"] == "keeper"
+
+
+def test_a_number_no_printing_carries_moves_on_to_the_next() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "padded", "Padded Promo", set_code="ppad", collector_number="0012")
+        conn.commit()
+    corner = [corner_line("C 0012", 0.93), corner_line("?? • EN", 0.95)]
+    readings = _readings_for("Padded Promo", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "padded"
+
+
+def test_a_variant_of_another_name_read_is_no_sibling() -> None:
+    _seed_firkraag()
+    with closing(db.connect()) as conn:
+        insert_card(conn, "ring-star", "Sol Ring", set_code="yyy", collector_number="933★")
+        conn.commit()
+    title = [line(FIRKRAAG, 0.1), line("Sol Ring", 0.15)]
+    _fit(FakeOcr(title, corner=FIRKRAAG_933))
+    status, payload = _post(JPEG, "image/jpeg")
+    assert status == 200
+    readings = payload["readings"]
+    assert [(r["name"], r["confidence"]) for r in readings] == [
+        (FIRKRAAG, 1.0),
+        ("Sol Ring", 1.0),
+    ]
+    assert readings[0]["printing"]["scryfall_id"] == "firkraag-933"
+
+
+def test_a_longer_number_is_no_sibling_of_the_number_alone() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-152", "Lightning Bolt", set_code="m21", collector_number="152")
+        insert_card(conn, "bolt-1520", "Lightning Bolt", set_code="sld", collector_number="1520")
+        conn.commit()
+    corner = [corner_line("C 0152", 0.93), corner_line("M2I • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "bolt-152"
 
 
 def test_a_sibling_at_the_number_alone_pins_nothing() -> None:

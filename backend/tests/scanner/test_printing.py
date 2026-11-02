@@ -154,6 +154,11 @@ def test_the_language_code_alone_marks_a_set_line_with_no_code() -> None:
     assert _parse("933", "?? *EN") == CornerRead(("933",), None)
 
 
+def test_a_glued_mark_keeps_the_digit_map_off_the_set_line() -> None:
+    # Folded, the "1O2" run on from the artist would read as 102.
+    assert _parse("933", "CLD *EN 1O2") == CornerRead(("933",), "cld")
+
+
 def test_a_word_ending_in_the_language_code_is_not_a_set_line() -> None:
     assert _parse("C 0002", "QUEEN") is None
 
@@ -216,6 +221,17 @@ def test_lines_right_of_centre_never_give_the_number() -> None:
         corner_line("MOM • EN", 0.91),
     ]
     assert parse_corner(lines) == CornerRead(("123", "0123"), "mom")
+
+
+def test_a_language_code_right_of_centre_marks_no_set_line() -> None:
+    # The bullet line on the left has no code that fits, so only a language
+    # code on the left could make it a corner.
+    lines = [
+        corner_line("C 0002", 0.86),
+        corner_line("• Deal 2 damage", 0.89),
+        _right("EN", 0.92),
+    ]
+    assert parse_corner(lines) is None
 
 
 def test_a_set_size_shape_on_the_left_ranks_after_the_number_above_it() -> None:
