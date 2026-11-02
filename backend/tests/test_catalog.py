@@ -404,15 +404,13 @@ def test_printings_by_number_misses_answer_empty(catalog_conn: sqlite3.Connectio
     assert catalog.printings_by_number(catalog_conn, "", "") == []
 
 
-def test_set_exists_answers_whether_the_catalog_holds_a_card_in_the_set(
+def test_set_codes_of_name_answers_every_set_the_name_was_printed_in(
     catalog_conn: sqlite3.Connection,
 ) -> None:
-    # The scanner tries the collector number alone only for a set code that
-    # names no set (VEG-681, ADR 0029).
-    assert catalog.set_exists(catalog_conn, "lea")
-    assert catalog.set_exists(catalog_conn, " LEA ")
-    assert not catalog.set_exists(catalog_conn, "cld")
-    assert not catalog.set_exists(catalog_conn, "  ")
+    # The scanner reads a set code one edit off as one of these (VEG-681).
+    assert catalog.set_codes_of_name(catalog_conn, "Lightning Bolt") == {"lea", "m10"}
+    assert catalog.set_codes_of_name(catalog_conn, "lightning bolt") == {"lea", "m10"}
+    assert catalog.set_codes_of_name(catalog_conn, "Lightning Bolts") == set()
 
 
 def _siblings(
