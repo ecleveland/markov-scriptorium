@@ -6,8 +6,8 @@ its title bar with the OCR engine, and fuzzy matches the text against card
 names in the local catalog. After a confident name it reads the card's corner
 too, and when the collector number and set code name exactly one printing of
 a name it read, that reading carries the printing so the page can skip its
-printing picker. When the set code reads one edit away from a set the card
-was printed in, the lookup runs under that set (VEG-681, ADR 0029).
+printing picker. When the set code reads one misread glyph away from a set
+the card was printed in, the lookup runs under that set (VEG-681, ADR 0029).
 Otherwise the page turns a name into a folio with the picker, and always
 offers typing the name instead. A failure on the corner never costs the
 name. The readings still answer, with no printing.
@@ -135,12 +135,21 @@ def _pinned_by_set(
     return None, False
 
 
-def _one_edit_apart(a: str, b: str) -> bool:
-    """Whether two set codes differ by one substitution, insertion or deletion."""
-    # Vision reads B as D and 0 as O, and drops or doubles a glyph. A code two
-    # edits off is another set.
+# Vision read B as D on the Firkraag corner. These are the glyphs it confuses
+# at corner size, lowercase as the catalog stores set codes. A code one glyph
+# off outside them, such as m21 against m20, is another set.
+_CONFUSED_GLYPHS = ("bd8", "0oq", "1il", "5s", "2z", "6g")
+
+
+def _confused(x: str, y: str) -> bool:
+    return any(x in glyphs and y in glyphs for glyphs in _CONFUSED_GLYPHS)
+
+
+def _one_misread_apart(a: str, b: str) -> bool:
+    """Whether a set code reads as another with one glyph confused, dropped or doubled."""
     if len(a) == len(b):
-        return sum(x != y for x, y in zip(a, b, strict=True)) == 1
+        differing = [(x, y) for x, y in zip(a, b, strict=True) if x != y]
+        return len(differing) == 1 and _confused(*differing[0])
     if abs(len(a) - len(b)) != 1:
         return False
     shorter, longer = sorted((a, b), key=len)
@@ -157,8 +166,10 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
     promo or List reprint that prints the same corner. The number candidates
     are tried best first, and the first that pins wins.
 
-    When the set code reads one edit away from a set the card was printed
-    in, the lookup runs under that set (ADR 0029). A read set that holds the
+    When the set code reads one misread glyph away from a set the card was
+    printed in, the lookup runs under that set (ADR 0029). One glyph read as
+    another Vision confuses it with counts, and so does one glyph dropped or
+    doubled. Any other differing glyph does not. A read set that holds the
     name never corrects, so a correct set with a misread number stays on the
     picker. Two near sets pin nothing.
     """
@@ -177,16 +188,15 @@ def _pinned_printing(readings: list[pipeline.Reading], corner: CornerRead) -> di
                 return pinned
             codes: set[str] = set().union(*(catalog.set_codes_of_name(conn, n) for n in names))
             if corner.set_code in codes:
-                logger.debug(
-                    "corner set %s holds the name read; no near set tried", corner.set_code
-                )
+                logger.debug("corner set %s holds a name read; no near set tried", corner.set_code)
                 return None
-            near = sorted(code for code in codes if _one_edit_apart(code, corner.set_code))
-            logger.debug(
-                "corner set %s is one edit from %s among the sets of the names read",
-                corner.set_code,
-                near,
-            )
+            near = sorted(code for code in codes if _one_misread_apart(code, corner.set_code))
+            if near:
+                logger.debug(
+                    "corner set %s is one misread from %s among the sets of the names read",
+                    corner.set_code,
+                    near,
+                )
             if len(near) != 1:
                 logger.debug(
                     "corner set %s: %d near sets; no printing pinned", corner.set_code, len(near)
