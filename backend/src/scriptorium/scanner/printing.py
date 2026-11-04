@@ -47,6 +47,10 @@ _SET_CODE = re.compile(r"(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,6}")
 _LANGUAGE = "EN"
 _DOTS = "•·"
 _SET_LINE_TOKENS = re.compile(rf"[{_DOTS}]|[^\s{_DOTS}]+")
+# Vision can read the dot as another mark glued to the language code, as in
+# "*EN" or "EN.", so marks on either side of it still leave the language code.
+# Letters or digits on either side make another word, such as "QUEEN".
+_LANGUAGE_TOKEN = re.compile(rf"[\W_]*{_LANGUAGE}[\W_]*")
 # The collector number and set line start on the card's left half. The power
 # and toughness box and the copyright line start right of its middle, so a
 # line starting at or right of the frame's middle is never read. The left
@@ -183,13 +187,12 @@ def _split_set_code(text: str) -> tuple[str | None, str]:
     alike ("2X2", "M21", "O7E").
     """
     tokens = _SET_LINE_TOKENS.findall(text)
-    marks = [i for i, token in enumerate(tokens) if token == _LANGUAGE or token in _DOTS]
+    marks = [i for i, token in enumerate(tokens) if _is_language(token) or token in _DOTS]
     if not marks:
         return None, text
     before = marks[0] - 1
-    fits = [
-        i for i, token in enumerate(tokens) if token != _LANGUAGE and _SET_CODE.fullmatch(token)
-    ]
+    # No language code fits a set code, so the language code is never taken.
+    fits = [i for i, token in enumerate(tokens) if _SET_CODE.fullmatch(token)]
     if not fits:
         return None, text
     chosen = before if before in fits else fits[0]
@@ -197,15 +200,24 @@ def _split_set_code(text: str) -> tuple[str | None, str]:
     return tokens[chosen].lower(), rest
 
 
+def _is_language(token: str) -> bool:
+    return _LANGUAGE_TOKEN.fullmatch(token) is not None
+
+
+def _has_language(text: str) -> bool:
+    return any(_is_language(token) for token in _SET_LINE_TOKENS.findall(text))
+
+
 def _is_set_line(text: str) -> bool:
-    return any(dot in text for dot in _DOTS) or _LANGUAGE in _SET_LINE_TOKENS.findall(text)
+    return any(dot in text for dot in _DOTS) or _has_language(text)
 
 
 def parse_corner(lines: list[TextLine]) -> CornerRead | None:
     """The collector number candidates and set code read in ``lines``, or None.
 
     Both must be found. Half a pair would pin nothing, because one collector
-    number appears in hundreds of sets. Lines are read top to bottom and left
+    number appears in hundreds of sets. The language code may come back with
+    a mark glued to it, as in "*EN". Lines are read top to bottom and left
     to right by where they sit, because Vision does not promise an order.
     Numbers read beside a rarity letter or set size rank first, then bare
     digit lines. Every number with its zeros stripped comes before any number

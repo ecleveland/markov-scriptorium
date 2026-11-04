@@ -23,7 +23,7 @@ from PIL import Image
 from starlette.types import Message, Scope
 
 from scriptorium import db
-from scriptorium.api.scanner import MAX_IMAGE_BYTES, _pinned_printing, get_ocr
+from scriptorium.api.scanner import MAX_IMAGE_BYTES, _one_misread_apart, _pinned_printing, get_ocr
 from scriptorium.main import app
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.names import invalidate
@@ -48,6 +48,14 @@ ENGINE_FAILED = (
 EDGAR_READ = {"readings": [{"name": "Edgar Markov", "confidence": 1.0, "printing": None}]}
 # The bottom-left corner of a Fragments common, as Vision reads it at 1080p.
 FRA_2 = [corner_line("C 0002", 0.93), corner_line("FRA • EN", 0.95)]
+# Firkraag, Cunning Instigator, CLB 933, as Vision read it on 2026-10-30. The
+# dot came back as "*" glued to "EN", and CLB as CLD, which holds no card.
+FIRKRAAG = "Firkraag, Cunning Instigator"
+FIRKRAAG_933 = [
+    corner_line("933", 0.91),
+    corner_line("M", 0.91),
+    corner_line("CLD *EN NANOREW MAR", 0.95),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -305,6 +313,160 @@ def test_the_first_candidate_that_pins_wins() -> None:
     assert readings[0]["printing"]["scryfall_id"] == "ascent"
 
 
+def _seed_firkraag() -> None:
+    with closing(db.connect()) as conn:
+        for number in ("642", "648", "933"):
+            insert_card(
+                conn, f"firkraag-{number}", FIRKRAAG, set_code="clb", collector_number=number
+            )
+        conn.commit()
+
+
+# --- a near set code (VEG-681, ADR 0029) ---------------------------------------
+
+
+def test_a_misread_set_code_lets_a_near_set_pin() -> None:
+    _seed_firkraag()
+    readings = _readings_for(FIRKRAAG, FIRKRAAG_933)
+    assert readings[0]["name"] == FIRKRAAG
+    assert readings[0]["printing"]["scryfall_id"] == "firkraag-933"
+
+
+def test_a_glued_mark_pins_the_number_beside_it_not_the_artists_run() -> None:
+    _seed_firkraag()
+    with closing(db.connect()) as conn:
+        insert_card(conn, "firkraag-102", FIRKRAAG, set_code="clb", collector_number="102")
+        conn.commit()
+    corner = [corner_line("933", 0.91), corner_line("CLD *EN 1O2", 0.95)]
+    readings = _readings_for(FIRKRAAG, corner)
+    assert readings[0]["printing"]["scryfall_id"] == "firkraag-933"
+
+
+def test_two_near_sets_of_the_name_pin_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    # CLD is one confusion from clb and one dropped glyph from pcld.
+    with closing(db.connect()) as conn:
+        insert_card(conn, "firkraag-933", FIRKRAAG, set_code="clb", collector_number="933")
+        insert_card(conn, "firkraag-p933", FIRKRAAG, set_code="pcld", collector_number="933")
+        conn.commit()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    readings = _readings_for(FIRKRAAG, FIRKRAAG_933)
+    assert readings[0]["name"] == FIRKRAAG
+    assert all(r["printing"] is None for r in readings)
+    assert "corner set cld: 2 near sets; no printing pinned" in _debug_messages(caplog)
+
+
+def test_a_correct_set_the_catalog_lacks_never_pins_an_older_set(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Core sets reuse numbers for the same card year to year. With m21 not
+    # yet imported, m20 is one glyph off but not one Vision confuses.
+    with closing(db.connect()) as conn:
+        insert_card(
+            conn, "backwater-m20", "Dismal Backwater", set_code="m20", collector_number="245"
+        )
+        conn.commit()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    corner = [corner_line("C 0245", 0.93), corner_line("M21 • EN", 0.95)]
+    readings = _readings_for("Dismal Backwater", corner)
+    assert readings[0]["name"] == "Dismal Backwater"
+    assert all(r["printing"] is None for r in readings)
+    messages = _debug_messages(caplog)
+    assert not any("one misread from" in m for m in messages)
+    assert messages[-1] == "corner set m21: 0 near sets; no printing pinned"
+
+
+def test_a_read_set_holding_the_name_never_corrects(caplog: pytest.LogCaptureFixture) -> None:
+    # clb holds the name, so the set read true and the number misread. The
+    # pclb printing at 933 is one glyph away and must not take the pin.
+    with closing(db.connect()) as conn:
+        insert_card(conn, "firkraag-642", FIRKRAAG, set_code="clb", collector_number="642")
+        insert_card(conn, "firkraag-p933", FIRKRAAG, set_code="pclb", collector_number="933")
+        conn.commit()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    readings = _readings_for(FIRKRAAG, [corner_line("933", 0.91), corner_line("CLB • EN", 0.95)])
+    assert readings[0]["name"] == FIRKRAAG
+    assert all(r["printing"] is None for r in readings)
+    messages = _debug_messages(caplog)
+    assert messages[-1] == "corner set clb holds a name read; no near set tried"
+
+
+def test_a_near_set_holding_the_name_twice_pins_nothing() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-a", "Lightning Bolt", set_code="2x2", collector_number="117")
+        insert_card(conn, "bolt-b", "Lightning Bolt", set_code="2x2", collector_number="117")
+        conn.commit()
+    corner = [corner_line("U 0117", 0.93), corner_line("2XZ • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["name"] == "Lightning Bolt"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_near_set_with_a_sibling_pins_nothing() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-m21", "Lightning Bolt", set_code="m21", collector_number="152")
+        insert_card(
+            conn, "bolt-plst", "Lightning Bolt", set_code="plst", collector_number="M21-152"
+        )
+        conn.commit()
+    corner = [corner_line("C 0152", 0.93), corner_line("M2I • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["name"] == "Lightning Bolt"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_near_set_with_another_card_at_the_number_pins_nothing() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "ring", "Sol Ring", set_code="c21", collector_number="100")
+        insert_card(conn, "twister", "Savage Twister", set_code="c21", collector_number="263")
+        conn.commit()
+    corner = [corner_line("U 0263", 0.93), corner_line("C2I • EN", 0.95)]
+    readings = _readings_for("Sol Ring", corner)
+    assert readings[0]["name"] == "Sol Ring"
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_set_code_two_edits_off_pins_nothing() -> None:
+    _seed_firkraag()
+    readings = _readings_for(FIRKRAAG, [corner_line("933", 0.91), corner_line("CXD *EN", 0.95)])
+    assert readings[0]["name"] == FIRKRAAG
+    assert all(r["printing"] is None for r in readings)
+
+
+def test_a_near_set_prefers_the_english_printing_at_the_pair() -> None:
+    with closing(db.connect()) as conn:
+        insert_card(
+            conn, "bolt-ja", "Lightning Bolt", set_code="sta", collector_number="42", lang="ja"
+        )
+        insert_card(conn, "bolt-en", "Lightning Bolt", set_code="sta", collector_number="42")
+        conn.commit()
+    corner = [corner_line("U 0042", 0.93), corner_line("5TA • EN", 0.95)]
+    readings = _readings_for("Lightning Bolt", corner)
+    assert readings[0]["printing"]["scryfall_id"] == "bolt-en"
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [
+        ("cld", "clb", True),
+        ("cl8", "clb", True),
+        ("o7e", "07e", True),
+        ("m2i", "m21", True),
+        ("clb", "pclb", True),
+        ("pclb", "clb", True),
+        ("m21", "m1", True),
+        ("m21", "m20", False),
+        ("c18", "c17", False),
+        ("eld", "kld", False),
+        ("clb", "clb", False),
+        ("clb", "cxd", False),
+        ("clb", "xclbx", False),
+        ("m21", "2m1", False),
+    ],
+)
+def test_set_codes_one_misread_apart(a: str, b: str, expected: bool) -> None:
+    assert _one_misread_apart(a, b) is expected
+
+
 @pytest.mark.parametrize(
     "error", [OcrUnavailable("Vision failed"), UnreadableImage("bad bytes")], ids=type
 )
@@ -345,7 +507,9 @@ def test_a_corner_missing_from_the_catalog_logs_each_lookup(
     messages = _debug_messages(caplog)
     assert "corner fra 99: 0 printings in the catalog, 0 of a name read" in messages
     assert "corner fra 0099: 0 printings in the catalog, 0 of a name read" in messages
-    assert messages[-1] == "corner fra ('99', '0099') pinned nothing"
+    assert "corner fra ('99', '0099') pinned nothing" in messages
+    # fra holds the name read, so the number misread and no near set is tried.
+    assert messages[-1] == "corner set fra holds a name read; no near set tried"
 
 
 def test_a_pinned_corner_logs_the_printing(caplog: pytest.LogCaptureFixture) -> None:
@@ -365,7 +529,42 @@ def test_a_pair_holding_the_name_twice_logs_both(caplog: pytest.LogCaptureFixtur
     _readings_for("Lightning Bolt", [corner_line("U 0117", 0.93), corner_line("2X2 • EN", 0.95)])
     messages = _debug_messages(caplog)
     assert "corner 2x2 117: 2 printings in the catalog, 2 of a name read" in messages
-    assert messages[-1] == "corner 2x2 ('117', '0117') pinned nothing"
+    assert "corner 2x2 ('117', '0117') pinned nothing" in messages
+    assert messages[-1] == "corner set 2x2 holds a name read; no near set tried"
+
+
+def test_a_near_set_logs_the_lookup_under_it(caplog: pytest.LogCaptureFixture) -> None:
+    _seed_firkraag()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    _readings_for(FIRKRAAG, FIRKRAAG_933)
+    messages = _debug_messages(caplog)
+    assert "corner cld 933: 0 printings in the catalog, 0 of a name read" in messages
+    assert "corner cld ('933',) pinned nothing" in messages
+    assert "corner set cld is one misread from ['clb'] among the sets of the names read" in messages
+    assert "corner clb 933: 1 printings in the catalog, 1 of a name read" in messages
+    assert messages[-1] == "corner clb 933 pinned firkraag-933"
+
+
+def test_a_corner_pinned_by_its_own_set_tries_no_near_set(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    readings = _readings_for("Academic Ascent", FRA_2)
+    assert readings[0]["printing"]["scryfall_id"] == "ascent"
+    assert not any("one misread" in m for m in _debug_messages(caplog))
+
+
+def test_a_sibling_refusal_ends_the_lookup(caplog: pytest.LogCaptureFixture) -> None:
+    with closing(db.connect()) as conn:
+        insert_card(conn, "bolt-m21", "Lightning Bolt", set_code="m21", collector_number="152")
+        insert_card(
+            conn, "bolt-plst", "Lightning Bolt", set_code="plst", collector_number="M21-152"
+        )
+        conn.commit()
+    caplog.set_level(logging.DEBUG, logger="scriptorium")
+    _readings_for("Lightning Bolt", [corner_line("C 0152", 0.93), corner_line("M21 • EN", 0.95)])
+    messages = _debug_messages(caplog)
+    assert messages[-1] == "corner m21 152 matches bolt-m21 and a sibling; no printing pinned"
 
 
 def test_no_reading_at_accept_logs_the_corner_it_skipped(

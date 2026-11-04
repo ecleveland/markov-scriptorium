@@ -145,6 +145,19 @@ def printings_by_number(
     return [_row_to_card(row) for row in rows]
 
 
+def set_codes_of_name(conn: sqlite3.Connection, name: str) -> set[str]:
+    """The set codes of every printing of ``name``.
+
+    The scanner reads a corner's set code one edit off as one of these sets
+    (VEG-681, ADR 0029). The name compares NOCASE so the search rides
+    idx_cards_name, which is NOCASE. A plain compare would scan every card.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT set_code FROM cards WHERE name = ? COLLATE NOCASE", (name,)
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
 def has_sibling_printings(
     conn: sqlite3.Connection, name: str, scryfall_id: str, set_code: str, collector_number: str
 ) -> bool:

@@ -125,6 +125,29 @@ def test_a_set_code_needs_a_letter() -> None:
     assert _parse("C 0002", "123 • EN") is None
 
 
+# --- a set line that misreads (VEG-681) ----------------------------------------
+
+
+def test_the_firkraag_corner_reads_its_number_and_misread_set() -> None:
+    # Vision's lines for CLB 933 on 2026-10-30. The dot came back as "*"
+    # glued to "EN", and CLB as CLD.
+    assert _parse("933", "M", "CLD *EN NANOREW MAR") == CornerRead(("933",), "cld")
+
+
+@pytest.mark.parametrize("set_line", ["FRA *EN", "FRA •EN", "FRA .EN", "FRA EN."])
+def test_a_mark_glued_to_the_language_still_marks_the_set_line(set_line: str) -> None:
+    assert _parse("C 0002", set_line) == CornerRead(("2", "0002"), "fra")
+
+
+def test_a_glued_mark_keeps_the_digit_map_off_the_set_line() -> None:
+    # Folded, the "1O2" run on from the artist would read as 102.
+    assert _parse("933", "CLD *EN 1O2") == CornerRead(("933",), "cld")
+
+
+def test_a_word_ending_in_the_language_code_is_not_a_set_line() -> None:
+    assert _parse("C 0002", "QUEEN") is None
+
+
 @pytest.mark.parametrize(
     "copyright_line",
     [

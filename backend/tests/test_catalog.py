@@ -404,6 +404,15 @@ def test_printings_by_number_misses_answer_empty(catalog_conn: sqlite3.Connectio
     assert catalog.printings_by_number(catalog_conn, "", "") == []
 
 
+def test_set_codes_of_name_answers_every_set_the_name_was_printed_in(
+    catalog_conn: sqlite3.Connection,
+) -> None:
+    # The scanner reads a set code one edit off as one of these (VEG-681).
+    assert catalog.set_codes_of_name(catalog_conn, "Lightning Bolt") == {"lea", "m10"}
+    assert catalog.set_codes_of_name(catalog_conn, "lightning bolt") == {"lea", "m10"}
+    assert catalog.set_codes_of_name(catalog_conn, "Lightning Bolts") == set()
+
+
 def _siblings(
     conn: sqlite3.Connection, name: str, scryfall_id: str, code: str, number: str
 ) -> bool:
