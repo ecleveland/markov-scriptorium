@@ -131,7 +131,8 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   font-size: var(--text-sm);
   color: var(--text-muted);
 }

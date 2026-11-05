@@ -48,6 +48,22 @@ export function Specimens() {
       <h1>Specimens</h1>
       <p>The component layer, laid out for inspection.</p>
 
+      <h2>Type</h2>
+      <p className="specimens__display">
+        Edgar, Charmed Groom, <em>the Markov patriarch</em>
+      </p>
+      <p className="specimens__body">
+        Every folio is entered by hand with its printing and finish, so the
+        catalog can say <em>which</em> copy sits in which Volume.
+      </p>
+      <p className="specimens__caps">The Index · The Catalog · Tomes</p>
+      <p className="specimens__figures">
+        0123456789
+        <br />
+        fol. 312 · 4 copies
+      </p>
+      <p className="specimens__rubric">VII</p>
+
       <h2>Buttons</h2>
       <div className="specimens__row">
         <Button variant="primary" seal>

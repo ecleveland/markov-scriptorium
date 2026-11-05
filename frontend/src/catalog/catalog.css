@@ -28,12 +28,12 @@
 
 .catalog__table th {
   text-align: left;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-faint);
-  font-weight: 600;
+  font-weight: 500;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
@@ -133,7 +133,8 @@
 }
 
 .qty-stepper__value {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   color: var(--accent-secondary);
   min-width: 1.5rem;
   text-align: center;
@@ -171,16 +172,17 @@
 }
 
 .lot-detail__facts dt {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-faint);
 }
 
 .lot-detail__facts dd {
   margin: var(--space-1) 0 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   font-size: var(--text-sm);
 }
 

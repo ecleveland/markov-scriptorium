@@ -21,3 +21,30 @@
   width: 2.25rem;
   height: 2.25rem;
 }
+
+/* The type specimen (VEG-620): each face, small caps, figures and rubric. */
+.specimens__display {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+}
+
+.specimens__body {
+  font-size: var(--text-base);
+}
+
+.specimens__caps {
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
+}
+
+.specimens__figures {
+  font-variant-numeric: var(--figures);
+}
+
+.specimens__rubric {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--rubric);
+}

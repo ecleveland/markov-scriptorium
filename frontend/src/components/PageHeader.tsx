@@ -5,7 +5,7 @@ export interface PageHeaderProps extends Omit<
   ComponentProps<'header'>,
   'title'
 > {
-  /** The small uppercase line above the title, naming the flow. */
+  /** The small-caps line above the title, naming the flow. */
   eyebrow?: string
   title: ReactNode
   /** `1` for a page's own heading, `2` for a heading inside one. */

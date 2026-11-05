@@ -45,12 +45,12 @@
 
 .archive__table th {
   text-align: left;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-faint);
-  font-weight: 600;
+  font-weight: 500;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
 }

@@ -75,7 +75,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* The chosen printing and the unmatched note both repeat the card name, so

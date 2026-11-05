@@ -1,9 +1,10 @@
+@import './styles/fonts.css';
 @import './styles/tokens.css';
 @import './styles/components.css';
 
 :root {
-  /* 112.5% of the 16px default = 18px, so 1rem (--text-base) === 18px. */
-  font-size: 112.5%;
+  /* 118.75% of the 16px default = 19px, so 1rem (--text-base) === 19px. */
+  font-size: 118.75%;
   font-family: var(--font-body);
   line-height: var(--leading-normal);
   color: var(--text);
@@ -28,7 +29,7 @@ h2,
 h3 {
   font-family: var(--font-display);
   line-height: var(--leading-tight);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 :focus-visible {

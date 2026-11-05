@@ -46,9 +46,9 @@
   border-radius: var(--radius-md);
   background-color: var(--btn-bg);
   color: var(--text-primary);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.03em;
   line-height: var(--leading-snug);
   white-space: nowrap;
@@ -129,11 +129,11 @@
 
 .page-header__eyebrow {
   margin: 0 0 var(--space-1);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-weight: 500;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-muted);
 }
 
@@ -232,7 +232,7 @@
   fill: var(--gold);
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   text-anchor: middle;
 }
 
@@ -262,11 +262,11 @@
 
 .sealed__title {
   margin: 0 0 var(--space-1);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-weight: 500;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--accent-secondary);
 }
 
@@ -426,11 +426,12 @@
   border-radius: var(--radius-full);
   background: var(--surface-raised);
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   font-size: var(--text-xs);
-  letter-spacing: 0.04em;
   line-height: var(--leading-snug);
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   white-space: nowrap;
 }
 
@@ -463,11 +464,11 @@
 
 .panel > legend {
   padding: 0 var(--space-2);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 500;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-muted);
 }
 
@@ -480,11 +481,11 @@
 .field__label {
   display: block;
   margin-bottom: var(--space-1);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 500;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-muted);
 }
 
@@ -588,5 +589,5 @@ select.control {
 }
 
 .printing-chip--md .printing-chip__thumb {
-  width: 2.667rem; /* 48px at the 18px root, as the picker rendered before */
+  width: 2.526rem; /* 48px at the 19px root, as the picker rendered before */
 }

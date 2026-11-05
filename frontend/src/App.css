@@ -72,15 +72,15 @@
   color: var(--gold);
 }
 
-/* Primary nav — uppercase sans links with an oxblood active underline. */
+/* The primary nav sets its links in small caps with an oxblood active underline. */
 .scriptorium-nav {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-5);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-sm);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
 }
 
 .scriptorium-nav a {
@@ -97,7 +97,7 @@
   border-bottom-color: var(--accent);
 }
 
-/* Status chip — compact mono pill with a state-coloured dot. */
+/* The status chip is a compact pill with tabular figures and a state-coloured dot. */
 .status {
   display: inline-flex;
   align-items: center;
@@ -107,7 +107,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: var(--surface-raised);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   font-size: var(--text-xs);
   letter-spacing: 0.02em;
   color: var(--text-muted);

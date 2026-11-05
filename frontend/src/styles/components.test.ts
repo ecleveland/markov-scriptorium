@@ -164,8 +164,15 @@ const NAMED_COLOURS = new Set([
   'yellowgreen',
 ])
 
-/** tokens.css is the one sheet allowed to name a colour or a typeface. */
-const sheets = cssSheets({ exclude: ['styles/tokens.css'] })
+/**
+ * tokens.css is the one sheet allowed to name a colour or a typeface, apart
+ * from fonts.css, whose @font-face rules must name the families they declare.
+ * fonts.css holds nothing but those rules, so leaving it out of the colour and
+ * motion contracts costs nothing; its own contract is below.
+ */
+const sheets = cssSheets({
+  exclude: ['styles/tokens.css', 'styles/fonts.css'],
+})
 
 const componentSheet = sheets.find(
   (sheet) => sheet.name === 'styles/components.css',
@@ -271,6 +278,21 @@ describe('stylesheet contract (every sheet)', () => {
     expect(css).not.toMatch(/font-family\s*:(?!\s*var\()/)
   })
 
+  // VEG-620: labels and headers ask for small caps, never a tracked uppercase
+  // transform, and the variant settings come only from the tokens so a later
+  // retune is one edit in tokens.css.
+  it.each(sheets)('$name sets no uppercase transform', ({ css }) => {
+    expect(css).not.toMatch(/text-transform\s*:\s*uppercase/)
+  })
+
+  it.each(sheets)(
+    '$name takes small caps and figures only through the tokens',
+    ({ css }) => {
+      expect(css).not.toMatch(/font-variant-caps\s*:(?!\s*var\(--caps\))/)
+      expect(css).not.toMatch(/font-variant-numeric\s*:(?!\s*var\(--figures\))/)
+    },
+  )
+
   // Motion plays only for people who have not asked the OS to reduce it, so
   // the default is still. Since VEG-427 that covers the 120ms hover
   // transitions as well as keyframed animation.
@@ -360,6 +382,35 @@ describe('component stylesheet contract', () => {
       '.notice--inline',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
+    }
+  })
+})
+
+// VEG-620, ADR 0030: the self-hosted variable Garamonds. One face per family
+// and style, each spanning its weight axis, so every weight the sheets ask for
+// comes from the file rather than the browser's synthesis.
+describe('font-face sheet contract', () => {
+  const fontsSheet = cssSheets({ exclude: [] }).find(
+    (sheet) => sheet.name === 'styles/fonts.css',
+  )
+
+  it('declares an upright and an italic face for each Garamond', () => {
+    expect(fontsSheet, 'styles/fonts.css is missing').toBeDefined()
+    const faces = fontsSheet?.css.match(/@font-face\s*\{[^}]*\}/g) ?? []
+    expect(faces).toHaveLength(4)
+    const families = faces.map(
+      (face) => /font-family\s*:\s*'([^']+)'/.exec(face)?.[1],
+    )
+    expect(families.sort()).toEqual([
+      'Cormorant Garamond',
+      'Cormorant Garamond',
+      'EB Garamond',
+      'EB Garamond',
+    ])
+    for (const face of faces) {
+      expect(face).toMatch(/font-weight\s*:\s*\d+\s+\d+\s*;/)
+      expect(face).toMatch(/font-display\s*:\s*swap\s*;/)
+      expect(face).toMatch(/font-style\s*:\s*(normal|italic)\s*;/)
     }
   })
 })
