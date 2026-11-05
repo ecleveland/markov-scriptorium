@@ -28,15 +28,22 @@ renders.
 
 **Self-host the upstream variable fonts.** The source is the OFL variable TTFs
 in the google/fonts repository, pinned to commit
-`fbe81817505e8aeadc53cc7a38a2b76fb57c333e`. Those files carry `smcp`, `c2sc`,
-`onum`, `lnum`, `tnum` and `pnum`.
+`fbe81817505e8aeadc53cc7a38a2b76fb57c333e`. Both EB Garamond styles carry
+`smcp`, `c2sc`, `onum`, `lnum`, `tnum` and `pnum`. Both Cormorant Garamond
+styles carry `onum`, `lnum` and `tnum`. The upright adds `smcp` and `c2sc` but
+has no `pnum`. The italic adds `pnum` but has no `smcp` or `c2sc`.
 
 **Subset them to Latin with fontTools.** `frontend/scripts/subset-fonts.sh`
-downloads the four styles, keeps the Latin range Google Fonts serves and the
-shaping, small-caps and figure features, and writes woff2 files to
-`frontend/src/assets/fonts/`. The four files total about 220 KB. The OFL text
-for each family sits beside them. The files are committed, and the script
-exists so they can be rebuilt from the same commit.
+downloads the four styles and keeps Latin, Latin-1, Latin Extended-A, general
+punctuation and the four arrows the UI draws. The range starts from Google
+Fonts' latin subset but is not identical to it. Latin Extended-A covers names
+such as Łukasz, and the old npm builds shipped it as their latin-ext subset.
+The back links draw a left arrow and the importers a right one. The script
+also keeps the shaping, small-caps and figure features, and writes woff2
+files to `frontend/src/assets/fonts/`. It pins fontTools and brotli, so a
+rerun from the same commit gives the same bytes. The four files total about
+255 KB. The OFL text for each family sits beside them. The files are
+committed, and the script exists so they can be rebuilt from the same commit.
 
 **One face per family and style.** `frontend/src/styles/fonts.css` declares
 four `@font-face` rules, upright and italic for each family, and `index.css`
@@ -52,7 +59,7 @@ with the packages.
   would call a hosted service. CLAUDE.md puts local-first ahead of that, and
   the app should render the same offline.
 - **The upstream TTFs uncut.** They need no script, but the four files come to
-  about 3.5 MB, against about 220 KB subset.
+  about 3.5 MB, against about 255 KB subset.
 
 ## Notes
 

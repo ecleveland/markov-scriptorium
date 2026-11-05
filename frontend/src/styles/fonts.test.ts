@@ -1,26 +1,33 @@
 // @vitest-environment node
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 // The self-hosted fonts are committed binaries (VEG-620, ADR 0030), produced
-// by scripts/subset-fonts.sh. These checks catch a file that went missing or
-// was committed empty, as a Git LFS pointer or a failed download would be.
-// They do not parse the fonts.
+// by scripts/subset-fonts.sh. The file list comes from the url() of each face
+// in fonts.css, so a renamed font cannot leave this check behind.
+// components.test.ts checks each file exists; this one catches a file
+// committed empty, as a Git LFS pointer or a failed download would be. Neither
+// parses the fonts.
+
+const fontsCss = new URL('./fonts.css', import.meta.url)
+const sources = Array.from(
+  readFileSync(fileURLToPath(fontsCss), 'utf8').matchAll(/url\('([^']+)'\)/g),
+  (m) => m[1],
+)
 
 function fontAsset(name: string): string {
   return fileURLToPath(new URL(`../assets/fonts/${name}`, import.meta.url))
 }
 
 describe('self-hosted font files', () => {
-  it.each([
-    'cormorant-garamond.woff2',
-    'cormorant-garamond-italic.woff2',
-    'eb-garamond.woff2',
-    'eb-garamond-italic.woff2',
-  ])('ships %s at more than 10 KB', (name) => {
-    expect(existsSync(fontAsset(name)), `${name} is missing`).toBe(true)
-    expect(statSync(fontAsset(name)).size).toBeGreaterThan(10 * 1024)
+  it('finds a source for each of the four faces', () => {
+    expect(sources).toHaveLength(4)
+  })
+
+  it.each(sources)('ships %s at more than 10 KB', (source) => {
+    const path = fileURLToPath(new URL(source, fontsCss))
+    expect(statSync(path).size).toBeGreaterThan(10 * 1024)
   })
 
   it.each(['OFL-cormorant-garamond.txt', 'OFL-eb-garamond.txt'])(

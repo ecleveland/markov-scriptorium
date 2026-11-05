@@ -146,7 +146,7 @@ migrated in the restyle ticket (VEG-424).
   `--rubric` alias points at `--oxblood-bright` for numerals, initials and the
   current running-head entry. It measures 3.65:1 on `--bg`, 3.44:1 on
   `--panel` and 3.23:1 on `--surface-raised`, which clears AA for large text
-  only, so rubric is held to display sizes: 24px and up at regular weight, or
-  19px and up at 600. `tokens.test.ts` pins the 3:1 floor on all three grounds.
+  only, so rubric is held to display sizes, 24px and up. `tokens.test.ts` pins
+  the 3:1 floor on all three grounds.
   The root size moved from 18px to 19px (`118.75%`), so the rem scale grows
   with it. Body-face rules that asked for 600 now ask for 500.

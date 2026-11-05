@@ -107,8 +107,8 @@ describe('design tokens contract', () => {
   })
 
   it('names the Garamonds first in each stack', () => {
-    expect(valueOf('--font-display')).toContain("'Cormorant Garamond'")
-    expect(valueOf('--font-body')).toContain("'EB Garamond'")
+    expect(valueOf('--font-display')).toMatch(/^'Cormorant Garamond',/)
+    expect(valueOf('--font-body')).toMatch(/^'EB Garamond',/)
   })
 
   it('defines the typographic tokens', () => {
@@ -274,8 +274,8 @@ describe('contrast', () => {
     expect(contrast('--text-primary', '--surface')).toBeGreaterThanOrEqual(4.5)
   })
 
-  // Rubric colours display text only (24px and up, or 19px and up at 600), so
-  // the floor is the large-text AA of 3:1, not the 4.5:1 that body text needs.
+  // Rubric colours display text only, 24px and up, so the floor is the
+  // large-text AA of 3:1, not the 4.5:1 that body text needs.
   it.each(['--bg', '--panel', '--surface-raised'])(
     'reads rubric at large-text AA on %s',
     (ground) => {

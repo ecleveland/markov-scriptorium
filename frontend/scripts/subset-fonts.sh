@@ -6,7 +6,8 @@
 # depends on, so the fonts come from the upstream OFL variable TTFs in the
 # google/fonts repository instead, pinned to one commit and subset to Latin.
 #
-# Needs curl and uv (for fontTools). Run from anywhere:
+# Needs curl and uv. fontTools and brotli are pinned so a rerun from the same
+# commit gives the same bytes. Run from anywhere:
 #   frontend/scripts/subset-fonts.sh
 set -euo pipefail
 
@@ -16,9 +17,10 @@ OUT="$(cd "$(dirname "$0")/.." && pwd)/src/assets/fonts"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# Latin and Latin-1, general punctuation, the euro and a few arrows: the same
-# range Google Fonts serves as its "latin" subset.
-UNICODES='U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD'
+# Close to the range Google Fonts serves as its "latin" subset, plus Latin
+# Extended-A for names such as Łukasz, and all four arrows because the back
+# links draw a left arrow and the importers a right one.
+UNICODES='U+0000-017F,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD'
 # Shaping, small caps, and every figure style, so --caps and --figures work.
 FEATURES='kern,liga,calt,ccmp,locl,mark,mkmk,smcp,c2sc,onum,lnum,tnum,pnum,frac,ordn,case'
 
@@ -26,7 +28,7 @@ subset() {
   local family_dir="$1" source="$2" target="$3"
   # The upstream filenames carry [wght], which curl would otherwise read as a glob.
   curl -sSfL --globoff -o "$WORK/$source" "$BASE/$family_dir/$source"
-  uvx --from fonttools --with brotli pyftsubset "$WORK/$source" \
+  uvx --from 'fonttools==4.68.0' --with 'brotli==1.2.1' pyftsubset "$WORK/$source" \
     --output-file="$OUT/$target" \
     --flavor=woff2 \
     --unicodes="$UNICODES" \

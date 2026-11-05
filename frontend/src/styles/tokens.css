@@ -69,9 +69,9 @@
 
   --accent: var(--oxblood);
   /* For borders and fills that carry no text. Bone on oxblood-bright is
-     4.26:1 and oxblood-bright as text on the ground is 3.4:1, both under AA,
-     so it never colours body text or sits behind it. The --rubric alias
-     below is the one exception, held to display sizes. */
+     4.26:1, and oxblood-bright as text is 3.65:1 on the ground and 3.44:1 on
+     the panel, all under AA, so it never colours body text or sits behind it.
+     The --rubric alias below is the one exception, held to display sizes. */
   --accent-hover: var(--oxblood-bright);
   /* A filled button darkens on hover so its bone label keeps its contrast
      (8.7:1). Use this, not --accent-hover, for a filled hover. */
@@ -82,9 +82,8 @@
      Oxblood itself is 2.2:1 on the ground, so it cannot carry text.
      Oxblood-bright measures 3.65:1 on the ground, 3.44 on the panel and 3.23
      on the raised surface, which clears AA for large text only (3:1). Rubric
-     is therefore reserved for display sizes: 24px and up at regular weight,
-     or 19px and up at 600. tokens.test.ts pins the 3:1 floor on all three
-     grounds. */
+     is therefore reserved for display sizes, 24px and up. tokens.test.ts pins
+     the 3:1 floor on all three grounds. */
   --rubric: var(--oxblood-bright);
 
   /* Hover and danger part ways. --accent-hover stays oxblood-bright because it
