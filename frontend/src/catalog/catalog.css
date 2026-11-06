@@ -52,13 +52,10 @@
   width: 3rem;
 }
 
-.catalog__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
+/* The cell stays a table cell so its border meets the row's. The name and
+   folio stack as blocks instead of flex children. */
 .catalog__name {
+  display: block;
   font-family: var(--font-display);
   font-size: var(--text-lg);
   color: var(--text-primary);
@@ -69,6 +66,11 @@
    not a text colour, at 3.4:1 on the ground. */
 .catalog__name:hover {
   color: var(--accent-secondary);
+}
+
+.catalog__folio {
+  display: block;
+  margin-top: var(--space-1);
 }
 
 .catalog__folio,

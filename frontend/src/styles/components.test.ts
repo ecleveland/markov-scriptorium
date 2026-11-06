@@ -508,6 +508,21 @@ describe('component stylesheet contract', () => {
   })
 })
 
+// The Catalog's Card cell is a <td>. Giving a cell a flex or grid display
+// takes it out of table layout, so it stops stretching to the row height and
+// its bottom border floats above the row's. Keep every table cell a cell.
+describe('catalog table cells', () => {
+  const catalog = sheets.find((sheet) => sheet.name === 'catalog/catalog.css')
+  const cellClasses = ['.catalog__art', '.catalog__card', '.catalog__quantity']
+
+  it.each(cellClasses)('%s does not leave table layout', (cls) => {
+    const block = catalog?.css.match(
+      new RegExp(`${cls.replace('.', '\\.')}\\s*\\{([^}]*)\\}`),
+    )
+    expect(block?.[1] ?? '').not.toMatch(/display\s*:/)
+  })
+})
+
 // VEG-620, ADR 0030: the self-hosted variable Garamonds. One face per family
 // and style, each spanning its weight axis, so every weight the sheets ask for
 // comes from the file rather than the browser's synthesis.
