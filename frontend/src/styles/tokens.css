@@ -69,13 +69,22 @@
 
   --accent: var(--oxblood);
   /* For borders and fills that carry no text. Bone on oxblood-bright is
-     4.26:1 and oxblood-bright as text on the ground is 3.4:1, both under AA,
-     so it never colours text or sits behind it. */
+     4.26:1, and oxblood-bright as text is 3.65:1 on the ground and 3.44:1 on
+     the panel, all under AA, so it never colours body text or sits behind it.
+     The --rubric alias below is the one exception, held to display sizes. */
   --accent-hover: var(--oxblood-bright);
   /* A filled button darkens on hover so its bone label keeps its contrast
      (8.7:1). Use this, not --accent-hover, for a filled hover. */
   --accent-pressed: color-mix(in srgb, var(--oxblood), var(--bg) 20%);
   --accent-secondary: var(--gold);
+
+  /* Rubric colours numerals, initials and the current running-head entry.
+     Oxblood itself is 2.2:1 on the ground, so it cannot carry text.
+     Oxblood-bright measures 3.65:1 on the ground, 3.44 on the panel and 3.23
+     on the raised surface, which clears AA for large text only (3:1). Rubric
+     is therefore reserved for display sizes, 24px and up. tokens.test.ts pins
+     the 3:1 floor on all three grounds. */
+  --rubric: var(--oxblood-bright);
 
   /* Hover and danger part ways. --accent-hover stays oxblood-bright because it
      never colours text or a text ground (the filled hover is --accent-pressed),
@@ -96,20 +105,28 @@
   --focus-ring: var(--focus-ring-width) solid var(--focus-ring-color);
 
   /* ---- 3a. Type families ------------------------------------------------ */
-  /* Self-hosted OFL fonts (loaded via @fontsource in main.tsx) lead each
-     stack; the original Apple display fonts trail as graceful fallbacks. */
+  /* Two self-hosted OFL Garamonds (declared in fonts.css, ADR 0030) lead
+     the stacks (VEG-620). Cormorant is the display face for titles, card names
+     and Tome names; EB Garamond sets body, labels and data. Installed Apple
+     and system serifs trail as fallbacks. */
   --font-display:
-    'Playfair Display', 'Didot', 'Hoefler Text', Baskerville, Georgia, serif;
+    'Cormorant Garamond', 'Hoefler Text', Didot, Baskerville, Georgia, serif;
   --font-body:
-    'Spectral', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-  --font-sans:
-    'Mulish', 'Avenir Next', Avenir, -apple-system, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    'EB Garamond', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+    serif;
 
-  /* ---- 3b. Type scale (root font-size is 18px; rem-based) --------------- */
-  --text-xs: 0.722rem; /* ~13px — status, fine print */
-  --text-sm: 0.833rem; /* ~15px — labels, secondary */
-  --text-base: 1rem; /* 18px — body */
+  /* Labels and headers ask for small caps, never an uppercase transform.
+     Use as font-variant-caps and letter-spacing. */
+  --caps: small-caps;
+  --caps-tracking: 0.06em;
+  /* Quantities and counts ask for tabular old-style figures, so columns of
+     numbers line up. Use as font-variant-numeric. */
+  --figures: tabular-nums oldstyle-nums;
+
+  /* ---- 3b. Type scale (root font-size is 19px; rem-based) --------------- */
+  --text-xs: 0.722rem; /* ~13.7px, status and fine print */
+  --text-sm: 0.833rem; /* ~15.8px, labels and secondary text */
+  --text-base: 1rem; /* 19px, body */
   --text-lg: 1.2rem;
   --text-xl: 1.5rem;
   --text-2xl: 2rem;

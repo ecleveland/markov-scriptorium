@@ -99,15 +99,27 @@ describe('design tokens contract', () => {
     expect(valueOf('--surface-raised-hover')).toContain('var(--surface-raised)')
   })
 
-  it('defines the four type-family tokens', () => {
-    for (const name of [
-      '--font-display',
-      '--font-body',
-      '--font-sans',
-      '--font-mono',
-    ]) {
-      expect(declares(name), `missing font token ${name}`).toBe(true)
-    }
+  it('defines the two type-family tokens and no others', () => {
+    expect(declares('--font-display')).toBe(true)
+    expect(declares('--font-body')).toBe(true)
+    expect(declares('--font-sans')).toBe(false)
+    expect(declares('--font-mono')).toBe(false)
+  })
+
+  it('names the Garamonds first in each stack', () => {
+    expect(valueOf('--font-display')).toMatch(/^'Cormorant Garamond',/)
+    expect(valueOf('--font-body')).toMatch(/^'EB Garamond',/)
+  })
+
+  it('defines the typographic tokens', () => {
+    expect(valueOf('--caps')).toBe('small-caps')
+    expect(declares('--caps-tracking')).toBe(true)
+    expect(valueOf('--figures')).toContain('tabular-nums')
+    expect(valueOf('--figures')).toContain('oldstyle-nums')
+  })
+
+  it('routes rubric through oxblood-bright', () => {
+    expect(valueOf('--rubric')).toBe('var(--oxblood-bright)')
   })
 
   it('defines type, spacing, radius, and elevation scales', () => {
@@ -261,6 +273,15 @@ describe('contrast', () => {
   it('reads the stepper hover (bone) at AA on the panel', () => {
     expect(contrast('--text-primary', '--surface')).toBeGreaterThanOrEqual(4.5)
   })
+
+  // Rubric colours display text only, 24px and up, so the floor is the
+  // large-text AA of 3:1, not the 4.5:1 that body text needs.
+  it.each(['--bg', '--panel', '--surface-raised'])(
+    'reads rubric at large-text AA on %s',
+    (ground) => {
+      expect(contrast('--rubric', ground)).toBeGreaterThanOrEqual(3)
+    },
+  )
 })
 
 // ADR 0014: the app is dark-only by design. index.css tells the browser so,
@@ -276,10 +297,52 @@ describe('colour scheme', () => {
     expect(index).toMatch(/color-scheme\s*:\s*dark\s*;/)
   })
 
+  it('sets the 19px root in index.css', () => {
+    expect(index).toMatch(/font-size\s*:\s*118\.75%\s*;/)
+  })
+
   it.each(cssSheets({ exclude: [] }))(
     '$name has no prefers-color-scheme branch',
     ({ css }) => {
       expect(css).not.toMatch(/prefers-color-scheme/)
     },
   )
+})
+
+// VEG-620, ADR 0030: the two Garamonds are self-hosted from src/assets/fonts
+// through styles/fonts.css, because the npm font packages strip small caps and
+// old-style figures. No font package may come back, and index.css must load
+// the faces before the tokens that name them. The package scope is written
+// capitalised and matched case-blind, so a grep for the lowercase scope finds
+// only live references.
+describe('font loading', () => {
+  const packageScope = /^@Fontsource\//i
+  const pkg = JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL('../../package.json', import.meta.url)),
+      'utf8',
+    ),
+  ) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const read = (path: string) =>
+    readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
+
+  it('depends on no font package', () => {
+    const names = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+    expect(names.filter((name) => packageScope.test(name))).toEqual([])
+  })
+
+  it('imports no font package in main.tsx', () => {
+    expect(read('../main.tsx')).not.toMatch(/@Fontsource\//i)
+  })
+
+  it('imports fonts.css before tokens.css in index.css', () => {
+    const index = read('../index.css')
+    const fonts = index.indexOf("@import './styles/fonts.css';")
+    const tokens = index.indexOf("@import './styles/tokens.css';")
+    expect(fonts).toBeGreaterThanOrEqual(0)
+    expect(tokens).toBeGreaterThan(fonts)
+  })
 })

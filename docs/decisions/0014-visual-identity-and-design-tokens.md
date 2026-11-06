@@ -68,15 +68,19 @@ fallbacks:
 | UI / labels | Avenir | **Mulish** (500, 600, 700) |
 | Status | SF Mono | **IBM Plex Mono** (400, 500) |
 
-Imported in `main.tsx` (the reliable path with Vite); exposed as
-`--font-display / --font-body / --font-sans / --font-mono`. Self-hosting (over a
-system stack) was chosen for cross-platform fidelity ahead of Tauri packaging,
-at the cost of four build-time deps and ~tens of KB of woff2.
+This table records the stack VEG-421 shipped. The 2026-11-04 note under Notes
+and follow-ups holds the current one.
+
+The fonts are now declared in `styles/fonts.css`
+([ADR 0030](0030-self-hosted-variable-fonts.md)) and exposed as two tokens,
+`--font-display` and `--font-body`. The 2026-11-04 note has the details.
+Self-hosting, over a system stack, was chosen for cross-platform fidelity
+ahead of Tauri packaging.
 
 [Fontsource]: https://fontsource.org
 
-**5. Type / spacing / radius / elevation scales.** Root font-size is `112.5%`
-(=18px) so `--text-base` (1rem) is 18px and the rest of the rem scale follows.
+**5. Type / spacing / radius / elevation scales.** Root font-size is `118.75%`
+(=19px) so `--text-base` (1rem) is 19px and the rest of the rem scale follows.
 Scales: `--text-xs … --text-3xl` with `--leading-{tight,snug,normal}`;
 `--space-1 … --space-8` (0.25–3rem); `--radius-{sm,md,lg,full}`;
 `--elevation-1 … 3` (shadow lift off the obsidian ground).
@@ -127,3 +131,22 @@ migrated in the restyle ticket (VEG-424).
   well. The primary button darkens to a new `--accent-pressed` on hover, the
   danger button's label turns bone, and oxblood-bright is kept for borders and
   fills that carry no text.
+- 2026-11-04, VEG-620: four families became two. Cormorant Garamond is the
+  display face for page titles, card names and Tome names. EB Garamond sets
+  body, labels and data. Both are self-hosted variable fonts with an upright
+  and an italic face, built from the upstream files rather than Fontsource,
+  per [ADR 0030](0030-self-hosted-variable-fonts.md). Four families and
+  tracked uppercase labels read as a generated template, and the ledger
+  direction needs small caps and old-style figures, which Playfair Display and
+  Mulish do not have.
+  `--font-sans` and `--font-mono` are gone and every consumer now uses
+  `--font-body`. Three new tokens carry the typography: `--caps` (small caps)
+  with `--caps-tracking` replaces every uppercase transform, and `--figures`
+  asks for tabular old-style numerals where counts and quantities line up. A new
+  `--rubric` alias points at `--oxblood-bright` for numerals, initials and the
+  current running-head entry. It measures 3.65:1 on `--bg`, 3.44:1 on
+  `--panel` and 3.23:1 on `--surface-raised`, which clears AA for large text
+  only, so rubric is held to display sizes, 24px and up. `tokens.test.ts` pins
+  the 3:1 floor on all three grounds.
+  The root size moved from 18px to 19px (`118.75%`), so the rem scale grows
+  with it. Body-face rules that asked for 600 now ask for 500.

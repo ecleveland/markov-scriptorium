@@ -28,12 +28,12 @@
 
 .catalog__table th {
   text-align: left;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-faint);
-  font-weight: 600;
+  font-weight: 500;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
@@ -52,13 +52,10 @@
   width: 3rem;
 }
 
-.catalog__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
+/* The cell stays a table cell so its border meets the row's. The name and
+   folio stack as blocks instead of flex children. */
 .catalog__name {
+  display: block;
   font-family: var(--font-display);
   font-size: var(--text-lg);
   color: var(--text-primary);
@@ -69,6 +66,11 @@
    not a text colour, at 3.4:1 on the ground. */
 .catalog__name:hover {
   color: var(--accent-secondary);
+}
+
+.catalog__folio {
+  display: block;
+  margin-top: var(--space-1);
 }
 
 .catalog__folio,
@@ -133,7 +135,8 @@
 }
 
 .qty-stepper__value {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   color: var(--accent-secondary);
   min-width: 1.5rem;
   text-align: center;
@@ -171,16 +174,17 @@
 }
 
 .lot-detail__facts dt {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
   color: var(--text-faint);
 }
 
 .lot-detail__facts dd {
   margin: var(--space-1) 0 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: var(--figures);
   font-size: var(--text-sm);
 }
 

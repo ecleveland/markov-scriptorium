@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { cssSheets } from '../test/sheets'
 
@@ -164,8 +166,90 @@ const NAMED_COLOURS = new Set([
   'yellowgreen',
 ])
 
-/** tokens.css is the one sheet allowed to name a colour or a typeface. */
-const sheets = cssSheets({ exclude: ['styles/tokens.css'] })
+/**
+ * tokens.css is the one sheet allowed to name a colour or a typeface, apart
+ * from fonts.css, whose @font-face rules must name the families they declare.
+ * fonts.css holds nothing but those rules, so leaving it out of the colour and
+ * motion contracts costs nothing; its own contract is below.
+ */
+const sheets = cssSheets({
+  exclude: ['styles/tokens.css', 'styles/fonts.css'],
+})
+
+const tokensSheet = cssSheets({ exclude: [] }).find(
+  (sheet) => sheet.name === 'styles/tokens.css',
+)
+if (!tokensSheet) {
+  throw new Error('styles/tokens.css was not found under src/')
+}
+
+/** Every custom property a sheet declares, as `--name`. */
+function declaredProperties(css: string): Set<string> {
+  return new Set(Array.from(css.matchAll(/(--[a-z0-9-]+)\s*:/gi), (m) => m[1]))
+}
+
+const tokenNames = declaredProperties(tokensSheet.css)
+
+/**
+ * Properties a component sets on its own element so a page can retheme it
+ * (ADR 0017). Any sheet may read or set them without declaring them first.
+ */
+const ELEMENT_PROPERTIES = new Set([
+  '--btn-bg',
+  '--btn-bg-hover',
+  '--btn-border',
+  '--btn-border-hover',
+])
+
+/**
+ * The `var(--name)` references in a sheet, with or without a fallback, that
+ * neither tokens.css, the sheet itself, nor a component's element properties
+ * declare. A token renamed or deleted under a consumer shows up here, where
+ * the browser would drop the declaration without a word.
+ */
+function undeclaredReferences(css: string): string[] {
+  const own = declaredProperties(css)
+  const references = Array.from(
+    css.matchAll(/var\(\s*(--[a-z0-9-]+)/gi),
+    (m) => m[1],
+  )
+  return [...new Set(references)].filter(
+    (name) =>
+      !tokenNames.has(name) && !own.has(name) && !ELEMENT_PROPERTIES.has(name),
+  )
+}
+
+/**
+ * A font family written into a sheet: a `font-family` that is not a token, or
+ * a `font` shorthand naming a quoted family or a well-known one. `font:
+ * inherit` passes.
+ */
+function namesRawFont(css: string): boolean {
+  return (
+    /font-family\s*:(?!\s*var\()/.test(css) ||
+    /(?<![\w-])font\s*:[^;}]*(['"]|\b(serif|sans-serif|monospace|cursive|fantasy|system-ui|Georgia|Palatino)\b)/i.test(
+      css,
+    )
+  )
+}
+
+/**
+ * VEG-620: labels and headers ask for small caps, never a case transform, and
+ * the variant settings come only from the tokens, so a later retune is one
+ * edit in tokens.css. The shorthand and raw feature settings would get around
+ * both, so they are out too.
+ */
+const OFF_TOKEN_TYPOGRAPHY = [
+  /text-transform\s*:\s*(uppercase|capitalize)/i,
+  /font-variant\s*:/i,
+  /font-feature-settings\s*:/i,
+  /font-variant-caps\s*:(?!\s*var\(--caps\)\s*[;}])/i,
+  /font-variant-numeric\s*:(?!\s*var\(--figures\)\s*[;}])/i,
+]
+
+function setsTypographyOffToken(css: string): boolean {
+  return OFF_TOKEN_TYPOGRAPHY.some((rule) => rule.test(css))
+}
 
 const componentSheet = sheets.find(
   (sheet) => sheet.name === 'styles/components.css',
@@ -237,6 +321,51 @@ describe('reduced-motion block splitter', () => {
   })
 })
 
+describe('stylesheet contract checks', () => {
+  it('flags a reference to a custom property nothing declares', () => {
+    expect(
+      undeclaredReferences('.status { font-family: var(--font-mono); }'),
+    ).toEqual(['--font-mono'])
+    expect(
+      undeclaredReferences('.a { color: var(--gone, var(--text)); }'),
+    ).toEqual(['--gone'])
+    expect(
+      undeclaredReferences(
+        '.a { --local: 1px; margin: var(--local); color: var(--text); background: var(--btn-bg); }',
+      ),
+    ).toEqual([])
+  })
+
+  it('catches a family named through the font shorthand', () => {
+    expect(namesRawFont(".a { font-family: 'EB Garamond'; }")).toBe(true)
+    expect(namesRawFont(".a { font: 500 1rem 'EB Garamond'; }")).toBe(true)
+    expect(namesRawFont('.a { font: italic 1rem/1.2 Georgia, serif; }')).toBe(
+      true,
+    )
+    expect(namesRawFont('.a { font: inherit; }')).toBe(false)
+    expect(namesRawFont('.a { font-family: var(--font-body); }')).toBe(false)
+  })
+
+  it('catches every way around the typography tokens', () => {
+    for (const css of [
+      '.a { text-transform: Uppercase; }',
+      '.a { text-transform: capitalize; }',
+      '.a { font-variant: small-caps; }',
+      '.a { font-feature-settings: "smcp"; }',
+      '.a { font-variant-caps: all-small-caps; }',
+      '.a { font-variant-numeric: lining-nums; }',
+      '.a { font-variant-numeric: var(--figures) slashed-zero; }',
+    ]) {
+      expect(setsTypographyOffToken(css), css).toBe(true)
+    }
+    expect(
+      setsTypographyOffToken(
+        '.a { font-variant-caps: var(--caps); font-variant-numeric: var(--figures) }',
+      ),
+    ).toBe(false)
+  })
+})
+
 describe('stylesheet contract (every sheet)', () => {
   it('finds the component sheet and every page sheet', () => {
     expect(sheets.map((sheet) => sheet.name)).toEqual(
@@ -268,8 +397,23 @@ describe('stylesheet contract (every sheet)', () => {
   })
 
   it.each(sheets)('$name uses no raw font family names', ({ css }) => {
-    expect(css).not.toMatch(/font-family\s*:(?!\s*var\()/)
+    expect(namesRawFont(css)).toBe(false)
   })
+
+  it.each(sheets)(
+    '$name sets case, small caps and figures only through the tokens',
+    ({ css }) => {
+      const offenders = OFF_TOKEN_TYPOGRAPHY.filter((rule) => rule.test(css))
+      expect(offenders).toEqual([])
+    },
+  )
+
+  it.each(sheets)(
+    '$name references only declared custom properties',
+    ({ css }) => {
+      expect(undeclaredReferences(css)).toEqual([])
+    },
+  )
 
   // Motion plays only for people who have not asked the OS to reduce it, so
   // the default is still. Since VEG-427 that covers the 120ms hover
@@ -360,6 +504,61 @@ describe('component stylesheet contract', () => {
       '.notice--inline',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
+    }
+  })
+})
+
+// The Catalog's Card cell is a <td>. Giving a cell a flex or grid display
+// takes it out of table layout, so it stops stretching to the row height and
+// its bottom border floats above the row's. Keep every table cell a cell.
+describe('catalog table cells', () => {
+  const catalog = sheets.find((sheet) => sheet.name === 'catalog/catalog.css')
+  const cellClasses = ['.catalog__art', '.catalog__card', '.catalog__quantity']
+
+  it.each(cellClasses)('%s does not leave table layout', (cls) => {
+    const block = catalog?.css.match(
+      new RegExp(`${cls.replace('.', '\\.')}\\s*\\{([^}]*)\\}`),
+    )
+    expect(block?.[1] ?? '').not.toMatch(/display\s*:/)
+  })
+})
+
+// VEG-620, ADR 0030: the self-hosted variable Garamonds. One face per family
+// and style, each spanning its weight axis, so every weight the sheets ask for
+// comes from the file rather than the browser's synthesis.
+describe('font-face sheet contract', () => {
+  const fontsSheet = cssSheets({ exclude: [] }).find(
+    (sheet) => sheet.name === 'styles/fonts.css',
+  )
+  const faces = fontsSheet?.css.match(/@font-face\s*\{[^}]*\}/g) ?? []
+
+  it('declares exactly an upright and an italic face for each Garamond', () => {
+    expect(fontsSheet, 'styles/fonts.css is missing').toBeDefined()
+    const pairs = faces.map((face) => {
+      const family = /font-family\s*:\s*'([^']+)'/.exec(face)?.[1]
+      const style = /font-style\s*:\s*([a-z]+)\s*;/.exec(face)?.[1]
+      return `${family} ${style}`
+    })
+    expect(pairs.sort()).toEqual([
+      'Cormorant Garamond italic',
+      'Cormorant Garamond normal',
+      'EB Garamond italic',
+      'EB Garamond normal',
+    ])
+    for (const face of faces) {
+      expect(face).toMatch(/font-weight\s*:\s*\d+\s+\d+\s*;/)
+      expect(face).toMatch(/font-display\s*:\s*swap\s*;/)
+    }
+  })
+
+  it('points every face at a file that exists', () => {
+    const sources = faces.map((face) => /url\('([^']+)'\)/.exec(face)?.[1])
+    expect(sources).toHaveLength(4)
+    const fontsCss = new URL('./fonts.css', import.meta.url)
+    for (const source of sources) {
+      expect(source, 'a face has no url()').toBeDefined()
+      const path = fileURLToPath(new URL(source ?? '', fontsCss))
+      expect(existsSync(path), `${source} is missing`).toBe(true)
     }
   })
 })

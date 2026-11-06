@@ -1,0 +1,45 @@
+/*
+ * Self-hosted webfonts (VEG-620, ADR 0030).
+ *
+ * The two Garamonds are the upstream SIL OFL variable fonts from google/fonts,
+ * subset to Latin and committed under src/assets/fonts. scripts/subset-fonts.sh
+ * regenerates them from a pinned commit. The npm Fontsource builds were dropped
+ * because they strip the small-caps (smcp) and old-style figure (onum)
+ * features that --caps and --figures in tokens.css depend on.
+ *
+ * Each file carries the whole weight axis, so one face per family and style
+ * covers every weight the sheets ask for. tokens.css names these families in
+ * its stacks; this is the only other sheet allowed to write a family name.
+ */
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('../assets/fonts/cormorant-garamond.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('../assets/fonts/cormorant-garamond-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'EB Garamond';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../assets/fonts/eb-garamond.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'EB Garamond';
+  font-style: italic;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../assets/fonts/eb-garamond-italic.woff2') format('woff2');
+}

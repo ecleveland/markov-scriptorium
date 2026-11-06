@@ -64,4 +64,21 @@ describe('Specimens', () => {
       ).not.toBeNull()
     }
   })
+
+  it('renders the type specimen', () => {
+    render(<Specimens />)
+    expect(screen.getByRole('heading', { name: 'Type' })).toBeInTheDocument()
+    for (const selector of [
+      '.specimens__display',
+      '.specimens__body',
+      '.specimens__caps',
+      '.specimens__figures',
+      '.specimens__rubric',
+    ]) {
+      expect(
+        document.querySelector(selector),
+        `missing ${selector}`,
+      ).not.toBeNull()
+    }
+  })
 })
