@@ -13,7 +13,13 @@ export function TomesPage() {
 
   return (
     <section className="tomes">
-      <PageHeader eyebrow="The Bindery" title="The Tomes" />
+      <PageHeader
+        title={
+          <>
+            The <span className="rubric">Tomes</span>
+          </>
+        }
+      />
       <TomeCreateForm />
 
       {query.isPending && <Consulting>Taking down the Tomes…</Consulting>}

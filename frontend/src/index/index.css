@@ -4,10 +4,10 @@
    Buttons, controls, notices, the panel and the card thumb come from the
    component layer. What is left here is layout and the folio tile. */
 
-.index {
-  max-width: 72rem;
-  margin: 0 auto;
-  text-align: left;
+/* The grid needs more than the leaf's 66ch text column, so the Index widens
+   the column it sits in (ADR 0031). */
+.scriptorium:has(> .index) {
+  --leaf-measure: 72rem;
 }
 
 /* ---- Search ------------------------------------------------------------- */

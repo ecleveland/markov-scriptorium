@@ -155,6 +155,42 @@ describe('TomeEditorPage', () => {
     ).toHaveAttribute('href', '/tomes/4/breakdown')
   })
 
+  it('links back to the Tomes without an arrow glyph', async () => {
+    getMock.mockResolvedValue(tome([]))
+    renderEditor()
+    expect(
+      await screen.findByRole('link', { name: 'Back to the Tomes' }),
+    ).toHaveAttribute('href', '/tomes')
+  })
+
+  it('tags the header with the format, before the breakdown link', async () => {
+    getMock.mockResolvedValue(tome([]))
+    renderEditor()
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: 'Edgar Markov',
+    })
+    const header = heading.closest('.page-header') as HTMLElement
+    const tag = within(header).getByText('commander')
+    expect(tag).toHaveClass('tag', 'tag--neutral')
+    const link = within(header).getByRole('link', { name: 'Owned and needed' })
+    expect(
+      tag.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('puts no tag in the header when the Tome has no format', async () => {
+    getMock.mockResolvedValue(tome([], { format: null }))
+    renderEditor()
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: 'Edgar Markov',
+    })
+    const header = heading.closest('.page-header') as HTMLElement
+    expect(header.querySelector('.tag')).toBeNull()
+    expect(within(header).queryByText('Tome')).toBeNull()
+  })
+
   it('sorts each board by card type by default', async () => {
     getMock.mockResolvedValue(tome([bolt, swamp, bloodghast]))
     renderEditor()

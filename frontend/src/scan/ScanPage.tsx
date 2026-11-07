@@ -147,7 +147,7 @@ export function ScanPage() {
 
   return (
     <section className="scan">
-      <PageHeader eyebrow="The Scrying Glass" title="Scry a Card" />
+      <PageHeader title="Scry a Card" />
 
       {/* Mounted on every step for the reason InscribePage gives: a live
           region that returns with its text already inside is often not

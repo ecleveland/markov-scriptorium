@@ -4,12 +4,6 @@
  * is left here is where those pieces sit on the page.
  */
 
-.scan {
-  max-width: 40rem;
-  margin: 0 auto;
-  text-align: left;
-}
-
 .camera-capture {
   display: flex;
   flex-direction: column;

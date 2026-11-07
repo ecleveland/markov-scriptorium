@@ -152,7 +152,7 @@ describe('PrintingPage', () => {
     })
 
     await user.click(
-      await screen.findByRole('link', { name: '← Back to the Index' }),
+      await screen.findByRole('link', { name: 'Back to the Index' }),
     )
     expect(
       screen.getByText('Landed on /index?finish=foil&page=2'),
@@ -185,7 +185,7 @@ describe('PrintingPage', () => {
     ownedMock.mockResolvedValue(TWO_LOTS)
     renderPrinting()
     expect(
-      await screen.findByRole('link', { name: '← Back to the Index' }),
+      await screen.findByRole('link', { name: 'Back to the Index' }),
     ).toHaveAttribute('href', '/index')
   })
 

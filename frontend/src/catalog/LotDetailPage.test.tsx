@@ -291,7 +291,7 @@ describe('LotDetailPage', () => {
     renderDetail()
 
     expect(
-      await screen.findByRole('link', { name: '← Back to the Catalog' }),
+      await screen.findByRole('link', { name: 'Back to the Catalog' }),
     ).toHaveAttribute('href', '/catalog')
   })
 
@@ -304,7 +304,7 @@ describe('LotDetailPage', () => {
     })
 
     expect(
-      await screen.findByRole('link', { name: '← Back to the Catalog' }),
+      await screen.findByRole('link', { name: 'Back to the Catalog' }),
     ).toHaveAttribute('href', '/catalog?page=2')
   })
 
@@ -315,7 +315,7 @@ describe('LotDetailPage', () => {
     renderDetail({ pathname: '/catalog/7', state: { back: PRINTING_BACK } })
 
     await user.click(
-      await screen.findByRole('link', { name: '← Back to the printing' }),
+      await screen.findByRole('link', { name: 'Back to the printing' }),
     )
     expect(
       screen.getByText('Landed on /index/bolt-lea ?finish=foil'),
@@ -383,7 +383,7 @@ describe('LotDetailPage', () => {
       'database is locked',
     )
     expect(
-      screen.getByRole('link', { name: '← Back to the printing' }),
+      screen.getByRole('link', { name: 'Back to the printing' }),
     ).toHaveAttribute('href', '/index/bolt-lea')
   })
 

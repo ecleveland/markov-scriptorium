@@ -5,8 +5,10 @@ export interface PageHeaderProps extends Omit<
   ComponentProps<'header'>,
   'title'
 > {
-  /** The small-caps line above the title, naming the flow. */
-  eyebrow?: string
+  /**
+   * The heading text. A node, so a page can set one word in rubric with
+   * `<span className="rubric">`.
+   */
   title: ReactNode
   /** `1` for a page's own heading, `2` for a heading inside one. */
   level?: 1 | 2
@@ -15,12 +17,12 @@ export interface PageHeaderProps extends Omit<
 }
 
 /**
- * The heading block every page opens with: an optional eyebrow, the title, and
- * the actions that belong to it. Typography comes from index.css and App.css,
- * so this only lays the parts out.
+ * The heading block every page opens with: the title and the actions that
+ * belong to it. The page's running title lives in the leaf margin, which the
+ * route draws (App.tsx). Typography comes from index.css and App.css, so this
+ * only lays the parts out.
  */
 export function PageHeader({
-  eyebrow,
   title,
   level = 1,
   className,
@@ -31,7 +33,6 @@ export function PageHeader({
   return (
     <header className={cx('page-header', className)} {...rest}>
       <div className="page-header__heading">
-        {eyebrow && <p className="page-header__eyebrow">{eyebrow}</p>}
         <Heading className="page-header__title">{title}</Heading>
       </div>
       {/* Only an absent child skips the wrapper; 0 and '' are content. */}

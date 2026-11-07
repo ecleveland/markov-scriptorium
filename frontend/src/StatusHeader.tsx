@@ -7,12 +7,28 @@ interface Health {
   database: string
 }
 
-type State = 'pending' | 'ok' | 'error'
+interface Status {
+  state: 'pending' | 'ok' | 'error'
+  sentence: string
+}
 
-/** App header: the scriptorium brand mark, nav, and a live backend/catalog status. */
+const PENDING: Status = {
+  state: 'pending',
+  sentence: 'consulting the catalog…',
+}
+const OPEN: Status = { state: 'ok', sentence: 'the catalog is open' }
+const UNOPENED: Status = {
+  state: 'error',
+  sentence: 'the catalog could not be opened',
+}
+const UNREACHED: Status = {
+  state: 'error',
+  sentence: 'the catalog could not be reached',
+}
+
+/** The running head: the brand mark, the nav, and one sentence on the catalog's health. */
 export function StatusHeader() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [state, setState] = useState<State>('pending')
+  const [status, setStatus] = useState<Status>(PENDING)
 
   useEffect(() => {
     // Proxied to the FastAPI backend's /health in dev (see vite.config.ts).
@@ -23,21 +39,14 @@ export function StatusHeader() {
         return res.json() as Promise<Health>
       })
       .then((data) => {
-        setHealth(data)
-        setState('ok')
+        // The backend can answer while its database cannot.
+        setStatus(data.database === 'ok' ? OPEN : UNOPENED)
       })
       .catch((err) => {
         console.error('Health check failed', err)
-        setState('error')
+        setStatus(UNREACHED)
       })
   }, [])
-
-  const label =
-    state === 'ok' && health
-      ? `catalog ${health.database}`
-      : state === 'error'
-        ? 'unreachable'
-        : 'consulting…'
 
   return (
     <header className="scriptorium-header">
@@ -54,20 +63,18 @@ export function StatusHeader() {
 
       <div className="scriptorium-header-end">
         <nav className="scriptorium-nav" aria-label="Primary">
-          <NavLink to="/index">Index</NavLink>
-          <NavLink to="/catalog">Catalog</NavLink>
+          <NavLink to="/index">The Index</NavLink>
+          <NavLink to="/catalog">The Catalog</NavLink>
           <NavLink to="/tomes">Tomes</NavLink>
           <NavLink to="/inscribe">Inscribe</NavLink>
-          <NavLink to="/scan">Scan</NavLink>
-          <NavLink to="/import/decklist">Decklist</NavLink>
-          <NavLink to="/import/csv">CSV</NavLink>
-          <NavLink to="/archive">Archive</NavLink>
+          <NavLink to="/scan">Scry</NavLink>
+          {/* Current on both import pages by NavLink's prefix match. */}
+          <NavLink to="/import">Bring in</NavLink>
+          <NavLink to="/archive">Muniment Room</NavLink>
         </nav>
-        <p className="status" role="status" data-state={state}>
-          <span className="status-dot" aria-hidden="true">
-            ●
-          </span>
-          {label}
+        <p className="status" role="status" data-state={status.state}>
+          <span className="status-dot" aria-hidden="true" />
+          {status.sentence}
         </p>
       </div>
     </header>

@@ -243,7 +243,7 @@ export function LotDetailPage() {
       <section className="lot-detail">
         <p className="lot-detail__back">
           <Link to={back.to} state={back.state}>
-            ← {back.label}
+            {back.label}
           </Link>
         </p>
         <Notice tone="danger" role="alert">
@@ -259,7 +259,7 @@ export function LotDetailPage() {
     <section className="lot-detail">
       <p className="lot-detail__back">
         <Link to={back.to} state={back.state}>
-          ← {back.label}
+          {back.label}
         </Link>
       </p>
 

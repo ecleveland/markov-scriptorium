@@ -14,6 +14,7 @@ import {
   Tag,
   Textarea,
 } from '../components'
+import { Link } from 'react-router-dom'
 import { useArrowKeyList } from '../hooks/useArrowKeyList'
 import './specimens.css'
 
@@ -112,9 +113,40 @@ export function Specimens() {
       </Panel>
 
       <h2>Page header</h2>
-      <PageHeader eyebrow="Section" title="A page heading" level={2}>
+      <PageHeader
+        title={
+          <>
+            A page <span className="rubric">heading</span>
+          </>
+        }
+        level={2}
+      >
+        <Tag>commander</Tag>
         <Button>Change card</Button>
       </PageHeader>
+
+      <h2>Back link</h2>
+      <p>
+        <Link to="/index">Back to the Index</Link>
+      </p>
+
+      <h2>Status</h2>
+      {/* Static copies of the running head's line, one per state. No role, so
+          the sheet does not announce three live regions. */}
+      <div className="specimens__stack">
+        <p className="status" data-state="ok">
+          <span className="status-dot" aria-hidden="true" />
+          the catalog is open
+        </p>
+        <p className="status" data-state="pending">
+          <span className="status-dot" aria-hidden="true" />
+          consulting the catalog…
+        </p>
+        <p className="status" data-state="error">
+          <span className="status-dot" aria-hidden="true" />
+          the catalog could not be reached
+        </p>
+      </div>
 
       <h2>Notices</h2>
       <Notice tone="danger">The catalog could not be reached.</Notice>

@@ -2,13 +2,6 @@
    per ADR 0014. Buttons, controls, tags, and notices come from the component
    layer (ADR 0017); the stepper and card thumb reuse catalog.css. */
 
-.tomes,
-.tome {
-  max-width: 56rem;
-  margin: 0 auto;
-  text-align: left;
-}
-
 .tome-create form {
   display: flex;
   flex-direction: column;

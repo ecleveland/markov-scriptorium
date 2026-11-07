@@ -153,7 +153,6 @@ describe('ScanPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Scry a Card' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('The Scrying Glass')).toBeInTheDocument()
     // The seal's live region is mounted and empty before anything is said.
     const region = screen.getByRole('status')
     expect(region).toBeEmptyDOMElement()

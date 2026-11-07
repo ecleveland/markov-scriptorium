@@ -4,12 +4,6 @@
  * is left here is where those pieces sit on the page.
  */
 
-.inscribe {
-  max-width: 40rem;
-  margin: 0 auto;
-  text-align: left;
-}
-
 /* Card art beside the acquisition fields, stacking on a narrow window. */
 .inscribe-form__body {
   display: flex;

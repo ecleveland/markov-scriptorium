@@ -6,37 +6,88 @@
   min-width: 0;
 }
 
+/* ---- The leaf (ADR 0031) -------------------------------------------------
+   Main is an opening of two columns centred as a pair, the margin with the
+   folio mark and running title, then the page. A page sheet widens its own
+   leaf by setting --leaf-measure on .scriptorium:has(> .its-section). */
 .scriptorium {
-  margin: auto;
-  padding: var(--space-6);
-  max-width: 36rem;
-  text-align: center;
+  --leaf-margin: 5.5rem;
+  --leaf-measure: 66ch;
+  display: grid;
+  grid-template-columns: var(--leaf-margin) minmax(0, var(--leaf-measure));
+  justify-content: center;
+  column-gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-6) var(--space-5) var(--space-8);
+  max-width: none;
+  text-align: left;
+}
+
+.leaf__margin {
+  grid-column: 1;
+  grid-row: 1;
+  padding-top: 0.35rem;
+  text-align: right;
+}
+
+.scriptorium > :not(.leaf__margin) {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.leaf__folio {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  color: var(--rubric);
+}
+
+.leaf__running {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
+  color: var(--text-muted);
+}
+
+/* Media queries read rem at 16px, not the 19px root, so this is 704px. */
+@media (max-width: 44rem) {
+  .scriptorium {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+  .leaf__margin {
+    display: none;
+  }
+  .scriptorium > :not(.leaf__margin) {
+    grid-column: 1;
+  }
 }
 
 .scriptorium h1 {
-  margin: 0 0 var(--space-1);
-  font-size: var(--text-3xl);
-  letter-spacing: 0.03em;
-  color: var(--gold);
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(2.6rem, 6vw, 4.2rem);
+  line-height: 1;
+  color: var(--text-primary);
+  text-wrap: balance;
+  overflow-wrap: break-word;
 }
 
-.tagline {
-  margin-bottom: var(--space-8);
-  font-style: italic;
-  color: var(--muted);
-}
-
-/* ---- App shell header (VEG-422) ----------------------------------------- */
+/* ---- The running head (VEG-422, VEG-623) -------------------------------- */
 
 .scriptorium-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-4) var(--space-6);
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-4) var(--space-5) var(--space-3);
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
 }
 
 .scriptorium-header-end {
@@ -46,7 +97,7 @@
   gap: var(--space-4) var(--space-6);
 }
 
-/* Brand mark — wax seal + wordmark, the link home. */
+/* Brand mark, the wax seal and wordmark, is the link home. */
 .brand {
   display: inline-flex;
   align-items: center;
@@ -64,15 +115,19 @@
 
 .brand-title {
   font-family: var(--font-display);
+  font-weight: 600;
   font-size: var(--text-xl);
   letter-spacing: 0.02em;
   line-height: var(--leading-tight);
 }
 .brand-title-accent {
+  font-style: italic;
+  font-weight: 500;
   color: var(--gold);
 }
 
-/* The primary nav sets its links in small caps with an oxblood active underline. */
+/* The nav sets its links in small caps and marks the current page with a
+   hairline in rubric. */
 .scriptorium-nav {
   display: flex;
   flex-wrap: wrap;
@@ -85,7 +140,7 @@
 
 .scriptorium-nav a {
   padding-bottom: var(--space-1);
-  border-bottom: 2px solid transparent;
+  border-bottom: 1px solid transparent;
   color: var(--text-muted);
   text-decoration: none;
 }
@@ -94,49 +149,45 @@
 }
 .scriptorium-nav a[aria-current='page'] {
   color: var(--text-primary);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--rubric);
 }
 
-/* The status chip is a compact pill with tabular figures and a state-coloured dot. */
+/* The status is an italic sentence after a candle dot. */
 .status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
   font-family: var(--font-body);
-  font-variant-numeric: var(--figures);
-  font-size: var(--text-xs);
-  letter-spacing: 0.02em;
+  font-style: italic;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   white-space: nowrap;
 }
 
 .status-dot {
-  font-size: 0.7em;
-  line-height: 1;
-  color: var(--muted);
-}
-.status[data-state='ok'] .status-dot {
-  color: var(--success);
-}
-.status[data-state='pending'] .status-dot {
-  color: var(--gold);
+  flex-shrink: 0;
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: var(--radius-full);
+  background: var(--gold);
+  box-shadow: 0 0 6px var(--gold);
 }
 .status[data-state='error'] .status-dot {
-  color: var(--danger);
+  background: var(--text-faint);
+  box-shadow: none;
 }
 
-/* The hover fade is motion, so it plays only for people who have not asked
-   the OS to reduce it (ADR 0017). */
+/* The hover fade and the flicker are motion, so they play only for people
+   who have not asked the OS to reduce it (ADR 0017). */
 @media (prefers-reduced-motion: no-preference) {
   .scriptorium-nav a {
     transition:
       color 120ms ease,
       border-color 120ms ease;
+  }
+  .status[data-state='pending'] .status-dot {
+    animation: candle-flicker 1.6s ease-in-out infinite;
   }
 }
 
