@@ -24,22 +24,26 @@ describe('PageHeader', () => {
     ).toBeInTheDocument()
   })
 
-  it('groups the eyebrow and the title in one named block', () => {
-    render(<PageHeader eyebrow="Inscription" title="Inscribe a Card" />)
-    const block = screen.getByText('Inscription').parentElement
-    expect(block).toHaveClass('page-header__heading')
-    expect(
-      screen.getByRole('heading', { name: 'Inscribe a Card' }).parentElement,
-    ).toBe(block)
+  it('keeps the accessible name whole when one word is in rubric', () => {
+    render(
+      <PageHeader
+        title={
+          <>
+            The <span className="rubric">Index</span>
+          </>
+        }
+      />,
+    )
+    const heading = screen.getByRole('heading', { name: 'The Index' })
+    expect(heading.querySelector('.rubric')).toHaveTextContent('Index')
   })
 
-  it('renders the eyebrow only when one is given', () => {
-    const { container, rerender } = render(<PageHeader title="Review" />)
+  it('renders no eyebrow above the title', () => {
+    const { container } = render(<PageHeader title="Review" />)
     expect(container.querySelector('.page-header__eyebrow')).toBeNull()
-    rerender(<PageHeader eyebrow="Decklist import" title="Review" />)
-    expect(screen.getByText('Decklist import')).toHaveClass(
-      'page-header__eyebrow',
-    )
+    expect(
+      container.querySelector('.page-header__heading')?.children,
+    ).toHaveLength(1)
   })
 
   it('renders the actions wrapper only when it has children', () => {

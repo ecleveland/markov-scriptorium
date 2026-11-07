@@ -38,7 +38,8 @@ downloads the four styles and keeps Latin, Latin-1, Latin Extended-A, general
 punctuation and the four arrows the UI draws. The range starts from Google
 Fonts' latin subset but is not identical to it. Latin Extended-A covers names
 such as Łukasz, and the old npm builds shipped it as their latin-ext subset.
-The back links draw a left arrow and the importers a right one. The script
+The importers draw a right arrow in their copy, and the back links drew a
+left one until VEG-623 made them sentences. The script
 also keeps the shaping, small-caps and figure features, and writes woff2
 files to `frontend/src/assets/fonts/`. It pins fontTools and brotli, so a
 rerun from the same commit gives the same bytes. The four files total about

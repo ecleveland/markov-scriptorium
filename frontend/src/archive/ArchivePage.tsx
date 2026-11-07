@@ -49,7 +49,13 @@ export function ArchivePage() {
 
   return (
     <section className="archive">
-      <PageHeader eyebrow="Safekeeping" title="The Muniment Room" />
+      <PageHeader
+        title={
+          <>
+            The <span className="rubric">Muniment</span> Room
+          </>
+        }
+      />
 
       <Panel
         as="section"

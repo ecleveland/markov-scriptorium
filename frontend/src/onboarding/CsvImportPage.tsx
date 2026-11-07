@@ -211,7 +211,7 @@ export function CsvImportPage() {
   if (step === 'summary' && summary) {
     return (
       <section className="decklist">
-        <PageHeader eyebrow="CSV import" title="Collection Inscribed" />
+        <PageHeader title="Collection Inscribed" />
         {/* Second child of the section, as on the preview step, so React
             keeps this node across the transition and the summary is read. */}
         <div role="status">
@@ -231,7 +231,7 @@ export function CsvImportPage() {
   if (step === 'preview') {
     return (
       <section className="decklist">
-        <PageHeader eyebrow="CSV import" title="Review the Import">
+        <PageHeader title="Review the Import">
           <Button onClick={() => setStep('upload')}>Back to upload</Button>
         </PageHeader>
 
@@ -325,7 +325,7 @@ export function CsvImportPage() {
 
   return (
     <section className="decklist">
-      <PageHeader eyebrow="CSV import" title="Import a Collection CSV" />
+      <PageHeader title="Import a Collection CSV" />
       <p>
         Upload a CSV exported from Manabox, Deckbox, or Archidekt. The source is
         detected from its columns; finish, condition, and language come from the

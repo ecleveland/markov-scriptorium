@@ -64,14 +64,14 @@ export function BreakdownPage() {
   return (
     <section className="tome">
       <p className="tome__back">
-        <Link to={`/tomes/${deckId}`}>← Back to the Tome</Link>
+        <Link to={`/tomes/${deckId}`}>Back to the Tome</Link>
       </p>
       {failure && (
         <Notice tone="danger" role="alert">
           The breakdown could not be refreshed. {failure.message}
         </Notice>
       )}
-      <PageHeader eyebrow="Owned and needed" title={tome.data.name} />
+      <PageHeader title={tome.data.name} />
       <Notice>
         {cardCount(totals.cards)}, {totals.have} in hand, {totals.needed} needed
       </Notice>

@@ -170,15 +170,41 @@ describe('App routing', () => {
     const links = within(nav)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(links.slice(0, 3)).toEqual(['Index', 'Catalog', 'Tomes'])
-    expect(within(nav).getByRole('link', { name: 'Index' })).toHaveAttribute(
-      'href',
-      '/index',
-    )
+    expect(links.slice(0, 3)).toEqual(['The Index', 'The Catalog', 'Tomes'])
+    expect(
+      within(nav).getByRole('link', { name: 'The Index' }),
+    ).toHaveAttribute('href', '/index')
     expect(within(nav).getByRole('link', { name: 'Tomes' })).toHaveAttribute(
       'href',
       '/tomes',
     )
+  })
+
+  it('renders the Bring in page at /import', () => {
+    renderAt('/import')
+    expect(
+      screen.getByRole('heading', { name: 'Bring in a Collection' }),
+    ).toBeInTheDocument()
+  })
+
+  it('sets the folio mark and running title in a hidden margin', async () => {
+    const { container } = renderAt('/index')
+    await screen.findByRole('heading', { name: 'The Index' })
+
+    const margin = container.querySelector('.leaf__margin')
+    expect(margin).toHaveAttribute('aria-hidden', 'true')
+    const leaf = within(margin as HTMLElement)
+    expect(leaf.getByText('fol. 1')).toBeInTheDocument()
+    expect(leaf.getByText('The Catalog, searched')).toBeInTheDocument()
+  })
+
+  it('numbers a detail page with the folio of its section', async () => {
+    const { container } = renderAt('/catalog/999')
+    await screen.findByRole('heading', { name: 'No such folio' })
+
+    const margin = container.querySelector('.leaf__margin')
+    expect(margin).toHaveTextContent('fol. 2')
+    expect(margin).toHaveTextContent('The Catalog')
   })
 
   it('serves the component specimen sheet in development', async () => {
@@ -193,6 +219,14 @@ describe('App routing', () => {
         { timeout: 5000 },
       ),
     ).toBeInTheDocument()
+  })
+
+  it('gives the specimen sheet a running title and no folio', () => {
+    const { container } = renderAt('/specimens')
+    expect(container.querySelector('.leaf__running')).toHaveTextContent(
+      'Specimens',
+    )
+    expect(container.querySelector('.leaf__folio')).not.toBeInTheDocument()
   })
 
   it('does not register the specimen sheet outside development', async () => {

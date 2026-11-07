@@ -63,7 +63,7 @@ export function PrintingPage() {
   return (
     <section className="lot-detail">
       <p className="lot-detail__back">
-        <Link to={backTo}>← Back to the Index</Link>
+        <Link to={backTo}>Back to the Index</Link>
       </p>
 
       <header className="lot-detail__head">

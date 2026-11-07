@@ -47,7 +47,9 @@ export function CatalogPage() {
   if (query.isPending) {
     return (
       <section className="catalog">
-        <h1>The Catalog</h1>
+        <h1>
+          The <span className="rubric">Catalog</span>
+        </h1>
         <Consulting />
       </section>
     )
@@ -56,7 +58,9 @@ export function CatalogPage() {
   if (query.isError) {
     return (
       <section className="catalog">
-        <h1>The Catalog</h1>
+        <h1>
+          The <span className="rubric">Catalog</span>
+        </h1>
         <Notice tone="danger" role="alert">
           The catalog could not be read. {query.error.message}
         </Notice>
@@ -85,7 +89,9 @@ export function CatalogPage() {
   if (total === 0) {
     return (
       <section className="catalog">
-        <h1>The Catalog</h1>
+        <h1>
+          The <span className="rubric">Catalog</span>
+        </h1>
         <EmptyState title="Nothing inscribed yet">
           Add a card through <Link to="/inscribe">Inscribe</Link>, or bring a
           whole collection in from a <Link to="/import/decklist">decklist</Link>{' '}
@@ -99,7 +105,9 @@ export function CatalogPage() {
 
   return (
     <section className="catalog">
-      <h1>The Catalog</h1>
+      <h1>
+        The <span className="rubric">Catalog</span>
+      </h1>
       <Notice>
         Showing {pageRange(shownOffset, results.length)} of {total}{' '}
         {total === 1 ? 'folio' : 'folios'}

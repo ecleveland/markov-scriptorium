@@ -69,7 +69,13 @@ function indexPath(state: IndexState): string {
 function Shell({ children }: { children: ReactNode }) {
   return (
     <section className="index">
-      <PageHeader eyebrow="The Catalog, searched" title="The Index" />
+      <PageHeader
+        title={
+          <>
+            The <span className="rubric">Index</span>
+          </>
+        }
+      />
       {children}
     </section>
   )

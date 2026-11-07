@@ -211,7 +211,7 @@ export function DecklistPage() {
   if (step === 'summary' && summary) {
     return (
       <section className="decklist">
-        <PageHeader eyebrow="Decklist import" title="Decklist Inscribed" />
+        <PageHeader title="Decklist Inscribed" />
         {/* Second child of the section, as on the preview step, so React
             keeps this node across the transition and the summary is read. */}
         <div role="status">
@@ -231,7 +231,7 @@ export function DecklistPage() {
   if (step === 'preview') {
     return (
       <section className="decklist">
-        <PageHeader eyebrow="Decklist import" title="Review the Decklist">
+        <PageHeader title="Review the Decklist">
           <Button onClick={() => setStep('paste')}>Edit decklist</Button>
         </PageHeader>
 
@@ -350,7 +350,7 @@ export function DecklistPage() {
 
   return (
     <section className="decklist">
-      <PageHeader eyebrow="Decklist import" title="Inscribe a Decklist" />
+      <PageHeader title="Inscribe a Decklist" />
       <p>
         Paste a decklist — one card per line, e.g.{' '}
         <code>4 Lightning Bolt (2X2)</code>. Quantities, set codes, comments,

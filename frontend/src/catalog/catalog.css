@@ -6,11 +6,11 @@
    the Catalog owns alone, such as the table and the quantity stepper. The
    card thumb moved to the component layer with VEG-228. */
 
-.catalog,
-.lot-detail {
-  max-width: 56rem;
-  margin: 0 auto;
-  text-align: left;
+/* The table needs more than the leaf's 66ch text column, so the Catalog and
+   the folio view widen the column they sit in (ADR 0031). */
+.scriptorium:has(> .catalog),
+.scriptorium:has(> .lot-detail) {
+  --leaf-measure: 56rem;
 }
 
 /* ---- The list ----------------------------------------------------------- */

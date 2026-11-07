@@ -114,9 +114,9 @@
 }
 
 /* ---- Page header ---------------------------------------------------------
-   Eyebrow, title, and the actions that belong to the title. The heading fonts
-   come from index.css and the gold h1 colour from App.css, so nothing here
-   restates them. */
+   The title and the actions that belong to it. The heading fonts come from
+   index.css and the h1 size from App.css, so nothing here restates them. The
+   page's running title sits in the leaf margin, not above the title. */
 
 .page-header {
   display: flex;
@@ -125,16 +125,6 @@
   justify-content: space-between;
   gap: var(--space-4);
   margin-bottom: var(--space-5);
-}
-
-.page-header__eyebrow {
-  margin: 0 0 var(--space-1);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  font-variant-caps: var(--caps);
-  letter-spacing: var(--caps-tracking);
-  color: var(--text-muted);
 }
 
 .page-header__title {
@@ -153,6 +143,15 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   flex: 0 0 auto;
+}
+
+/* ---- Rubric --------------------------------------------------------------
+   Classes only. One word of a title set in red, as a scribe rubricated a
+   heading. For display sizes only (24px and up), because the red falls short
+   of body-text contrast at reading sizes. */
+
+.rubric {
+  color: var(--rubric);
 }
 
 /* ---- Notice --------------------------------------------------------------
@@ -413,18 +412,20 @@
   box-shadow: inset 3px 0 0 var(--accent-secondary);
 }
 
-/* ---- Tag / status pill --------------------------------------------------
-   neutral (default), success (ready), warning (choose printing),
-   danger (unmatched). */
+/* ---- Tag -----------------------------------------------------------------
+   Small caps in the body face on a hairline, with no fill. Tones colour the
+   text and the rule: neutral (default), success (ready), warning (choose
+   printing), danger (unmatched). */
 
 .tag {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.15em var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
+  padding: 0 0.1em;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
   color: var(--text-muted);
   font-family: var(--font-body);
   font-variant-numeric: var(--figures);
@@ -437,26 +438,25 @@
 
 .tag--success {
   color: var(--success);
-  border-color: var(--success);
+  border-bottom-color: var(--success);
 }
 .tag--warning {
   color: var(--warning);
-  border-color: var(--warning);
+  border-bottom-color: var(--warning);
 }
 .tag--danger {
   color: var(--danger);
-  border-color: var(--danger);
+  border-bottom-color: var(--danger);
 }
 
 /* ---- Panel ---------------------------------------------------------------
-   A bordered surface with the oxblood top-rule. Layout (flex, grid) belongs
-   to the page class that sits beside .panel, not here. */
+   A bordered surface, one hairline all round. Layout (flex, grid) belongs to
+   the page class that sits beside .panel, not here. */
 
 .panel {
   margin: 0;
   padding: var(--space-4);
   border: 1px solid var(--border);
-  border-top: 3px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--surface);
   min-inline-size: 0;

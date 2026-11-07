@@ -10,7 +10,7 @@ import {
   type DeckWithCards,
 } from '../api'
 import { inventoryKeys } from '../catalog/queryKeys'
-import { Field, Notice, PageHeader, Select } from '../components'
+import { Field, Notice, PageHeader, Select, Tag } from '../components'
 import { tomeKeys } from './queryKeys'
 import { STATUS_LABELS } from './status'
 
@@ -46,7 +46,8 @@ export function TomeHead({ deck }: { deck: Deck }) {
 
   return (
     <>
-      <PageHeader eyebrow={deck.format ?? 'Tome'} title={deck.name}>
+      <PageHeader title={deck.name}>
+        {deck.format && <Tag>{deck.format}</Tag>}
         <Link to={`/tomes/${deck.id}/breakdown`} className="tome-head__link">
           Owned and needed
         </Link>

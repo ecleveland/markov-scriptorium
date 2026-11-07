@@ -15,7 +15,7 @@ test('captures a full-page screenshot of the app shell at desktop width', async 
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/inscribe')
-  await expect(page.locator('.status')).toContainText(/catalog ok/i)
+  await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
 
   const shot = await page.screenshot({ fullPage: true })
   expect(shot.byteLength).toBeGreaterThan(0)
@@ -26,17 +26,65 @@ test('captures the app shell collapsed at a narrow (mobile) width', async ({
 }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/inscribe')
-  await expect(page.locator('.status')).toContainText(/catalog ok/i)
+  await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
 
   const shot = await page.screenshot({ fullPage: true })
   expect(shot.byteLength).toBeGreaterThan(0)
+})
+
+// The leaf sets a margin column beside the page and drops it on a phone.
+test.describe('the leaf', () => {
+  test('sets the margin left of a widened Index at 1280px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/index')
+    await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
+    await expect(page.getByText('Showing 1 to 3 of 3 folios')).toBeVisible()
+
+    const margin = page.locator('.leaf__margin')
+    await expect(margin).toBeVisible()
+    const marginBox = await margin.boundingBox()
+    const indexBox = await page.locator('.index').boundingBox()
+    expect(marginBox).not.toBeNull()
+    expect(indexBox).not.toBeNull()
+    expect(marginBox!.x + marginBox!.width).toBeLessThan(indexBox!.x)
+    // 66ch of the body face at the 19px root is about 684px, so a wider
+    // Index proves its own sheet widened the leaf.
+    expect(indexBox!.width).toBeGreaterThan(684)
+
+    const widths = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }))
+    expect(widths.scrollWidth).toBeLessThanOrEqual(widths.innerWidth)
+  })
+
+  // Media queries read rem at 16px, so the 44rem collapse falls at 704px.
+  test('hides the margin below the collapse at 700px', async ({ page }) => {
+    await page.setViewportSize({ width: 700, height: 800 })
+    await page.goto('/index')
+    await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'The Index' })).toBeVisible()
+
+    await expect(page.locator('.leaf__margin')).toBeHidden()
+  })
+
+  test('keeps the margin above the collapse at 720px', async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 800 })
+    await page.goto('/index')
+    await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'The Index' })).toBeVisible()
+
+    await expect(page.locator('.leaf__margin')).toBeVisible()
+  })
 })
 
 // The manual 375px sweep made repeatable: each page must fit a phone without
 // a horizontal scrollbar. Screenshots land in the test output dir for the PR.
 test.describe('reflows at phone width', () => {
   const routes = [
-    // The table arrives on its own fetch after the status chip, so wait for it
+    // The table arrives on its own fetch after the status sentence, so wait for it
     // or the check measures the narrow loading line instead.
     // The Index heading renders before its results do, so wait for the count.
     {
@@ -54,6 +102,7 @@ test.describe('reflows at phone width', () => {
     { path: '/catalog/2', slug: 'catalog-detail', heading: 'Lightning Bolt' },
     { path: '/inscribe', slug: 'inscribe' },
     { path: '/tomes', slug: 'tomes', heading: 'The Tomes' },
+    { path: '/import', slug: 'import', heading: 'Bring in a Collection' },
     { path: '/import/decklist', slug: 'import-decklist' },
     { path: '/import/csv', slug: 'import-csv' },
     { path: '/archive', slug: 'archive', heading: 'The Muniment Room' },
@@ -63,7 +112,7 @@ test.describe('reflows at phone width', () => {
     test(`${path} has no horizontal scroll at 375px`, async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 })
       await page.goto(path)
-      await expect(page.locator('.status')).toContainText(/catalog ok/i)
+      await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
       if (heading) {
         await expect(page.getByRole('heading', { name: heading })).toBeVisible()
       }
@@ -150,7 +199,7 @@ test.describe('reflows at phone width', () => {
 
     await page.setViewportSize({ width: 375, height: 812 })
     await page.goto('/import/decklist')
-    await expect(page.locator('.status')).toContainText(/catalog ok/i)
+    await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
     await page
       .getByRole('textbox', { name: 'Decklist' })
       .fill(`${csvRow}\n4 ${longName}`)

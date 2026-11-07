@@ -35,7 +35,6 @@ describe('ArchivePage', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'The Muniment Room' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Safekeeping')).toBeInTheDocument()
     expect(screen.getByText('Consulting the muniments…')).toBeInTheDocument()
   })
 
