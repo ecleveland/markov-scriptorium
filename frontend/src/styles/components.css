@@ -115,8 +115,9 @@
 
 /* ---- Page header ---------------------------------------------------------
    The title and the actions that belong to it. The heading fonts come from
-   index.css and the h1 size from App.css, so nothing here restates them. The
-   page's running title sits in the leaf margin, not above the title. */
+   index.css and the h1 size, weight and colour from App.css, so nothing here
+   restates them. The page's running title sits in the leaf margin, not above
+   the title. */
 
 .page-header {
   display: flex;

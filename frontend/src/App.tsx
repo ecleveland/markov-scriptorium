@@ -35,8 +35,8 @@ interface LeafProps {
 
 /**
  * One leaf of the book: the margin column with the folio mark and running
- * title, then the page in the text column. The margin repeats what the nav and
- * the heading already say, so assistive tech skips it.
+ * title, then the page in the text column. The margin is ornament and the
+ * page's own heading names the page, so assistive tech skips it.
  */
 function Leaf({ folio, running, children }: LeafProps) {
   return (

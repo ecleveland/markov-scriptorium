@@ -4,7 +4,7 @@ import { PageHeader } from '../components'
 /** The door to the two import flows, a page of its own under Bring in. */
 export function BringInPage() {
   return (
-    <section className="decklist bring-in">
+    <section className="bring-in">
       <PageHeader title="Bring in a Collection" />
       <ul className="bring-in__ways">
         <li className="bring-in__way">

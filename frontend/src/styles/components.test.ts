@@ -502,9 +502,30 @@ describe('component stylesheet contract', () => {
       '.empty-state',
       '.consulting',
       '.notice--inline',
+      '.rubric',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
     }
+  })
+})
+
+// The status candle has three states. Reduced motion stops the pending
+// flicker, so pending needs a look of its own that is not motion.
+describe('status candle', () => {
+  const app = sheets.find((sheet) => sheet.name === 'App.css')
+  const pending = /\.status\[data-state='pending'\] \.status-dot\s*\{([^}]*)\}/
+
+  it('dims the pending candle without motion', () => {
+    const { outside } = splitReducedMotionBlocks(app?.css ?? '')
+    const rule = outside.match(pending)?.[1] ?? ''
+    expect(rule).toMatch(/box-shadow:\s*none/)
+    expect(rule).toMatch(/opacity:/)
+  })
+
+  it('flickers the pending candle only under the media query', () => {
+    const { inside, outside } = splitReducedMotionBlocks(app?.css ?? '')
+    expect(inside).toMatch(/animation:\s*candle-flicker\b/)
+    expect(outside).not.toMatch(/candle-flicker/)
   })
 })
 

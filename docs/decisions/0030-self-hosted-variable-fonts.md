@@ -35,11 +35,12 @@ has no `pnum`. The italic adds `pnum` but has no `smcp` or `c2sc`.
 
 **Subset them to Latin with fontTools.** `frontend/scripts/subset-fonts.sh`
 downloads the four styles and keeps Latin, Latin-1, Latin Extended-A, general
-punctuation and the four arrows the UI draws. The range starts from Google
+punctuation and the four arrows. The range starts from Google
 Fonts' latin subset but is not identical to it. Latin Extended-A covers names
 such as Łukasz, and the old npm builds shipped it as their latin-ext subset.
-The importers draw a right arrow in their copy, and the back links drew a
-left one until VEG-623 made them sentences. The script
+The subset keeps the four arrows (U+2190 to U+2193) because the back links
+drew a left arrow until VEG-623 made them sentences. The range stays so a
+future label can use one without a fallback glyph. The script
 also keeps the shaping, small-caps and figure features, and writes woff2
 files to `frontend/src/assets/fonts/`. It pins fontTools and brotli, so a
 rerun from the same commit gives the same bytes. The four files total about

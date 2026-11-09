@@ -187,25 +187,44 @@ describe('App routing', () => {
     ).toBeInTheDocument()
   })
 
-  it('sets the folio mark and running title in a hidden margin', async () => {
-    const { container } = renderAt('/index')
-    await screen.findByRole('heading', { name: 'The Index' })
+  // The margin renders before the page fetches anything, so it is checked
+  // straight after the first render. The wait after it lets the health probe
+  // settle inside the test.
+  it.each([
+    ['/index', 'fol. 1', 'The Catalog, searched'],
+    ['/index/bolt-lea', 'fol. 1', 'The Catalog, searched'],
+    ['/catalog', 'fol. 2', 'The Catalog'],
+    ['/catalog/999', 'fol. 2', 'The Catalog'],
+    ['/tomes', 'fol. 3', 'The Bindery'],
+    ['/tomes/999', 'fol. 3', 'The Bindery'],
+    ['/tomes/999/breakdown', 'fol. 3', 'Owned and needed'],
+    ['/inscribe', 'fol. 4', 'Inscription'],
+    ['/scan', 'fol. 5', 'The Scrying Glass'],
+    ['/import', 'fol. 6', 'Bring in'],
+    ['/import/decklist', 'fol. 6', 'Decklist import'],
+    ['/import/csv', 'fol. 6', 'CSV import'],
+    ['/archive', 'fol. 7', 'Safekeeping'],
+  ])(
+    'marks %s with %s and the running title %s in a hidden margin',
+    async (path, folio, running) => {
+      const { container } = renderAt(path)
 
-    const margin = container.querySelector('.leaf__margin')
-    expect(margin).toHaveAttribute('aria-hidden', 'true')
-    const leaf = within(margin as HTMLElement)
-    expect(leaf.getByText('fol. 1')).toBeInTheDocument()
-    expect(leaf.getByText('The Catalog, searched')).toBeInTheDocument()
-  })
+      const margins = container.querySelectorAll('.leaf__margin')
+      expect(margins).toHaveLength(1)
+      expect(margins[0]).toHaveAttribute('aria-hidden', 'true')
+      const folioMark = margins[0].querySelector('.leaf__folio')
+      const runningTitle = margins[0].querySelector('.leaf__running')
+      expect(folioMark?.textContent).toBe(folio)
+      expect(runningTitle?.textContent).toBe(running)
 
-  it('numbers a detail page with the folio of its section', async () => {
-    const { container } = renderAt('/catalog/999')
-    await screen.findByRole('heading', { name: 'No such folio' })
-
-    const margin = container.querySelector('.leaf__margin')
-    expect(margin).toHaveTextContent('fol. 2')
-    expect(margin).toHaveTextContent('The Catalog')
-  })
+      await waitFor(() =>
+        expect(container.querySelector('.status')).toHaveAttribute(
+          'data-state',
+          'ok',
+        ),
+      )
+    },
+  )
 
   it('serves the component specimen sheet in development', async () => {
     // Vitest runs with DEV set, so the lazily loaded route is registered.

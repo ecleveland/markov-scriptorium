@@ -173,13 +173,19 @@
   background: var(--gold);
   box-shadow: 0 0 6px var(--gold);
 }
+.status[data-state='pending'] .status-dot {
+  box-shadow: none;
+  opacity: 0.55;
+}
 .status[data-state='error'] .status-dot {
   background: var(--text-faint);
   box-shadow: none;
 }
 
 /* The hover fade and the flicker are motion, so they play only for people
-   who have not asked the OS to reduce it (ADR 0017). */
+   who have not asked the OS to reduce it (ADR 0017). The three candle states
+   differ by glow as well as by motion. The dot is lit when ok, unlit while
+   pending and grey on error. */
 @media (prefers-reduced-motion: no-preference) {
   .scriptorium-nav a {
     transition:
