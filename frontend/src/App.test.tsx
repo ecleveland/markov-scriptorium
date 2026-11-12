@@ -170,16 +170,61 @@ describe('App routing', () => {
     const links = within(nav)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(links.slice(0, 3)).toEqual(['Index', 'Catalog', 'Tomes'])
-    expect(within(nav).getByRole('link', { name: 'Index' })).toHaveAttribute(
-      'href',
-      '/index',
-    )
+    expect(links.slice(0, 3)).toEqual(['The Index', 'The Catalog', 'Tomes'])
+    expect(
+      within(nav).getByRole('link', { name: 'The Index' }),
+    ).toHaveAttribute('href', '/index')
     expect(within(nav).getByRole('link', { name: 'Tomes' })).toHaveAttribute(
       'href',
       '/tomes',
     )
   })
+
+  it('renders the Bring in page at /import', () => {
+    renderAt('/import')
+    expect(
+      screen.getByRole('heading', { name: 'Bring in a Collection' }),
+    ).toBeInTheDocument()
+  })
+
+  // The margin renders before the page fetches anything, so it is checked
+  // straight after the first render. The wait after it lets the health probe
+  // settle inside the test.
+  it.each([
+    ['/index', 'fol. 1', 'The Catalog, searched'],
+    ['/index/bolt-lea', 'fol. 1', 'The Catalog, searched'],
+    ['/catalog', 'fol. 2', 'The Catalog'],
+    ['/catalog/999', 'fol. 2', 'The Catalog'],
+    ['/tomes', 'fol. 3', 'The Bindery'],
+    ['/tomes/999', 'fol. 3', 'The Bindery'],
+    ['/tomes/999/breakdown', 'fol. 3', 'Owned and needed'],
+    ['/inscribe', 'fol. 4', 'Inscription'],
+    ['/scan', 'fol. 5', 'The Scrying Glass'],
+    ['/import', 'fol. 6', 'Bring in'],
+    ['/import/decklist', 'fol. 6', 'Decklist import'],
+    ['/import/csv', 'fol. 6', 'CSV import'],
+    ['/archive', 'fol. 7', 'Safekeeping'],
+  ])(
+    'marks %s with %s and the running title %s in a hidden margin',
+    async (path, folio, running) => {
+      const { container } = renderAt(path)
+
+      const margins = container.querySelectorAll('.leaf__margin')
+      expect(margins).toHaveLength(1)
+      expect(margins[0]).toHaveAttribute('aria-hidden', 'true')
+      const folioMark = margins[0].querySelector('.leaf__folio')
+      const runningTitle = margins[0].querySelector('.leaf__running')
+      expect(folioMark?.textContent).toBe(folio)
+      expect(runningTitle?.textContent).toBe(running)
+
+      await waitFor(() =>
+        expect(container.querySelector('.status')).toHaveAttribute(
+          'data-state',
+          'ok',
+        ),
+      )
+    },
+  )
 
   it('serves the component specimen sheet in development', async () => {
     // Vitest runs with DEV set, so the lazily loaded route is registered.
@@ -193,6 +238,14 @@ describe('App routing', () => {
         { timeout: 5000 },
       ),
     ).toBeInTheDocument()
+  })
+
+  it('gives the specimen sheet a running title and no folio', () => {
+    const { container } = renderAt('/specimens')
+    expect(container.querySelector('.leaf__running')).toHaveTextContent(
+      'Specimens',
+    )
+    expect(container.querySelector('.leaf__folio')).not.toBeInTheDocument()
   })
 
   it('does not register the specimen sheet outside development', async () => {

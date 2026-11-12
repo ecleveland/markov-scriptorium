@@ -95,7 +95,7 @@ describe('BreakdownPage', () => {
       await screen.findByText('5 cards, 2 in hand, 3 needed'),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: /Back to the Tome/ }),
+      screen.getByRole('link', { name: 'Back to the Tome' }),
     ).toHaveAttribute('href', '/tomes/4')
   })
 

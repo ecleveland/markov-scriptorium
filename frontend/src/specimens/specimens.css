@@ -1,16 +1,18 @@
 /* Layout for the dev-only specimen sheet. Tokens only, like every page sheet. */
 
-.specimens {
-  max-width: 40rem;
-  margin: 0 auto;
-  text-align: left;
-}
-
 .specimens__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* The status line is inline-flex, so each state needs its own row. */
+.specimens__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .specimens .field + .field {

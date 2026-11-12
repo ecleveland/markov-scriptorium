@@ -63,7 +63,7 @@ export function TomeEditorPage() {
   return (
     <section className="tome">
       <p className="tome__back">
-        <Link to="/tomes">← Back to the Tomes</Link>
+        <Link to="/tomes">Back to the Tomes</Link>
       </p>
       {query.isError && (
         <Notice tone="danger" role="alert">

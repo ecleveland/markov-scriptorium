@@ -1,14 +1,30 @@
 /*
- * Decklist and CSV import pages: layout only. Buttons, fields, tags, notices,
- * listboxes, and the panel come from the component layer
+ * Bring in, decklist, and CSV import pages: layout only. Buttons, fields,
+ * tags, notices, listboxes, and the panel come from the component layer
  * (styles/components.css, ADR 0017); what is left here is where those pieces
  * sit and the status accent down the side of a preview row.
  */
 
-.decklist {
-  max-width: 44rem;
-  margin: 0 auto;
-  text-align: left;
+/* The Bring in page, a door to each import flow with a line on what it takes. */
+.bring-in__ways {
+  list-style: none;
+  margin: var(--space-4) 0;
+  padding: 0;
+}
+
+.bring-in__way {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.bring-in__way a {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+}
+
+.bring-in__way p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
 }
 
 /* The batch finish/condition panel, and the CSV file/format panel. */
