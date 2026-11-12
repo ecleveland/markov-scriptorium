@@ -255,6 +255,27 @@ function seedLots(): Map<number, LotStub> {
   return new Map(seeded.map((record) => [record.id, record]))
 }
 
+/** `count` more lots after the seeded ones, each its own common printing in
+ *  the Extra Set, so a spec can fill more than one page of a ledger. */
+function extraLots(lots: Map<number, LotStub>, count: number) {
+  const first = lots.size + 1
+  for (let i = 1; i <= count; i++) {
+    const record = lot({
+      id: first + i - 1,
+      scryfall_id: `extra-${i}`,
+      card: {
+        name: `Extra Folio ${i}`,
+        set_code: 'xtr',
+        set_name: 'Extra Set',
+        collector_number: String(i),
+        rarity: 'common',
+        image_uris: null,
+      },
+    })
+    lots.set(record.id, record)
+  }
+}
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
     status,
@@ -268,9 +289,12 @@ function ownedForPrinting(lots: Map<number, LotStub>, scryfallId: string) {
   const all = [...lots.values()]
   const here = all.filter((record) => record.scryfall_id === scryfallId)
   const oracle = ORACLE_OF[scryfallId] ?? null
-  const family = all.filter(
-    (record) => (ORACLE_OF[record.scryfall_id] ?? null) === oracle,
-  )
+  // A printing with no oracle entry (the extra lots) is a card of its own, so
+  // unknown printings do not pool into one null-oracle family.
+  const family =
+    oracle === null
+      ? here
+      : all.filter((record) => ORACLE_OF[record.scryfall_id] === oracle)
 
   const byPrinting = new Map<string, { quantity: number; lots: number }>()
   for (const record of family) {
@@ -456,10 +480,16 @@ function listFacets(lots: Map<number, LotStub>) {
  * matched by pathname + method; anything unmatched gets a 404 so an unstubbed
  * call fails loudly instead of hitting the network.
  *
- * Call once per test, before `page.goto`.
+ * Call once per test, before `page.goto`. `extraLots` adds that many lots
+ * after the three seeded ones, each a distinct printing, for specs that page
+ * through a ledger. With no options the collection is the three seeded lots.
  */
-export async function stubApi(page: Page): Promise<void> {
+export async function stubApi(
+  page: Page,
+  options: { extraLots?: number } = {},
+): Promise<void> {
   const lots = seedLots()
+  extraLots(lots, options.extraLots ?? 0)
   let nextId = lots.size + 1
   const decks = new Map<number, DeckStub>()
   const slots = new Map<number, SlotStub>()

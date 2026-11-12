@@ -52,6 +52,9 @@
   letter-spacing: 0.03em;
   line-height: var(--leading-snug);
   white-space: nowrap;
+  /* A router link wearing the button classes (the plate's actions) drops
+     its underline like a real button. */
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -360,6 +363,9 @@
   .consulting__candle {
     animation: candle-flicker 1.6s ease-in-out infinite;
   }
+  .ledger__name a {
+    transition: color 120ms ease;
+  }
 }
 
 /* ---- Listbox -------------------------------------------------------------
@@ -527,7 +533,9 @@ select.control {
 /* ---- Card thumb ---------------------------------------------------------
    Card art from the catalog's image_uris. --thumb for list rows, --full for a
    detail plate or an Index tile. --empty is the placeholder for a card with
-   no art, in the card's own proportions. */
+   no art: a dark plate in the card's own proportions, edged with an inset
+   hairline rather than a border so it keeps the art's size. At full size it
+   carries the card's name in gold italic (VEG-624). */
 
 .card-thumb {
   display: block;
@@ -549,9 +557,22 @@ select.control {
   display: grid;
   place-items: center;
   aspect-ratio: 5 / 7;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  color: var(--text-faint);
+  background: linear-gradient(180deg, var(--surface-raised), var(--bg));
+  box-shadow:
+    var(--elevation-2),
+    inset 0 0 0 1px var(--border);
+}
+
+.card-thumb__name {
+  padding: var(--space-4);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-style: italic;
+  line-height: var(--leading-tight);
+  color: var(--accent-secondary);
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: break-word;
 }
 
 /* ---- Printing chip -------------------------------------------------------
@@ -591,4 +612,195 @@ select.control {
 
 .printing-chip--md .printing-chip__thumb {
   width: 2.526rem; /* 48px at the 19px root, as the picker rendered before */
+}
+
+/* ---- Ledger ---------------------------------------------------------------
+   The Index and the Catalog as a ledger (VEG-624): an ordered list ruled with
+   hairlines, each entry a rubric number, a thumb, the name over an italic
+   line saying where the folio sits, and a gold count with a small note
+   beneath. Rules only, no boxes, and no hover fill anywhere in the list. */
+
+.ledger {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.ledger__entry {
+  display: grid;
+  grid-template-columns: 2.5rem 3rem minmax(0, 1fr) auto;
+  column-gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Rubric needs large text. 700 at --text-lg (22.8px at the 19px root) is
+   large text under WCAG, which is what lets the red carry the number. */
+.ledger__number {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  font-variant-numeric: var(--figures);
+  color: var(--rubric);
+  text-align: right;
+}
+
+.ledger__thumb .card-thumb {
+  width: 100%;
+}
+
+.ledger__name {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.ledger__name a {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.ledger__name a:hover {
+  color: var(--accent-secondary);
+}
+
+.ledger__where {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.ledger__count {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ledger__figure {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  font-variant-numeric: var(--figures);
+  line-height: 1;
+  color: var(--accent-secondary);
+}
+
+.ledger__note {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+@media (max-width: 44rem) {
+  .ledger__entry {
+    grid-template-columns: 1.75rem 2.5rem minmax(0, 1fr) auto;
+    column-gap: var(--space-3);
+  }
+}
+
+/* ---- Finish word ----------------------------------------------------------
+   "foil" or "etched" after a card's name, in gold small caps in the body
+   face. Upright, so it stands apart from an italic line around it. Nonfoil
+   renders nothing. */
+
+.finish-word {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-style: normal;
+  font-weight: 400;
+  font-variant-caps: var(--caps);
+  letter-spacing: var(--caps-tracking);
+  color: var(--accent-secondary);
+}
+
+/* ---- Plate ----------------------------------------------------------------
+   The lit plate (VEG-624): large card art beside the name and a few lines of
+   prose, under the one glow in the app. Nothing else reads --plate-glow, and
+   components.test.ts holds every sheet to that. The h1 keeps its size from
+   App.css; an h2 is set here. Below 44rem the art stacks above the text. */
+
+.plate {
+  display: grid;
+  grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: end;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background-image: var(--plate-glow);
+  background-repeat: no-repeat;
+}
+
+.plate__art .card-thumb {
+  width: 100%;
+}
+
+.plate__text h1,
+.plate__text h2 {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
+
+.plate__text h2 {
+  font-size: var(--text-2xl);
+}
+
+.plate__text p {
+  margin: 0 0 var(--space-2);
+}
+
+.plate__printing {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.plate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 44rem) {
+  .plate {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plate__art {
+    max-width: 13rem;
+  }
+}
+
+/* ---- Opening --------------------------------------------------------------
+   Classes only. A section opening with its first letter rubricated, the way
+   a scribe began one. The lot page's "Amend the entry" uses it. The letter is
+   1.35 times --text-xl, about 38px, well past the 24px rubric needs. */
+
+.opening {
+  margin: var(--space-6) 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 500;
+}
+
+.opening::first-letter {
+  font-size: 1.35em;
+  font-weight: 600;
+  color: var(--rubric);
+}
+
+/* ---- Pager ----------------------------------------------------------------
+   Classes only. "Earlier folios" and "Later folios" at the foot of a ledger,
+   held to either end of the line. */
+
+.pager {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  margin-top: var(--space-5);
 }

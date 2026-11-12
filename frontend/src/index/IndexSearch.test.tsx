@@ -70,12 +70,30 @@ function location() {
 afterEach(() => vi.clearAllMocks())
 
 describe('IndexSearch', () => {
+  it('reads as a sentence: a lead, then the box finishing it', () => {
+    searchMock.mockResolvedValue(named())
+    renderSearch()
+
+    const input = screen.getByRole('searchbox', {
+      name: 'Seek a card by name, or part of one',
+    })
+    expect(input).toHaveAttribute('placeholder', 'or part of one')
+    expect(input).toHaveClass('index__seek-input')
+    const label = input.closest('label')
+    expect(label).toHaveClass('index__seek')
+    expect(label).toHaveTextContent('Seek a card by name,')
+    expect(screen.getByRole('search')).toContainElement(input)
+  })
+
   it('writes the name to the URL after a pause, replacing the entry and dropping the page', async () => {
     const user = userEvent.setup()
     searchMock.mockResolvedValue(named())
     renderSearch('/index?finish=foil&page=3')
 
-    await user.type(screen.getByLabelText('Search the Index'), 'sol')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'sol',
+    )
     // The debounce has not fired between keystrokes.
     expect(location()).toHaveTextContent('?finish=foil&page=3|POP')
 
@@ -87,7 +105,9 @@ describe('IndexSearch', () => {
   it('seeds the input from ?name=', () => {
     searchMock.mockResolvedValue(named())
     renderSearch('/index?name=bolt')
-    expect(screen.getByLabelText('Search the Index')).toHaveValue('bolt')
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toHaveValue('bolt')
   })
 
   it('takes the name back out of the URL when the input is emptied', async () => {
@@ -95,7 +115,9 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named())
     renderSearch('/index?name=bolt')
 
-    await user.clear(screen.getByLabelText('Search the Index'))
+    await user.clear(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    )
     await waitFor(() => expect(location()).toHaveTextContent(/^\|REPLACE$/))
   })
 
@@ -105,7 +127,9 @@ describe('IndexSearch', () => {
     renderSearch('/index?name=bolt')
 
     await user.click(screen.getByRole('link', { name: 'Clear filters' }))
-    expect(screen.getByLabelText('Search the Index')).toHaveValue('')
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toHaveValue('')
     // The debounced value catching up must not write the old name back.
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(location()).toHaveTextContent(/^\|PUSH$/)
@@ -130,7 +154,10 @@ describe('IndexSearch', () => {
     )
     renderSearch()
 
-    await user.type(screen.getByLabelText('Search the Index'), 'li')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'li',
+    )
     const list = await screen.findByRole('list', { name: 'Owned cards' })
     const options = list.querySelectorAll('.listbox__option')
     expect([...options].map((option) => option.textContent)).toEqual([
@@ -154,7 +181,10 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named('Sol Ring'))
     renderSearch()
 
-    await user.type(screen.getByLabelText('Search the Index'), 's')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      's',
+    )
     await waitFor(() => expect(location()).toHaveTextContent('?name=s'))
     expect(searchMock).not.toHaveBeenCalled()
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
@@ -165,7 +195,10 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named('Sol Ring'))
     renderSearch()
 
-    await user.type(screen.getByLabelText('Search the Index'), 'sol ring')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'sol ring',
+    )
     await waitFor(() => expect(searchMock).toHaveBeenCalled())
     await waitFor(() => expect(location()).toHaveTextContent('?name=sol+ring'))
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
@@ -176,10 +209,15 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named('Sol Ring', 'Soldevi Digger'))
     renderSearch()
 
-    await user.type(screen.getByLabelText('Search the Index'), 'sol')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'sol',
+    )
     await user.click(await screen.findByRole('button', { name: 'Sol Ring' }))
 
-    expect(screen.getByLabelText('Search the Index')).toHaveValue('Sol Ring')
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toHaveValue('Sol Ring')
     await waitFor(() =>
       expect(location()).toHaveTextContent('?name=Sol+Ring|REPLACE'),
     )
@@ -187,7 +225,9 @@ describe('IndexSearch', () => {
     // The debounce catching up to the picked name must leave it in place.
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(location()).toHaveTextContent('?name=Sol+Ring|REPLACE')
-    expect(screen.getByLabelText('Search the Index')).toHaveValue('Sol Ring')
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toHaveValue('Sol Ring')
   })
 
   it('moves between suggestions with the arrow keys', async () => {
@@ -195,7 +235,10 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named('Sol Ring', 'Soldevi Digger'))
     renderSearch()
 
-    await user.type(screen.getByLabelText('Search the Index'), 'sol')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'sol',
+    )
     const first = await screen.findByRole('button', { name: 'Sol Ring' })
     first.focus()
     await user.keyboard('{ArrowDown}')
@@ -209,7 +252,7 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named())
     renderSearch()
 
-    const input = screen.getByLabelText('Search the Index')
+    const input = screen.getByLabelText('Seek a card by name, or part of one')
     await user.type(input, 'Lightning ')
     await waitFor(() => expect(location()).toHaveTextContent('?name=Lightning'))
     await user.type(input, 'Bolt')
@@ -221,7 +264,10 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named('Sol Ring', 'Soldevi Digger'))
     renderSearch()
 
-    await user.type(screen.getByLabelText('Search the Index'), 'sol')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'sol',
+    )
     await screen.findByRole('list', { name: 'Owned cards' })
     await user.keyboard('{Escape}')
     expect(
@@ -241,7 +287,10 @@ describe('IndexSearch', () => {
       screen.queryByRole('list', { name: 'Owned cards' }),
     ).not.toBeInTheDocument()
 
-    await user.type(screen.getByLabelText('Search the Index'), 'g')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'g',
+    )
     expect(
       await screen.findByRole('list', { name: 'Owned cards' }),
     ).toBeInTheDocument()
@@ -252,7 +301,7 @@ describe('IndexSearch', () => {
     searchMock.mockResolvedValue(named('Lightning Bolt', 'Lightning Helix'))
     renderSearch()
 
-    const input = screen.getByLabelText('Search the Index')
+    const input = screen.getByLabelText('Seek a card by name, or part of one')
     await user.type(input, 'li')
     await screen.findByRole('list', { name: 'Owned cards' })
     // The debounce has not caught up to "lig", so the list on hand is for "li".

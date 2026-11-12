@@ -8,24 +8,58 @@ import {
   useNavigate,
 } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { facets, folio } from '../test/fixtures'
+import { deck, facets, folio, lot } from '../test/fixtures'
 import { renderWithQuery } from '../test/queryWrapper'
 import { IndexPage } from './IndexPage'
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
-  return { ...actual, searchFolios: vi.fn(), listFacets: vi.fn() }
+  return {
+    ...actual,
+    searchFolios: vi.fn(),
+    listFacets: vi.fn(),
+    listDecks: vi.fn(),
+    listInventory: vi.fn(),
+  }
 })
 
 import {
   ApiError,
   INDEX_PAGE_SIZE,
+  listDecks,
   listFacets,
+  listInventory,
   searchFolios,
+  type InventoryLot,
   type SearchFolio,
 } from '../api'
 
 const searchMock = vi.mocked(searchFolios)
+const newestMock = vi.mocked(listInventory)
+
+/** GET /inventory as the plate asks for it: the one newest lot, if any. */
+function newest(...results: InventoryLot[]) {
+  return { results, total: results.length, limit: 1, offset: 0 }
+}
+
+/** The newest lot, named apart from the search fixtures so nothing collides. */
+const CROWN = lot({
+  id: 7,
+  scryfall_id: 'edgar-vow',
+  quantity: 2,
+  finish: 'foil',
+  condition: 'LP',
+  location: null,
+  card: {
+    name: 'Edgar, Charmed Groom',
+    set_code: 'vow',
+    set_name: 'Innistrad: Crimson Vow',
+    collector_number: '320',
+    rarity: 'mythic',
+    image_uris: null,
+  },
+  folio: { owned: 2, reserved: 0, available: 2 },
+})
 
 function page(results: SearchFolio[], total = results.length, offset = 0) {
   return { results, total, limit: INDEX_PAGE_SIZE, offset }
@@ -101,8 +135,26 @@ function where() {
   return screen.getByRole('status', { name: 'Index URL' })
 }
 
+/** The sentence under the heading; empty while it has nothing settled to say. */
+function opening() {
+  const paragraph = document.querySelector('.index__opening')
+  if (paragraph === null) throw new Error('no opening paragraph')
+  return paragraph
+}
+
+/** The rubric numbers down a ledger, as printed. */
+function entryNumbers() {
+  return Array.from(document.querySelectorAll('.ledger__number')).map(
+    (number) => number.textContent,
+  )
+}
+
 beforeEach(() => {
   vi.mocked(listFacets).mockResolvedValue(facets())
+  vi.mocked(listDecks).mockResolvedValue([])
+  // No newest lot unless a test asks for one, so the plate stays out of the
+  // way of every query by name.
+  newestMock.mockResolvedValue(newest())
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -130,24 +182,27 @@ describe('IndexPage', () => {
       '/index/bolt-lea',
     )
     expect(
-      bolt.getByText('Limited Edition Alpha (LEA) · #161'),
-    ).toBeInTheDocument()
-    expect(bolt.getByText('nonfoil')).toHaveClass('tag')
+      bolt.getByText('Limited Edition Alpha, no. 161. Unshelved.'),
+    ).toHaveClass('folio-tile__printing')
+    // Nonfoil is the plain case and says nothing.
+    expect(bolt.queryByText('nonfoil')).not.toBeInTheDocument()
+    expect(tiles[0].querySelector('.finish-word')).toBeNull()
     expect(bolt.getByText('×1')).toBeInTheDocument()
-    expect(bolt.getByText('unshelved')).toBeInTheDocument()
     expect(bolt.queryByText(/in Tomes/)).not.toBeInTheDocument()
 
     const ring = within(tiles[1])
-    expect(ring.getByText('foil')).toHaveClass('tag')
+    expect(ring.getByRole('link', { name: 'Sol Ring' })).toBeInTheDocument()
+    expect(ring.getByText('foil')).toHaveClass('finish-word')
     expect(ring.getByText('×4')).toBeInTheDocument()
     expect(ring.getByText('4 copies')).toBeInTheDocument()
     expect(ring.getByText('2 of 4 in Tomes · 2 free')).toBeInTheDocument()
-    expect(ring.getByText('Red binder, Trade box')).toBeInTheDocument()
+    expect(
+      ring.getByText('Commander 2021, no. 263. Red binder and Trade box.'),
+    ).toBeInTheDocument()
     expect(
       ring.getByRole('img', { name: 'Sol Ring (no image in the catalog)' }),
     ).toBeInTheDocument()
-
-    expect(screen.getByText('Showing 1 to 2 of 2 folios')).toBeInTheDocument()
+    expect(document.querySelector('.tag')).toBeNull()
   })
 
   it('hands the open folio the Index URL, so its back link returns there', async () => {
@@ -198,29 +253,54 @@ describe('IndexPage', () => {
     )
   })
 
-  it('sorts by the picked key and flips the order with the button', async () => {
+  it('sorts by the pressed key and flips the order with the button', async () => {
     const user = userEvent.setup()
     searchMock.mockResolvedValue(page([folio()], 60, INDEX_PAGE_SIZE))
     renderIndex('/index?page=2')
 
-    const order = await screen.findByRole('button', { name: 'Newest first' })
+    const sortBy = await screen.findByRole('group', { name: 'Sort by' })
+    const keys = within(sortBy).getAllByRole('button')
+    // No price sort until the search has a price key (ADR 0021).
+    expect(keys.map((key) => key.textContent)).toEqual([
+      'Date added',
+      'Name',
+      'Set',
+      'Copies',
+    ])
+    expect(keys.map((key) => key.getAttribute('aria-pressed'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ])
+    for (const key of keys) expect(key).toHaveClass('index__toggle')
+
+    const order = screen.getByRole('button', { name: 'Newest first' })
+    expect(order).toHaveClass('index__toggle')
+    expect(order).not.toHaveAttribute('aria-pressed')
     await user.click(order)
     expect(where()).toHaveTextContent('?order=asc')
     expect(
       screen.getByRole('button', { name: 'Oldest first' }),
     ).toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('Sort by'), 'Name')
+    await user.click(within(sortBy).getByRole('button', { name: 'Name' }))
     expect(where()).toHaveTextContent('?sort=name')
+    expect(
+      within(sortBy).getByRole('button', { name: 'Name' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(sortBy).getByRole('button', { name: 'Date added' }),
+    ).toHaveAttribute('aria-pressed', 'false')
     await user.click(screen.getByRole('button', { name: 'A to Z' }))
     expect(where()).toHaveTextContent('?sort=name&order=desc')
     expect(screen.getByRole('button', { name: 'Z to A' })).toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('Sort by'), 'Copies')
+    await user.click(within(sortBy).getByRole('button', { name: 'Copies' }))
     expect(
       screen.getByRole('button', { name: 'Most copies' }),
     ).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Sort by'), 'Set')
+    await user.click(within(sortBy).getByRole('button', { name: 'Set' }))
     expect(screen.getByRole('button', { name: 'A to Z' })).toBeInTheDocument()
 
     await waitFor(() =>
@@ -229,67 +309,88 @@ describe('IndexPage', () => {
         expect.any(AbortSignal),
       ),
     )
-    // No price sort until the search has a price key (ADR 0021).
-    expect(
-      within(screen.getByLabelText('Sort by')).getAllByRole('option'),
-    ).toHaveLength(4)
   })
 
-  it('swaps the grid for a table and keeps the page', async () => {
+  it('swaps the grid for a ledger and keeps the page', async () => {
     const user = userEvent.setup()
     searchMock.mockResolvedValue(page([SOL_RING], 60, INDEX_PAGE_SIZE))
     renderIndex('/index?finish=foil&page=2')
 
-    const grid = await screen.findByRole('button', { name: 'Grid' })
+    expect((await screen.findByRole('list', { name: 'Folios' })).tagName).toBe(
+      'UL',
+    )
+    const views = screen.getByRole('group', { name: 'View' })
+    const grid = within(views).getByRole('button', { name: 'Grid' })
     expect(grid).toHaveAttribute('aria-pressed', 'true')
-    await user.click(screen.getByRole('button', { name: 'List' }))
+    expect(grid).toHaveClass('index__toggle')
+    await user.click(within(views).getByRole('button', { name: 'List' }))
 
     expect(where()).toHaveTextContent('?finish=foil&view=list&page=2')
-    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute(
+    expect(within(views).getByRole('button', { name: 'List' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
     expect(grid).toHaveAttribute('aria-pressed', 'false')
-    expect(
-      screen.queryByRole('list', { name: 'Folios' }),
-    ).not.toBeInTheDocument()
 
-    const region = screen.getByRole('region', { name: 'Index table' })
-    expect(region.tabIndex).toBe(0)
-    const table = within(region).getByRole('table')
-    expect(
-      within(table)
-        .getAllByRole('columnheader')
-        .map((header) => header.textContent),
-    ).toEqual([
-      'Art',
-      'Card',
-      'Finish',
-      'Copies',
-      'Conditions',
-      'Volumes',
-      'Tags',
-    ])
-    const row = within(table).getAllByRole('row')[1]
-    expect(within(row).getByRole('link', { name: 'Sol Ring' })).toHaveAttribute(
+    // The same name finds the results in either view.
+    const ledger = screen.getByRole('list', { name: 'Folios' })
+    expect(ledger.tagName).toBe('OL')
+    expect(ledger).toHaveClass('ledger')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const entries = within(ledger).getAllByRole('listitem')
+    expect(entries).toHaveLength(1)
+    const ring = within(entries[0])
+    expect(ring.getByRole('link', { name: 'Sol Ring' })).toHaveAttribute(
       'href',
       '/index/sol-ring-c21',
     )
-    expect(row).toHaveTextContent('Commander 2021 (C21) · #263')
-    expect(row).toHaveTextContent('2 of 4 in Tomes · 2 free')
-    expect(row).toHaveTextContent('NM, LP')
-    expect(row).toHaveTextContent('Red binder, Trade box')
-    expect(row).toHaveTextContent('edh, trade')
+    expect(ring.getByText('foil')).toHaveClass('finish-word')
+    expect(
+      ring.getByText('Commander 2021, no. 263. Red binder and Trade box.'),
+    ).toHaveClass('ledger__where')
+    expect(entries[0].querySelector('.ledger__figure')).toHaveTextContent(/^4$/)
+    expect(ring.getByText('copies', { exact: false })).toHaveClass(
+      'visually-hidden',
+    )
+    expect(ring.getByText('near mint, lightly played, 2 in Tomes')).toHaveClass(
+      'ledger__note',
+    )
+    // Page two's first entry carries on from page one's last.
+    expect(entryNumbers()).toEqual(['25'])
 
-    await user.click(screen.getByRole('button', { name: 'Grid' }))
+    await user.click(within(views).getByRole('button', { name: 'Grid' }))
     expect(where()).toHaveTextContent('?finish=foil&page=2')
   })
 
-  it('marks an unshelved folio in the table too', async () => {
-    searchMock.mockResolvedValue(page([folio()]))
+  it('numbers the ledger from one on the first page, with no finish word for nonfoil', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
     renderIndex('/index?view=list')
-    const table = await screen.findByRole('table')
-    expect(within(table).getByText('unshelved')).toBeInTheDocument()
+
+    const ledger = await screen.findByRole('list', { name: 'Folios' })
+    expect(entryNumbers()).toEqual(['1', '2'])
+    const [bolt, ring] = within(ledger).getAllByRole('listitem')
+    expect(
+      within(bolt).getByText('Limited Edition Alpha, no. 161. Unshelved.'),
+    ).toBeInTheDocument()
+    expect(bolt.querySelector('.finish-word')).toBeNull()
+    expect(within(bolt).getByText('near mint')).toHaveClass('ledger__note')
+    expect(within(bolt).getByText('copy', { exact: false })).toHaveClass(
+      'visually-hidden',
+    )
+    expect(ring.querySelector('.finish-word')).toHaveTextContent('foil')
+  })
+
+  it('numbers from the offset the shown rows came from', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([folio()], 30))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    renderIndex('/index?view=list')
+
+    await screen.findByRole('list', { name: 'Folios' })
+    await user.click(screen.getByRole('button', { name: 'Later folios' }))
+    // Page two is still loading, so the rows on screen are page one's.
+    expect(where()).toHaveTextContent('?view=list&page=2')
+    expect(entryNumbers()).toEqual(['1'])
   })
 
   it('pages forward and back by the Index page size', async () => {
@@ -297,10 +398,17 @@ describe('IndexPage', () => {
     searchMock.mockResolvedValue(page([folio()], 60))
     renderIndex('/index?finish=foil')
 
+    const pager = await screen.findByRole('navigation', { name: 'Index pages' })
+    expect(pager).toHaveClass('pager')
     expect(
-      await screen.findByRole('button', { name: 'Previous' }),
+      within(pager)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Earlier folios', 'Later folios'])
+    expect(
+      screen.getByRole('button', { name: 'Earlier folios' }),
     ).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Later folios' }))
     expect(where()).toHaveTextContent('?finish=foil&page=2')
     await waitFor(() =>
       expect(searchMock).toHaveBeenLastCalledWith(
@@ -309,14 +417,17 @@ describe('IndexPage', () => {
       ),
     )
 
-    await user.click(screen.getByRole('button', { name: 'Previous' }))
+    await user.click(screen.getByRole('button', { name: 'Earlier folios' }))
     expect(where()).toHaveTextContent(/^\?finish=foil$/)
   })
 
-  it('disables Next on the last page', async () => {
+  it('has no pager when every folio fits on one page', async () => {
     searchMock.mockResolvedValue(page([folio()], 1))
     renderIndex()
-    expect(await screen.findByRole('button', { name: 'Next' })).toBeDisabled()
+    await screen.findByRole('list', { name: 'Folios' })
+    expect(
+      screen.queryByRole('navigation', { name: 'Index pages' }),
+    ).not.toBeInTheDocument()
   })
 
   it('points an empty collection at the three ways to fill it', async () => {
@@ -330,6 +441,20 @@ describe('IndexPage', () => {
     expect(screen.getByRole('link', { name: 'decklist' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'CSV export' })).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('shows the empty state in place of the plate when nothing is inscribed', async () => {
+    searchMock.mockResolvedValue(page([], 0))
+    newestMock.mockResolvedValue(newest(CROWN))
+    renderIndex()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Nothing inscribed yet' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Newest inscription' }),
+    ).not.toBeInTheDocument()
+    expect(document.querySelector('.index__opening')).toBeNull()
   })
 
   it('says nothing matches when filters empty the result, and clears them', async () => {
@@ -374,9 +499,10 @@ describe('IndexPage', () => {
         expect.any(AbortSignal),
       ),
     )
-    const table = await screen.findByRole('table')
+    const ledger = await screen.findByRole('list', { name: 'Folios' })
+    expect(ledger).toHaveClass('ledger')
     expect(
-      within(table).getByRole('link', { name: 'Sol Ring' }),
+      within(ledger).getByRole('link', { name: 'Sol Ring' }),
     ).toBeInTheDocument()
   })
 
@@ -404,12 +530,16 @@ describe('IndexPage', () => {
     searchMock.mockReturnValueOnce(new Promise(() => {}))
     renderIndex()
 
-    await user.click(await screen.findByRole('button', { name: 'Next' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Later folios' }),
+    )
     expect(where()).toHaveTextContent(/^\?page=2$/)
     // Page two of sixty has a page after it, but the total on hand is the
     // previous request's, so neither button may act on it yet.
-    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Later folios' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Earlier folios' }),
+    ).toBeDisabled()
   })
 
   it('surfaces a read failure as an alert', async () => {
@@ -420,15 +550,21 @@ describe('IndexPage', () => {
     )
   })
 
-  it('keeps the shown range tied to the rows on screen while the next page loads', async () => {
+  it('prints no sentence from the previous request while the next one loads', async () => {
     const user = userEvent.setup()
     searchMock.mockResolvedValueOnce(page([folio()], 30))
     searchMock.mockReturnValueOnce(new Promise(() => {}))
     renderIndex()
 
-    await screen.findByText('Showing 1 to 1 of 30 folios')
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(screen.getByText('Showing 1 to 1 of 30 folios')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent('Thirty folios, none of them'),
+    )
+    await user.click(screen.getByRole('checkbox', { name: 'foil' }))
+    // Thirty is the whole Catalog's count, not the foils'.
+    expect(where()).toHaveTextContent('?finish=foil')
+    expect(screen.getByRole('link', { name: 'Lightning Bolt' })).toBeVisible()
+    expect(opening()).toBeEmptyDOMElement()
+    expect(screen.queryByText(/match/)).not.toBeInTheDocument()
   })
 
   it('lands on the last real page when the result shrank under it', async () => {
@@ -478,13 +614,30 @@ describe('IndexPage', () => {
     expect(where()).toHaveTextContent(/^\?page=2$/)
   })
 
-  it('disables Next when the last page is exactly full', async () => {
+  it('has no pager when the one page is exactly full', async () => {
     const full = Array.from({ length: INDEX_PAGE_SIZE }, (_, i) =>
       folio({ scryfall_id: `bolt-${i}` }),
     )
     searchMock.mockResolvedValue(page(full, INDEX_PAGE_SIZE))
     renderIndex()
-    expect(await screen.findByRole('button', { name: 'Next' })).toBeDisabled()
+    await screen.findByRole('list', { name: 'Folios' })
+    expect(
+      screen.queryByRole('navigation', { name: 'Index pages' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('disables Later folios when the last page is exactly full', async () => {
+    const full = Array.from({ length: INDEX_PAGE_SIZE }, (_, i) =>
+      folio({ scryfall_id: `bolt-${i}` }),
+    )
+    searchMock.mockResolvedValue(
+      page(full, 2 * INDEX_PAGE_SIZE, INDEX_PAGE_SIZE),
+    )
+    renderIndex('/index?page=2')
+    expect(
+      await screen.findByRole('button', { name: 'Later folios' }),
+    ).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Earlier folios' })).toBeEnabled()
   })
 
   it('keeps the search and facets up while cleared filters load', async () => {
@@ -502,7 +655,9 @@ describe('IndexPage', () => {
     expect(
       screen.queryByRole('heading', { name: 'Nothing inscribed yet' }),
     ).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Search the Index')).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'foil' })).toBeInTheDocument()
   })
 
@@ -512,7 +667,7 @@ describe('IndexPage', () => {
     searchMock.mockReturnValueOnce(new Promise(() => {}))
     renderIndex('/index?page=3', '/index?finish=foil')
 
-    await screen.findByText('Showing 1 to 2 of 2 folios')
+    await screen.findByText('Two folios match these filters.')
     await user.click(screen.getByRole('button', { name: 'Browser back' }))
 
     // Two folios cannot fill page 3, but they are the old filter's count.
@@ -521,5 +676,186 @@ describe('IndexPage', () => {
       expect.objectContaining({ offset: 2 * INDEX_PAGE_SIZE }),
       expect.any(AbortSignal),
     )
+  })
+})
+
+describe('IndexPage opening sentence', () => {
+  it('counts the folios, the Volumes they sit in and the Tomes bound', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
+    vi.mocked(listFacets).mockResolvedValue(
+      facets({
+        locations: [
+          { location: 'Red binder', folios: 1 },
+          { location: 'Trade box', folios: 1 },
+        ],
+      }),
+    )
+    vi.mocked(listDecks).mockResolvedValue([deck()])
+    renderIndex()
+
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(
+        'Two folios, kept in two Volumes. One Tome bound.',
+      ),
+    )
+    // It sits between the heading and the search.
+    const heading = screen.getByRole('heading', { level: 1 })
+    const search = screen.getByRole('search')
+    expect(
+      heading.compareDocumentPosition(opening()) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      opening().compareDocumentPosition(search) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(opening().tagName).toBe('P')
+  })
+
+  it('says none are shelved when the facets list no Volume', async () => {
+    searchMock.mockResolvedValue(page([folio()]))
+    renderIndex()
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(
+        'One folio, none of them shelved in a Volume. No Tomes bound.',
+      ),
+    )
+  })
+
+  it('leaves out the Volumes and the Tomes when they cannot be read', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
+    vi.mocked(listFacets).mockRejectedValue(new ApiError('locked', 500))
+    vi.mocked(listDecks).mockRejectedValue(new ApiError('locked', 500))
+    renderIndex()
+
+    await screen.findByText('Facet values could not be read.')
+    await waitFor(() => expect(listDecks).toHaveBeenCalled())
+    await waitFor(() => expect(opening()).toHaveTextContent(/^Two folios\.$/))
+  })
+
+  it('leaves out the Volumes while the facets load', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
+    vi.mocked(listFacets).mockReturnValue(new Promise(() => {}))
+    vi.mocked(listDecks).mockResolvedValue([deck(), deck({ id: 2 })])
+    renderIndex()
+
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(/^Two folios\. Two Tomes bound\.$/),
+    )
+  })
+
+  it('quotes the name when only a name narrows the Index', async () => {
+    searchMock.mockResolvedValue(page([folio()]))
+    renderIndex('/index?name=bolt')
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(/^One folio matches 'bolt'\.$/),
+    )
+  })
+
+  it('names the filters when no name narrows the Index', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING], 40))
+    renderIndex('/index?finish=foil')
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(
+        /^Forty folios match these filters\.$/,
+      ),
+    )
+  })
+
+  it('quotes the name within the filters when both narrow', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
+    renderIndex('/index?name=%20bolt%20&set=lea')
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(
+        /^Two folios match 'bolt' within these filters\.$/,
+      ),
+    )
+  })
+
+  it('keeps the paragraph empty while the first answer loads', () => {
+    searchMock.mockReturnValue(new Promise(() => {}))
+    renderIndex()
+    expect(opening()).toBeEmptyDOMElement()
+  })
+
+  it('says nothing matches instead of a sentence', async () => {
+    searchMock.mockResolvedValue(page([], 0))
+    renderIndex('/index?finish=etched')
+    await screen.findByText('Nothing in the Index matches these filters.')
+    expect(opening()).toBeEmptyDOMElement()
+  })
+})
+
+describe('IndexPage plate', () => {
+  it('opens the unfiltered Index with the newest inscription', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
+    newestMock.mockResolvedValue(newest(CROWN))
+    renderIndex()
+
+    const plate = within(
+      await screen.findByRole('region', { name: 'Newest inscription' }),
+    )
+    expect(newestMock).toHaveBeenCalledWith(0, 1)
+    expect(plate.getByRole('heading', { level: 2 })).toHaveTextContent(
+      'Edgar, Charmed Groom foil',
+    )
+    expect(
+      plate.getByText('Innistrad: Crimson Vow, no. 320, mythic.'),
+    ).toBeInTheDocument()
+    expect(
+      plate.getByText(
+        'Two copies, lightly played, unshelved. Not yet claimed by any Tome.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      plate.getByRole('link', { name: 'Shelve it in a Volume' }),
+    ).toHaveAttribute('href', '/catalog/7')
+    expect(plate.getByRole('link', { name: 'Open the folio' })).toHaveAttribute(
+      'href',
+      '/index/edgar-vow',
+    )
+
+    // The plate sits between the opening sentence and the search.
+    const region = screen.getByRole('region', { name: 'Newest inscription' })
+    expect(
+      opening().compareDocumentPosition(region) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      region.compareDocumentPosition(screen.getByRole('search')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('shows the newest lot under any sort', async () => {
+    searchMock.mockResolvedValue(page([folio(), SOL_RING]))
+    newestMock.mockResolvedValue(newest(CROWN))
+    renderIndex('/index?sort=name&view=list')
+    expect(
+      await screen.findByRole('region', { name: 'Newest inscription' }),
+    ).toHaveTextContent('Edgar, Charmed Groom')
+  })
+
+  it('is left out when a filter narrows the Index', async () => {
+    searchMock.mockResolvedValue(page([folio()]))
+    newestMock.mockResolvedValue(newest(CROWN))
+    renderIndex('/index?finish=nonfoil')
+
+    await screen.findByText('One folio matches these filters.')
+    expect(
+      screen.queryByRole('region', { name: 'Newest inscription' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('is left out on a later page', async () => {
+    searchMock.mockResolvedValue(page([folio()], 30, INDEX_PAGE_SIZE))
+    newestMock.mockResolvedValue(newest(CROWN))
+    renderIndex('/index?page=2')
+
+    await screen.findByRole('link', { name: 'Lightning Bolt' })
+    await waitFor(() => expect(opening()).not.toBeEmptyDOMElement())
+    expect(
+      screen.queryByRole('region', { name: 'Newest inscription' }),
+    ).not.toBeInTheDocument()
   })
 })

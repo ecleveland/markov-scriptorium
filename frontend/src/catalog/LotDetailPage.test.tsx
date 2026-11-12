@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -63,7 +63,46 @@ const PRINTING_BACK = {
 afterEach(() => vi.clearAllMocks())
 
 describe('LotDetailPage', () => {
-  it('shows the folio in full', async () => {
+  it('opens on a plate headed by the card name and its finish', async () => {
+    getMock.mockResolvedValue(lot({ id: 7, finish: 'foil' }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: 'Lightning Bolt foil',
+    })
+    expect(within(heading).getByText('foil')).toHaveClass('finish-word')
+    const plate = heading.closest('header')
+    expect(plate).toHaveClass('plate')
+    expect(
+      within(plate as HTMLElement).getByRole('img', {
+        name: 'Lightning Bolt (no image in the catalog)',
+      }),
+    ).toBeInTheDocument()
+    expect(within(plate as HTMLElement).queryByRole('button')).toBeNull()
+  })
+
+  it('heads a nonfoil plate with the name alone', async () => {
+    getMock.mockResolvedValue(lot({ id: 7, finish: 'nonfoil' }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const heading = await screen.findByRole('heading', { level: 1 })
+    expect(heading.textContent).toBe('Lightning Bolt')
+  })
+
+  it('gives the printing and rarity as the plate first line', async () => {
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(
+      await screen.findByText('Limited Edition Alpha, no. 161, common.'),
+    ).toHaveClass('plate__printing')
+  })
+
+  it('tells the folio in full as a run of prose', async () => {
     getMock.mockResolvedValue(
       lot({
         id: 7,
@@ -73,25 +112,79 @@ describe('LotDetailPage', () => {
         location: 'Red binder',
         acquired_at: '2026-03-01',
         price_paid: '4.50',
+        folio: { owned: 2, reserved: 0, available: 2 },
       }),
     )
     ownedMock.mockResolvedValue(owned())
     renderDetail()
 
     expect(
-      await screen.findByRole('heading', { name: 'Lightning Bolt' }),
+      await screen.findByText(
+        'Two copies, lightly played, in Red binder. Foil, in English. ' +
+          'Acquired 2026-03-01 for 4.50. Not yet claimed by any Tome.',
+      ),
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(/Limited Edition Alpha · LEA #161 · common/),
-    ).toBeInTheDocument()
-    expect(screen.getByText('foil')).toBeInTheDocument()
-    expect(screen.getByText('2026-03-01')).toBeInTheDocument()
     expect(screen.getByLabelText('Copies')).toHaveValue(2)
     expect(screen.getByLabelText('Condition')).toHaveValue('LP')
     expect(screen.getByLabelText('Volume')).toHaveValue('Red binder')
   })
 
-  it('shows how many copies of the folio Tomes hold and how many are free', async () => {
+  it('calls a single unshelved copy so and spells out its language', async () => {
+    getMock.mockResolvedValue(
+      lot({ id: 7, quantity: 1, location: null, language: 'ja' }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(
+      await screen.findByText(
+        'One copy, near mint, unshelved. Nonfoil, in Japanese. ' +
+          'Not yet claimed by any Tome.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('names an etched finish', async () => {
+    getMock.mockResolvedValue(lot({ id: 7, finish: 'etched' }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(await screen.findByText(/Etched, in English\./)).toBeInTheDocument()
+  })
+
+  it('says when it was acquired even with no price', async () => {
+    getMock.mockResolvedValue(
+      lot({ id: 7, acquired_at: '2026-03-01', price_paid: null }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const line = await screen.findByText(/Acquired 2026-03-01\./)
+    expect(line).not.toHaveTextContent(/ for /)
+  })
+
+  it('says what was paid even with no date', async () => {
+    getMock.mockResolvedValue(
+      lot({ id: 7, acquired_at: null, price_paid: '4.50' }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(await screen.findByText(/Acquired for 4\.50\./)).toBeInTheDocument()
+  })
+
+  it('leaves out the acquisition when neither date nor price is known', async () => {
+    getMock.mockResolvedValue(
+      lot({ id: 7, acquired_at: null, price_paid: null }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByText(/Acquired/)).not.toBeInTheDocument()
+  })
+
+  it('says how much of the folio Tomes claim and how much is free', async () => {
     getMock.mockResolvedValue(
       lot({
         id: 7,
@@ -102,11 +195,85 @@ describe('LotDetailPage', () => {
     ownedMock.mockResolvedValue(owned())
     renderDetail()
 
-    const inTomes = await screen.findByText('In Tomes')
-    expect(inTomes.nextElementSibling).toHaveTextContent('3 of 4')
-    expect(screen.getByText('Available').nextElementSibling).toHaveTextContent(
-      '1',
+    expect(
+      await screen.findByText(
+        'One copy, near mint, unshelved. Nonfoil, in English. ' +
+          'Three of its four copies are claimed by Tomes. ' +
+          'One copy free for another Tome.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says no copy is free when Tomes claim the whole folio', async () => {
+    getMock.mockResolvedValue(
+      lot({
+        id: 7,
+        quantity: 2,
+        folio: { owned: 2, reserved: 2, available: 0 },
+      }),
     )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(
+      await screen.findByText(
+        /Every copy is claimed by Tomes\. No copies free for another Tome\.$/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('offers no free count when no Tome claims a copy', async () => {
+    getMock.mockResolvedValue(
+      lot({ id: 7, folio: { owned: 1, reserved: 0, available: 1 } }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByText(/free for another Tome/)).not.toBeInTheDocument()
+  })
+
+  it('orders the leaf: plate, ownership, the amend opening, then removal', async () => {
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const plate = (await screen.findByRole('heading', { level: 1 })).closest(
+      'header',
+    ) as HTMLElement
+    const ownership = await screen.findByRole('complementary', {
+      name: 'Ownership across printings',
+    })
+    const amend = screen.getByRole('region', { name: 'Amend the entry' })
+    const remove = screen.getByRole('button', {
+      name: 'Remove from the collection',
+    })
+
+    const order = [plate, ownership, amend, remove]
+    for (let i = 1; i < order.length; i++) {
+      expect(
+        order[i - 1].compareDocumentPosition(order[i]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    }
+  })
+
+  it('opens the edit form under a rubricated "Amend the entry"', async () => {
+    getMock.mockResolvedValue(lot({ id: 7 }))
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    const heading = await screen.findByRole('heading', {
+      level: 2,
+      name: 'Amend the entry',
+    })
+    expect(heading).toHaveClass('opening')
+    const amend = screen.getByRole('region', { name: 'Amend the entry' })
+    expect(within(amend).getByLabelText('Copies')).toBeInTheDocument()
+    expect(within(amend).getByLabelText('Notes')).toBeInTheDocument()
+    expect(
+      within(amend).getByRole('button', { name: 'Amend' }),
+    ).toBeInTheDocument()
   })
 
   it('amends the four mutable fields in one PATCH', async () => {

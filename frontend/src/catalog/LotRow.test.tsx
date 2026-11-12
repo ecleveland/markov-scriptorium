@@ -1,8 +1,9 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import type { InventoryLot } from '../api'
+import { Ledger } from '../components'
 import { lot } from '../test/fixtures'
 import { renderWithQuery } from '../test/queryWrapper'
 import { LotRow, type LotBack } from './LotRow'
@@ -13,7 +14,11 @@ function Landed() {
 
 function renderRow(
   record: InventoryLot,
-  { entry = '/catalog', back }: { entry?: string; back?: LotBack } = {},
+  {
+    entry = '/catalog',
+    back,
+    number = 1,
+  }: { entry?: string; back?: LotBack; number?: number } = {},
 ) {
   return renderWithQuery(
     <MemoryRouter initialEntries={[entry]}>
@@ -22,11 +27,9 @@ function renderRow(
         <Route
           path="*"
           element={
-            <table>
-              <tbody>
-                <LotRow lot={record} back={back} />
-              </tbody>
-            </table>
+            <Ledger aria-label="Lots">
+              <LotRow lot={record} number={number} back={back} />
+            </Ledger>
           }
         />
       </Routes>
@@ -34,19 +37,79 @@ function renderRow(
   )
 }
 
+function entry() {
+  return screen.getByRole('listitem')
+}
+
 describe('LotRow', () => {
-  it('says how many copies Tomes hold and how many are free', () => {
+  it('is one ledger entry carrying its running number', () => {
+    const { container } = renderRow(lot(), { number: 26 })
+    expect(entry()).toHaveClass('ledger__entry')
+    expect(container.querySelector('.ledger__number')).toHaveTextContent('26')
+  })
+
+  it('says where the folio sits: the printing, then the Volume', () => {
+    renderRow(lot({ location: 'Red binder' }))
+    expect(
+      screen.getByText('Limited Edition Alpha, no. 161. Red binder.'),
+    ).toHaveClass('ledger__where')
+  })
+
+  it('calls a lot with no Volume unshelved', () => {
+    renderRow(lot({ location: null }))
+    expect(
+      screen.getByText('Limited Edition Alpha, no. 161. Unshelved.'),
+    ).toBeInTheDocument()
+  })
+
+  it('sets the finish word after the name of a foil', () => {
+    renderRow(lot({ finish: 'foil' }))
+    const name = within(entry()).getByRole('link', {
+      name: 'Lightning Bolt',
+    }).parentElement
+    expect(name).toHaveTextContent('Lightning Bolt foil')
+    expect(within(entry()).getByText('foil')).toHaveClass('finish-word')
+  })
+
+  it('sets no finish word after the name of a nonfoil', () => {
+    renderRow(lot({ finish: 'nonfoil' }))
+    expect(entry().querySelector('.finish-word')).toBeNull()
+    expect(
+      within(entry()).getByRole('link', { name: 'Lightning Bolt' })
+        .parentElement,
+    ).toHaveTextContent(/^Lightning Bolt$/)
+  })
+
+  it('carries the stepper as its one control', () => {
+    renderRow(lot({ quantity: 2 }))
+    expect(within(entry()).getAllByRole('button')).toHaveLength(2)
+    expect(
+      within(entry()).getByRole('button', {
+        name: 'Increase quantity of Lightning Bolt',
+      }),
+    ).toBeInTheDocument()
+    expect(entry().querySelector('.qty-stepper__value')).toHaveTextContent('2')
+  })
+
+  it('notes the condition in words when no Tome claims a copy', () => {
+    renderRow(
+      lot({
+        condition: 'LP',
+        quantity: 4,
+        folio: { owned: 4, reserved: 0, available: 4 },
+      }),
+    )
+    expect(screen.getByText('lightly played')).toHaveClass('ledger__note')
+    expect(screen.queryByText(/in Tomes/)).not.toBeInTheDocument()
+  })
+
+  it('notes how much of the folio the Tomes hold', () => {
     renderRow(
       lot({ quantity: 1, folio: { owned: 4, reserved: 3, available: 1 } }),
     )
-    expect(screen.getByText('3 of 4 in Tomes · 1 free')).toBeInTheDocument()
-  })
-
-  it('stays quiet when no Tome holds a copy', () => {
-    renderRow(
-      lot({ quantity: 4, folio: { owned: 4, reserved: 0, available: 4 } }),
+    expect(screen.getByText('near mint, 3 of 4 in Tomes')).toHaveClass(
+      'ledger__note',
     )
-    expect(screen.queryByText(/in Tomes/)).not.toBeInTheDocument()
   })
 
   it('hands the lot the Catalog page it was opened from', async () => {

@@ -101,32 +101,38 @@ describe('PrintingPage', () => {
     ).toHaveTextContent('1 owned · 0 in Tomes · 1 free')
   })
 
-  it('lists every lot as a Catalog row that opens the lot', async () => {
+  it('lists every lot as a ledger entry that opens the lot', async () => {
     const user = userEvent.setup()
     ownedMock.mockResolvedValue(TWO_LOTS)
     renderPrinting()
 
-    const table = await screen.findByRole('table')
+    const region = await screen.findByRole('region', {
+      name: 'Lots of this printing',
+    })
+    const ledger = within(region).getByRole('list', { name: 'Lots' })
+    expect(ledger).toHaveClass('ledger')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    const entries = within(ledger).getAllByRole('listitem')
+    expect(entries).toHaveLength(2)
     expect(
-      within(table)
-        .getAllByRole('columnheader')
-        .map((header) => header.textContent),
-    ).toEqual(['Art', 'Card', 'Finish', 'Condition', 'Volume', 'Copies'])
-    const rows = within(table).getAllByRole('row').slice(1)
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toHaveTextContent('Red binder')
-    expect(rows[1]).toHaveTextContent('LP')
+      Array.from(
+        ledger.querySelectorAll('.ledger__number'),
+        (number) => number.textContent,
+      ),
+    ).toEqual(['1', '2'])
+    expect(entries[0]).toHaveTextContent(
+      'Limited Edition Alpha, no. 161. Red binder.',
+    )
+    expect(entries[1]).toHaveTextContent('lightly played')
     expect(
-      within(rows[0]).getByRole('button', {
+      within(entries[0]).getByRole('button', {
         name: 'Increase quantity of Lightning Bolt',
       }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('region', { name: 'Lots of this printing' }),
-    ).toHaveAttribute('tabindex', '0')
 
     await user.click(
-      within(rows[1]).getByRole('link', { name: 'Lightning Bolt' }),
+      within(entries[1]).getByRole('link', { name: 'Lightning Bolt' }),
     )
     expect(screen.getByText('Landed on /catalog/9')).toBeInTheDocument()
   })

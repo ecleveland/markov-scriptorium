@@ -3,9 +3,18 @@ export { CardThumb, type CardThumbProps } from './CardThumb'
 export { Consulting, type ConsultingProps } from './Consulting'
 export { EmptyState, type EmptyStateProps } from './EmptyState'
 export { Field, type FieldProps } from './Field'
+export { FinishWord } from './FinishWord'
+export {
+  Ledger,
+  LedgerEntry,
+  LedgerFigure,
+  type LedgerEntryProps,
+  type LedgerProps,
+} from './Ledger'
 export { Notice, type NoticeProps, type NoticeTone } from './Notice'
 export { PageHeader, type PageHeaderProps } from './PageHeader'
 export { Panel, type PanelProps } from './Panel'
+export { Plate, type PlateProps } from './Plate'
 export { PrintingChip, type PrintingChipProps } from './PrintingChip'
 export { Seal, type SealProps } from './Seal'
 export { Sealed, type SealedProps } from './Sealed'

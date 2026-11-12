@@ -40,7 +40,9 @@ test.describe('the leaf', () => {
     await page.setViewportSize({ width: 1280, height: 800 })
     await page.goto('/index')
     await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
-    await expect(page.getByText('Showing 1 to 3 of 3 folios')).toBeVisible()
+    await expect(
+      page.getByText('Three folios, kept in one Volume. No Tomes bound.'),
+    ).toBeVisible()
 
     const margin = page.locator('.leaf__margin')
     await expect(margin).toBeVisible()
@@ -76,13 +78,15 @@ test.describe('the leaf', () => {
     expect(inscribeBox!.width).toBeLessThan(700)
 
     await page.goto('/index')
-    await expect(page.getByText('Showing 1 to 3 of 3 folios')).toBeVisible()
+    await expect(
+      page.getByText('Three folios, kept in one Volume. No Tomes bound.'),
+    ).toBeVisible()
     const indexBox = await page.locator('.index').boundingBox()
     expect(indexBox).not.toBeNull()
     expect(indexBox!.width).toBeGreaterThan(inscribeBox!.width)
 
     await page.goto('/catalog')
-    await expect(page.getByRole('table')).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Lots' })).toBeVisible()
     const catalogBox = await page.locator('.catalog').boundingBox()
     expect(catalogBox).not.toBeNull()
     expect(catalogBox!.width).toBeGreaterThan(inscribeBox!.width)
@@ -130,6 +134,26 @@ test.describe('the leaf', () => {
     await expect(page.locator('.leaf__margin')).toBeHidden()
   })
 
+  // Between the collapse and 960px the sidebar stacks above the results, so
+  // the grid gets the whole column. Beside the sidebar it fitted one tile.
+  test('sets two Index tiles side by side at 800px', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 })
+    await page.goto('/index')
+    await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
+    const tiles = page
+      .getByRole('list', { name: 'Folios' })
+      .getByRole('listitem')
+    await expect(tiles).toHaveCount(3)
+
+    const first = await tiles.nth(0).boundingBox()
+    const second = await tiles.nth(1).boundingBox()
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    // Same row, give or take sub-pixel rounding.
+    expect(Math.abs(second!.y - first!.y)).toBeLessThan(1)
+    expect(second!.x).toBeGreaterThan(first!.x)
+  })
+
   test('keeps the margin above the collapse at 720px', async ({ page }) => {
     await page.setViewportSize({ width: 720, height: 800 })
     await page.goto('/index')
@@ -140,25 +164,56 @@ test.describe('the leaf', () => {
   })
 })
 
+// The Index's grid, plate and ledger at a common phone size. The sort keys,
+// the seek line and the ledger's columns must all fit without side scroll.
+test.describe('the Index at 390px', () => {
+  for (const path of ['/index', '/index?view=list']) {
+    test(`${path} has no horizontal scroll`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(path)
+      await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
+      await expect(
+        page.getByText('Three folios, kept in one Volume. No Tomes bound.'),
+      ).toBeVisible()
+      await expect(
+        page.getByRole('region', { name: 'Newest inscription' }),
+      ).toBeVisible()
+      await expect(
+        page.getByRole('list', { name: 'Folios' }).getByRole('listitem'),
+      ).toHaveCount(3)
+
+      const widths = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: window.innerWidth,
+      }))
+      expect(widths.scrollWidth).toBeLessThanOrEqual(widths.innerWidth)
+    })
+  }
+})
+
 // The manual 375px sweep made repeatable: each page must fit a phone without
 // a horizontal scrollbar. Screenshots land in the test output dir for the PR.
 test.describe('reflows at phone width', () => {
   const routes = [
-    // The table arrives on its own fetch after the status sentence, so wait for it
-    // or the check measures the narrow loading line instead.
-    // The Index heading renders before its results do, so wait for the count.
+    // The Index and the Catalog render their heading before their entries
+    // arrive, so wait for the opening sentence, which waits on the count, or
+    // the check measures the narrow loading line instead.
     {
       path: '/index',
       slug: 'index',
       heading: 'The Index',
-      text: 'Showing 1 to 3 of 3 folios',
+      text: 'Three folios, kept in one Volume. No Tomes bound.',
     },
     {
       path: '/index/bolt-lea',
       slug: 'index-printing',
       heading: 'Lightning Bolt',
     },
-    { path: '/catalog', slug: 'catalog', table: true },
+    {
+      path: '/catalog',
+      slug: 'catalog',
+      text: 'Three entries in the Catalog, the newest inscribed first.',
+    },
     { path: '/catalog/2', slug: 'catalog-detail', heading: 'Lightning Bolt' },
     { path: '/inscribe', slug: 'inscribe' },
     { path: '/tomes', slug: 'tomes', heading: 'The Tomes' },
@@ -168,16 +223,13 @@ test.describe('reflows at phone width', () => {
     { path: '/archive', slug: 'archive', heading: 'The Muniment Room' },
   ]
 
-  for (const { path, slug, heading, table, text } of routes) {
+  for (const { path, slug, heading, text } of routes) {
     test(`${path} has no horizontal scroll at 375px`, async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 })
       await page.goto(path)
       await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
       if (heading) {
         await expect(page.getByRole('heading', { name: heading })).toBeVisible()
-      }
-      if (table) {
-        await expect(page.getByRole('table')).toBeVisible()
       }
       if (text) {
         await expect(page.getByText(text)).toBeVisible()

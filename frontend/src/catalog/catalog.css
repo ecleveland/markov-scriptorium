@@ -2,12 +2,13 @@
    ADR 0014: no raw colours, fonts, or spacing values below.
 
    Buttons, form controls, labels, and the one-line state messages come from
-   the component layer (ADR 0017); what is left here is layout and the pieces
-   the Catalog owns alone, such as the table and the quantity stepper. The
-   card thumb moved to the component layer with VEG-228. */
+   the component layer (ADR 0017), and so do the ledger, the plate and the
+   pager since VEG-624. What is left here is layout and the pieces the
+   Catalog owns alone, such as the opening sentence and the quantity stepper.
+   The card thumb moved to the component layer with VEG-228. */
 
-/* The table needs more than the leaf's 66ch text column, so the Catalog and
-   the folio view widen the column they sit in (ADR 0031). */
+/* The ledger and the plate want more than the leaf's 66ch text column, so the
+   Catalog and the folio view widen the column they sit in (ADR 0031). */
 .scriptorium:has(> .catalog),
 .scriptorium:has(> .lot-detail) {
   --leaf-measure: 56rem;
@@ -15,91 +16,12 @@
 
 /* ---- The list ----------------------------------------------------------- */
 
-/* Six columns at phone width scroll inside the page instead of widening it. */
-.catalog__scroll {
-  overflow-x: auto;
-}
-
-.catalog__table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: var(--space-4);
-}
-
-.catalog__table th {
-  text-align: left;
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-variant-caps: var(--caps);
-  letter-spacing: var(--caps-tracking);
-  color: var(--text-faint);
-  font-weight: 500;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-
-.catalog__table td {
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-
-.catalog__row:hover {
-  background: var(--surface);
-}
-
-.catalog__art {
-  width: 3rem;
-}
-
-/* The cell stays a table cell so its border meets the row's. The name and
-   folio stack as blocks instead of flex children. */
-.catalog__name {
-  display: block;
-  font-family: var(--font-display);
+/* "Three entries in the Catalog, the newest inscribed first." under the h1. */
+.catalog__opening {
+  margin: 0 0 var(--space-5);
   font-size: var(--text-lg);
-  color: var(--text-primary);
-  text-decoration: none;
-}
-
-/* Gold, like the other links on the page. Oxblood-bright is a fill colour,
-   not a text colour, at 3.4:1 on the ground. */
-.catalog__name:hover {
-  color: var(--accent-secondary);
-}
-
-.catalog__folio {
-  display: block;
-  margin-top: var(--space-1);
-}
-
-.catalog__folio,
-.catalog__unset {
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-}
-
-.catalog__unset {
   font-style: italic;
-}
-
-.catalog__quantity {
-  text-align: right;
-}
-
-/* Sits under the stepper, so it needs its own line in the right-aligned cell. */
-.catalog__reserved {
-  display: block;
-  margin-top: var(--space-1);
-  font-size: var(--text-xs);
   color: var(--text-muted);
-}
-
-.catalog__pager {
-  display: flex;
-  gap: var(--space-3);
-  justify-content: flex-end;
-  margin-top: var(--space-5);
 }
 
 /* ---- Quantity stepper --------------------------------------------------- */
@@ -134,9 +56,13 @@
   cursor: not-allowed;
 }
 
+/* The count is the ledger's gold figure, set between the two steps. */
 .qty-stepper__value {
-  font-family: var(--font-body);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 500;
   font-variant-numeric: var(--figures);
+  line-height: 1;
   color: var(--accent-secondary);
   min-width: 1.5rem;
   text-align: center;
@@ -146,7 +72,9 @@
   font-size: var(--text-xs);
 }
 
-/* ---- Detail view -------------------------------------------------------- */
+/* ---- Detail view --------------------------------------------------------
+   The lot page is a leaf opening on a plate (VEG-624). The head, folio and
+   facts rules below are the printing page's, which keeps its own header. */
 
 .lot-detail__back a {
   color: var(--text-muted);
@@ -188,13 +116,9 @@
   font-size: var(--text-sm);
 }
 
-/* ---- Edit form ---------------------------------------------------------- */
-
-.lot-editor {
-  margin-top: var(--space-6);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border);
-}
+/* ---- Edit form ----------------------------------------------------------
+   The "Amend the entry" opening above the form sets it off, so the form
+   carries no rule or space of its own at the top. */
 
 .lot-editor__fields {
   display: grid;

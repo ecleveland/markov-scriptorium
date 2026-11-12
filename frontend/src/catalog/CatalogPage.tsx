@@ -1,15 +1,19 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { CATALOG_PAGE_SIZE, listInventory } from '../api'
-import { Button, Consulting, EmptyState, Notice } from '../components'
+import {
+  Button,
+  Consulting,
+  EmptyState,
+  Ledger,
+  Notice,
+  PageHeader,
+} from '../components'
 import { LotRow } from './LotRow'
+import { capitalised, counted } from './prose'
 import { inventoryKeys } from './queryKeys'
 import './catalog.css'
-
-/** "Showing 1 to 25 of 87 folios" — 1-based and inclusive, as people read it. */
-function pageRange(offset: number, shown: number): string {
-  return shown === 0 ? '0' : `${offset + 1} to ${offset + shown}`
-}
 
 /** The 1-based page from `?page=`, defaulting to the first on anything odd. */
 function pageFromParams(params: URLSearchParams): number {
@@ -17,8 +21,25 @@ function pageFromParams(params: URLSearchParams): number {
   return Number.isInteger(raw) && raw > 0 ? raw : 1
 }
 
+/** The page's one heading, over whichever state the catalog is in. */
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <section className="catalog">
+      <PageHeader
+        title={
+          <>
+            The <span className="rubric">Catalog</span>
+          </>
+        }
+      />
+      {children}
+    </section>
+  )
+}
+
 /**
- * The Catalog: every owned lot, newest inscription first, one page at a time.
+ * The Catalog: every owned lot, newest inscription first, one page at a time,
+ * set out as a numbered ledger.
  *
  * Deliberately unfiltered. Search and faceted browse are The Index (M5); this
  * view exists so the collection can be read back at all.
@@ -40,42 +61,36 @@ export function CatalogPage() {
     queryKey: inventoryKeys.list(offset),
     queryFn: () => listInventory(offset),
     // Keep the previous page on screen while the next one loads, so paging
-    // doesn't flash the whole table away and back.
+    // doesn't flash the whole ledger away and back.
     placeholderData: keepPreviousData,
   })
 
   if (query.isPending) {
     return (
-      <section className="catalog">
-        <h1>
-          The <span className="rubric">Catalog</span>
-        </h1>
+      <Shell>
         <Consulting />
-      </section>
+      </Shell>
     )
   }
 
   if (query.isError) {
     return (
-      <section className="catalog">
-        <h1>
-          The <span className="rubric">Catalog</span>
-        </h1>
+      <Shell>
         <Notice tone="danger" role="alert">
           The catalog could not be read. {query.error.message}
         </Notice>
-      </section>
+      </Shell>
     )
   }
 
-  // The offset the rows on screen actually came from. `keepPreviousData` holds
-  // the old page during a fetch, so pairing the *requested* offset with them
-  // would read "Showing 26 to 50 of 30" above rows 1 to 25.
+  // The offset the entries on screen actually came from. `keepPreviousData`
+  // holds the old page during a fetch, so numbering them from the *requested*
+  // offset would put 26 against the first entry of page one.
   const { results, total, offset: shownOffset } = query.data
 
   // The collection can shrink under a bookmarked or returned-to page (remove the
   // only folio on page 2 and page 2 stops existing). Land on the last real page
-  // rather than an empty table with headers.
+  // rather than an empty ledger.
   if (total > 0 && offset >= total) {
     const lastPage = Math.ceil(total / CATALOG_PAGE_SIZE)
     return (
@@ -88,71 +103,49 @@ export function CatalogPage() {
 
   if (total === 0) {
     return (
-      <section className="catalog">
-        <h1>
-          The <span className="rubric">Catalog</span>
-        </h1>
+      <Shell>
         <EmptyState title="Nothing inscribed yet">
           Add a card through <Link to="/inscribe">Inscribe</Link>, or bring a
           whole collection in from a <Link to="/import/decklist">decklist</Link>{' '}
           or a <Link to="/import/csv">CSV export</Link>.
         </EmptyState>
-      </section>
+      </Shell>
     )
   }
 
   const onLastPage = offset + CATALOG_PAGE_SIZE >= total
 
   return (
-    <section className="catalog">
-      <h1>
-        The <span className="rubric">Catalog</span>
-      </h1>
-      <Notice>
-        Showing {pageRange(shownOffset, results.length)} of {total}{' '}
-        {total === 1 ? 'folio' : 'folios'}
-      </Notice>
+    <Shell>
+      <p className="catalog__opening">
+        {capitalised(counted(total, 'entry', 'entries'))} in the Catalog, the
+        newest inscribed first.
+      </p>
 
-      {/* When the table overflows, a keyboard can only scroll this wrapper if
-          it takes focus, and anything focusable needs a name to announce. */}
-      <div
-        className="catalog__scroll"
-        tabIndex={0}
-        role="region"
-        aria-label="Catalog table"
-      >
-        <table className="catalog__table">
-          <caption className="visually-hidden">
-            Owned cards, newest inscription first
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">
-                <span className="visually-hidden">Art</span>
-              </th>
-              <th scope="col">Card</th>
-              <th scope="col">Finish</th>
-              <th scope="col">Condition</th>
-              <th scope="col">Volume</th>
-              <th scope="col">Copies</th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((lot) => (
-              <LotRow key={lot.id} lot={lot} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Ledger aria-label="Lots">
+        {results.map((lot, i) => (
+          <LotRow key={lot.id} lot={lot} number={shownOffset + i + 1} />
+        ))}
+      </Ledger>
 
-      <nav className="catalog__pager" aria-label="Catalog pages">
-        <Button disabled={page <= 1} onClick={() => goToPage(page - 1)}>
-          Previous
-        </Button>
-        <Button disabled={onLastPage} onClick={() => goToPage(page + 1)}>
-          Next
-        </Button>
-      </nav>
-    </section>
+      {total > CATALOG_PAGE_SIZE && (
+        <nav className="pager" aria-label="Catalog pages">
+          <Button
+            variant="ghost"
+            disabled={page <= 1}
+            onClick={() => goToPage(page - 1)}
+          >
+            Earlier folios
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={onLastPage}
+            onClick={() => goToPage(page + 1)}
+          >
+            Later folios
+          </Button>
+        </nav>
+      )}
+    </Shell>
   )
 }
