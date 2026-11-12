@@ -62,6 +62,13 @@ describe('LotRow', () => {
     ).toBeInTheDocument()
   })
 
+  it('calls a lot with a blank Volume unshelved', () => {
+    renderRow(lot({ location: '  ' }))
+    expect(
+      screen.getByText('Limited Edition Alpha, no. 161. Unshelved.'),
+    ).toBeInTheDocument()
+  })
+
   it('sets the finish word after the name of a foil', () => {
     renderRow(lot({ finish: 'foil' }))
     const name = within(entry()).getByRole('link', {

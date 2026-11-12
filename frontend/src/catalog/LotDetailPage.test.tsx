@@ -144,6 +144,26 @@ describe('LotDetailPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('calls a lot with a blank Volume unshelved', async () => {
+    getMock.mockResolvedValue(
+      lot({
+        id: 7,
+        quantity: 1,
+        location: '  ',
+        folio: { owned: 1, reserved: 0, available: 1 },
+      }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(
+      await screen.findByText(
+        'One copy, near mint, unshelved. Nonfoil, in English. ' +
+          'Not yet claimed by any Tome.',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('names an etched finish', async () => {
     getMock.mockResolvedValue(lot({ id: 7, finish: 'etched' }))
     ownedMock.mockResolvedValue(owned())
@@ -198,7 +218,7 @@ describe('LotDetailPage', () => {
     expect(
       await screen.findByText(
         'One copy, near mint, unshelved. Nonfoil, in English. ' +
-          'Three of its four copies are claimed by Tomes. ' +
+          "Three of the folio's four copies are claimed by Tomes. " +
           'One copy free for another Tome.',
       ),
     ).toBeInTheDocument()
@@ -217,7 +237,25 @@ describe('LotDetailPage', () => {
 
     expect(
       await screen.findByText(
-        /Every copy is claimed by Tomes\. No copies free for another Tome\.$/,
+        /All two of the folio's copies are claimed by Tomes\. No copies free for another Tome\.$/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says how far the Tomes claim beyond the folio', async () => {
+    getMock.mockResolvedValue(
+      lot({
+        id: 7,
+        quantity: 2,
+        folio: { owned: 2, reserved: 3, available: 0 },
+      }),
+    )
+    ownedMock.mockResolvedValue(owned())
+    renderDetail()
+
+    expect(
+      await screen.findByText(
+        /Tomes claim three copies, one more than the folio holds\. No copies free for another Tome\.$/,
       ),
     ).toBeInTheDocument()
   })

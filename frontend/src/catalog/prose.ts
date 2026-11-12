@@ -90,21 +90,35 @@ export function conditionWords(code: string): string {
 }
 
 /**
- * One sentence on how much of a folio the Tomes claim. Reservation is
- * computed at read time and is not capped at what is owned, so a folio
- * reserved beyond its copies reads as every copy claimed.
+ * The Volume a lot sits in, trimmed, or null when it has none. The backend can
+ * hold an empty or all-space location, which reads as unshelved.
+ */
+export function lotShelf(location: string | null): string | null {
+  const shelf = location?.trim() ?? ''
+  return shelf === '' ? null : shelf
+}
+
+/**
+ * One sentence on how much of a folio the Tomes claim. It names the folio,
+ * because a lot page or plate shows one lot's copies beside the claim on all
+ * of the folio's. Reservation is computed at read time and is not capped at
+ * what is owned, so a folio reserved past its copies says by how many.
  */
 export function tomeClaim(folio: { owned: number; reserved: number }): string {
   const { owned, reserved } = folio
   if (reserved <= 0) return 'Not yet claimed by any Tome.'
-  if (reserved >= owned) {
+  if (reserved > owned) {
+    const short = numberWords(reserved - owned)
+    return `Tomes claim ${counted(reserved, 'copy', 'copies')}, ${short} more than the folio holds.`
+  }
+  if (reserved === owned) {
     return owned === 1
-      ? 'Claimed by a Tome.'
-      : 'Every copy is claimed by Tomes.'
+      ? "The folio's one copy is claimed by a Tome."
+      : `All ${numberWords(owned)} of the folio's copies are claimed by Tomes.`
   }
   const part = capitalised(numberWords(reserved))
   const whole = numberWords(owned)
   return reserved === 1
-    ? `${part} of its ${whole} copies is claimed by a Tome.`
-    : `${part} of its ${whole} copies are claimed by Tomes.`
+    ? `${part} of the folio's ${whole} copies is claimed by a Tome.`
+    : `${part} of the folio's ${whole} copies are claimed by Tomes.`
 }

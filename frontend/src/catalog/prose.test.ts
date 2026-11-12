@@ -3,6 +3,7 @@ import {
   capitalised,
   conditionWords,
   counted,
+  lotShelf,
   numberWords,
   printingLine,
   shelfPhrase,
@@ -111,6 +112,24 @@ describe('conditionWords', () => {
   })
 })
 
+describe('lotShelf', () => {
+  it('gives null for a lot with no Volume', () => {
+    expect(lotShelf(null)).toBeNull()
+  })
+
+  it('gives null for an empty Volume', () => {
+    expect(lotShelf('')).toBeNull()
+  })
+
+  it('gives null for a Volume of only spaces', () => {
+    expect(lotShelf('  ')).toBeNull()
+  })
+
+  it('trims the Volume it names', () => {
+    expect(lotShelf(' Red binder ')).toBe('Red binder')
+  })
+})
+
 describe('tomeClaim', () => {
   it('says no Tome claims a folio with nothing reserved', () => {
     expect(tomeClaim({ owned: 4, reserved: 0 })).toBe(
@@ -118,39 +137,52 @@ describe('tomeClaim', () => {
     )
   })
 
-  it('says a Tome claims a lone copy', () => {
-    expect(tomeClaim({ owned: 1, reserved: 1 })).toBe('Claimed by a Tome.')
-  })
-
-  it('says every copy is claimed when Tomes reserve them all', () => {
-    expect(tomeClaim({ owned: 4, reserved: 4 })).toBe(
-      'Every copy is claimed by Tomes.',
-    )
-  })
-
-  it('counts an over-reserved folio as every copy claimed', () => {
-    // Reservation is computed at read time and is not capped at owned.
-    expect(tomeClaim({ owned: 4, reserved: 5 })).toBe(
-      'Every copy is claimed by Tomes.',
-    )
-    expect(tomeClaim({ owned: 1, reserved: 2 })).toBe('Claimed by a Tome.')
-  })
-
-  it('counts the claimed copies in words', () => {
-    expect(tomeClaim({ owned: 4, reserved: 2 })).toBe(
-      'Two of its four copies are claimed by Tomes.',
+  it('counts the claimed copies of the folio in words', () => {
+    expect(tomeClaim({ owned: 3, reserved: 2 })).toBe(
+      "Two of the folio's three copies are claimed by Tomes.",
     )
   })
 
   it('keeps one claimed copy singular', () => {
-    expect(tomeClaim({ owned: 4, reserved: 1 })).toBe(
-      'One of its four copies is claimed by a Tome.',
+    expect(tomeClaim({ owned: 3, reserved: 1 })).toBe(
+      "One of the folio's three copies is claimed by a Tome.",
     )
   })
 
   it('writes counts from one hundred in figures', () => {
     expect(tomeClaim({ owned: 120, reserved: 40 })).toBe(
-      'Forty of its 120 copies are claimed by Tomes.',
+      "Forty of the folio's 120 copies are claimed by Tomes.",
+    )
+  })
+
+  it("says a Tome claims the folio's lone copy", () => {
+    expect(tomeClaim({ owned: 1, reserved: 1 })).toBe(
+      "The folio's one copy is claimed by a Tome.",
+    )
+  })
+
+  it('says all the copies are claimed when Tomes reserve them all', () => {
+    expect(tomeClaim({ owned: 3, reserved: 3 })).toBe(
+      "All three of the folio's copies are claimed by Tomes.",
+    )
+  })
+
+  it('names the shortfall of a folio reserved one past its copies', () => {
+    // Reservation is computed at read time and is not capped at owned.
+    expect(tomeClaim({ owned: 2, reserved: 3 })).toBe(
+      'Tomes claim three copies, one more than the folio holds.',
+    )
+  })
+
+  it('names a shortfall of more than one', () => {
+    expect(tomeClaim({ owned: 1, reserved: 3 })).toBe(
+      'Tomes claim three copies, two more than the folio holds.',
+    )
+  })
+
+  it('names the shortfall of a folio that holds no copies', () => {
+    expect(tomeClaim({ owned: 0, reserved: 1 })).toBe(
+      'Tomes claim one copy, one more than the folio holds.',
     )
   })
 })

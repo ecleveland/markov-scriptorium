@@ -30,6 +30,7 @@ import {
   capitalised,
   conditionWords,
   counted,
+  lotShelf,
   printingLine,
   tomeClaim,
 } from './prose'
@@ -60,7 +61,8 @@ function acquiredSentence(lot: InventoryLot): string | null {
  */
 function lotProse(lot: InventoryLot): string {
   const copies = capitalised(counted(lot.quantity, 'copy', 'copies'))
-  const shelf = lot.location === null ? 'unshelved' : `in ${lot.location}`
+  const volume = lotShelf(lot.location)
+  const shelf = volume === null ? 'unshelved' : `in ${volume}`
   const { reserved, available } = lot.folio
   return [
     `${copies}, ${conditionWords(lot.condition)}, ${shelf}.`,

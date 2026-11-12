@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import type { InventoryLot } from '../api'
 import { CardThumb, FinishWord, LedgerEntry } from '../components'
-import { conditionWords, printingLine } from './prose'
+import { conditionWords, lotShelf, printingLine } from './prose'
 import { QuantityStepper } from './QuantityStepper'
 
 /** Where a lot page returns to, and what to call it. */
@@ -50,7 +50,7 @@ export function LotRow({
           )}
         </>
       }
-      where={`${printingLine(lot.card)}. ${lot.location ?? 'Unshelved'}.`}
+      where={`${printingLine(lot.card)}. ${lotShelf(lot.location) ?? 'Unshelved'}.`}
       count={<QuantityStepper lot={lot} />}
       note={
         reserved > 0

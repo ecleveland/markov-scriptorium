@@ -29,9 +29,9 @@ function Arrived() {
   )
 }
 
-function renderPlate() {
+function renderPlate(entry = '/index') {
   return renderWithQuery(
-    <MemoryRouter initialEntries={['/index']}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/index" element={<NewestPlate />} />
         <Route path="*" element={<Arrived />} />
@@ -114,7 +114,7 @@ describe('NewestPlate', () => {
     renderPlate()
     expect(
       await screen.findByText(
-        'Three copies, lightly played, in Red binder. Two of its four copies are claimed by Tomes.',
+        "Three copies, lightly played, in Red binder. Two of the folio's four copies are claimed by Tomes.",
       ),
     ).toBeInTheDocument()
   })
@@ -157,6 +157,57 @@ describe('NewestPlate', () => {
     await user.click(open)
     expect(screen.getByRole('status', { name: 'Arrived' })).toHaveTextContent(
       '/index/edgar-voc {"indexSearch":""}',
+    )
+  })
+
+  it('calls a lot with a blank Volume unshelved and offers to shelve it', async () => {
+    listMock.mockResolvedValue(newest(lot({ quantity: 1, location: '  ' })))
+    renderPlate()
+    expect(
+      await screen.findByText(
+        'One copy, near mint, unshelved. Not yet claimed by any Tome.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Shelve it in a Volume' }),
+    ).toBeInTheDocument()
+  })
+
+  it('trims the Volume it names', async () => {
+    listMock.mockResolvedValue(
+      newest(lot({ quantity: 1, location: ' Red binder ' })),
+    )
+    renderPlate()
+    expect(
+      await screen.findByText(
+        'One copy, near mint, in Red binder. Not yet claimed by any Tome.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the folio carrying the sorted, listed Index it came from', async () => {
+    const user = userEvent.setup()
+    listMock.mockResolvedValue(newest(CROWN))
+    renderPlate('/index?sort=name&view=list')
+
+    await user.click(
+      await screen.findByRole('link', { name: 'Open the folio' }),
+    )
+    expect(screen.getByRole('status', { name: 'Arrived' })).toHaveTextContent(
+      '/index/edgar-voc {"indexSearch":"?sort=name&view=list"}',
+    )
+  })
+
+  it('shelves the lot with a back link to the sorted, listed Index', async () => {
+    const user = userEvent.setup()
+    listMock.mockResolvedValue(newest(CROWN))
+    renderPlate('/index?sort=name&view=list')
+
+    await user.click(
+      await screen.findByRole('link', { name: 'Shelve it in a Volume' }),
+    )
+    expect(screen.getByRole('status', { name: 'Arrived' })).toHaveTextContent(
+      '/catalog/7 {"back":{"to":"/index?sort=name&view=list","label":"Back to the Index"}}',
     )
   })
 

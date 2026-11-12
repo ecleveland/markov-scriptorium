@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { listInventory } from '../api'
 import {
   capitalised,
   conditionWords,
   counted,
+  lotShelf,
   printingLine,
   tomeClaim,
 } from '../catalog/prose'
@@ -23,12 +24,16 @@ export function NewestPlate() {
     queryKey: inventoryKeys.newest(),
     queryFn: () => listInventory(0, 1),
   })
+  // Hand both links the Index view the plate sits on, sort and layout
+  // included, so their back links return to it.
+  const { search } = useLocation()
   const lot = query.data?.results[0]
   if (lot === undefined) return null
 
   const { card } = lot
   const copies = capitalised(counted(lot.quantity, 'copy', 'copies'))
-  const shelf = lot.location ? `in ${lot.location}` : 'unshelved'
+  const volume = lotShelf(lot.location)
+  const shelf = volume === null ? 'unshelved' : `in ${volume}`
 
   return (
     <Plate
@@ -62,16 +67,18 @@ export function NewestPlate() {
           {/* Shelving happens on the lot's own form, which returns here. */}
           <Link
             to={`/catalog/${lot.id}`}
-            state={{ back: { to: '/index', label: 'Back to the Index' } }}
+            state={{
+              back: { to: `/index${search}`, label: 'Back to the Index' },
+            }}
             className="btn btn--primary"
           >
-            {lot.location
-              ? 'Move it to another Volume'
-              : 'Shelve it in a Volume'}
+            {volume === null
+              ? 'Shelve it in a Volume'
+              : 'Move it to another Volume'}
           </Link>
           <Link
             to={`/index/${encodeURIComponent(lot.scryfall_id)}`}
-            state={{ indexSearch: '' }}
+            state={{ indexSearch: search }}
             className="btn btn--ghost"
           >
             Open the folio
