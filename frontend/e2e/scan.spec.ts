@@ -143,3 +143,23 @@ test('offers to type the name when the glass reads nothing', async ({
     page.getByRole('heading', { name: /Choose a printing of “Sol Ring”/ }),
   ).toBeVisible()
 })
+
+test('gives up on a glass that never answers', async ({ page }) => {
+  // Registered after stubApi and never fulfilled, as a dead backend would.
+  await page.route('**/api/scanner/recognize', () => {})
+  await openGlass(page)
+
+  await page.getByRole('button', { name: 'Capture' }).click()
+  // The clock goes in after the capture, so the camera ran on real time.
+  await page.clock.install()
+  await page.getByRole('button', { name: 'Read the card' }).click()
+  await expect(page.getByText('Reading the card…')).toBeVisible()
+  await page.clock.fastForward('00:31')
+
+  await expect(page.getByRole('alert')).toContainText(
+    'The glass did not answer. Try the capture again, or type the name instead.',
+  )
+  await expect(
+    page.getByRole('button', { name: 'Type the name instead' }),
+  ).toBeVisible()
+})

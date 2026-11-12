@@ -616,3 +616,79 @@ describe('ScanPage', () => {
     expect(secondSignal?.aborted).toBe(true)
   })
 })
+
+// A dead backend never answers, so the page gives up after 30 seconds. These
+// tests click with fireEvent and advance fake timers by hand, because
+// findBy and waitFor poll on timers that no longer run by themselves.
+describe('ScanPage read timeout', () => {
+  const TIMED_OUT =
+    'The glass did not answer. Try the capture again, or type the name instead.'
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Capture a frame and send it, leaving the read in flight. */
+  function startReading() {
+    render(<ScanPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Capture' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Read the card' }))
+  }
+
+  async function advance(ms: number) {
+    await act(async () => {
+      vi.advanceTimersByTime(ms)
+    })
+  }
+
+  it('gives up on the glass after 30 seconds and offers both ways on', async () => {
+    recognizeMock.mockReturnValue(new Promise(() => {}))
+    startReading()
+
+    await advance(29_999)
+    expect(screen.getByText('Reading the card…')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await advance(1)
+    expect(screen.getByRole('alert')).toHaveTextContent(TIMED_OUT)
+    const [, signal] = recognizeMock.mock.calls[0]
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Type the name instead' }),
+    ).toBeInTheDocument()
+  })
+
+  it('stays on the camera when the time runs out after a retake', async () => {
+    recognizeMock.mockReturnValue(new Promise(() => {}))
+    startReading()
+    await advance(10_000)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retake' }))
+    await advance(30_000)
+
+    expect(screen.getByRole('button', { name: 'Capture' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps the readings when the time runs out after the glass answered', async () => {
+    recognizeMock.mockResolvedValue({ readings: READINGS })
+    startReading()
+    // Let the answer settle before the clock moves.
+    await act(async () => {})
+    expect(
+      screen.getByRole('list', { name: 'Cards the glass read' }),
+    ).toBeInTheDocument()
+
+    await advance(30_000)
+
+    expect(
+      screen.getByRole('list', { name: 'Cards the glass read' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
