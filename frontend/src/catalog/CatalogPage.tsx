@@ -135,14 +135,14 @@ export function CatalogPage() {
             disabled={page <= 1}
             onClick={() => goToPage(page - 1)}
           >
-            Earlier folios
+            Newer entries
           </Button>
           <Button
             variant="ghost"
             disabled={onLastPage}
             onClick={() => goToPage(page + 1)}
           >
-            Later folios
+            Older entries
           </Button>
         </nav>
       )}

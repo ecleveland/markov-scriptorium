@@ -10,11 +10,12 @@ import {
 } from '../components'
 import { hasFinishWord, printingPath } from './folio'
 
-/** "near mint, lightly played", then how many copies Tomes hold, if any. */
+/** "near mint, lightly played", then how many copies Tomes hold and how many
+ *  are left free, if any Tome holds one. */
 function folioNote(folio: SearchFolio): string {
   const conditions = folio.conditions.map(conditionWords).join(', ')
   return folio.reserved > 0
-    ? `${conditions}, ${folio.reserved} in Tomes`
+    ? `${conditions}, ${folio.reserved} in Tomes, ${folio.available} free`
     : conditions
 }
 

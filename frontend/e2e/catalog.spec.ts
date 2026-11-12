@@ -56,16 +56,16 @@ test('pages through a long collection as a numbered ledger', async ({
   await expect(entries(page)).toHaveCount(25)
   await expect(page.locator('.ledger__number').first()).toHaveText('1')
   await expect(
-    page.getByRole('button', { name: 'Earlier folios' }),
+    page.getByRole('button', { name: 'Newer entries' }),
   ).toBeDisabled()
 
-  await page.getByRole('button', { name: 'Later folios' }).click()
+  await page.getByRole('button', { name: 'Older entries' }).click()
 
   await expect(page).toHaveURL(/\/catalog\?page=2$/)
   await expect(page.locator('.ledger__number').first()).toHaveText('26')
   await expect(entries(page)).toHaveCount(8)
   await expect(
-    page.getByRole('button', { name: 'Later folios' }),
+    page.getByRole('button', { name: 'Older entries' }),
   ).toBeDisabled()
 })
 

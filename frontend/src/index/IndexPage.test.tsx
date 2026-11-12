@@ -218,6 +218,21 @@ describe('IndexPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('hands the open folio the Index URL from the ledger too', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValue(page([folio()]))
+    renderIndex('/index?finish=nonfoil&view=list')
+
+    const ledger = await screen.findByRole('list', { name: 'Folios' })
+    expect(ledger).toHaveClass('ledger')
+    await user.click(
+      within(ledger).getByRole('link', { name: 'Lightning Bolt' }),
+    )
+    expect(
+      screen.getByText('Opened /index/bolt-lea from ?finish=nonfoil&view=list'),
+    ).toBeInTheDocument()
+  })
+
   it('sends the filters, sort and page in the URL to the search', async () => {
     searchMock.mockResolvedValue(page([folio()], 60, INDEX_PAGE_SIZE))
     renderIndex('/index?finish=foil&set=lea&color_identity=R&sort=name&page=2')
@@ -352,9 +367,9 @@ describe('IndexPage', () => {
     expect(ring.getByText('copies', { exact: false })).toHaveClass(
       'visually-hidden',
     )
-    expect(ring.getByText('near mint, lightly played, 2 in Tomes')).toHaveClass(
-      'ledger__note',
-    )
+    expect(
+      ring.getByText('near mint, lightly played, 2 in Tomes, 2 free'),
+    ).toHaveClass('ledger__note')
     // Page two's first entry carries on from page one's last.
     expect(entryNumbers()).toEqual(['25'])
 
@@ -557,7 +572,7 @@ describe('IndexPage', () => {
     renderIndex()
 
     await waitFor(() =>
-      expect(opening()).toHaveTextContent('Thirty folios, none of them'),
+      expect(opening()).toHaveTextContent('Thirty folios. No Volumes'),
     )
     await user.click(screen.getByRole('checkbox', { name: 'foil' }))
     // Thirty is the whole Catalog's count, not the foils'.
@@ -695,7 +710,7 @@ describe('IndexPage opening sentence', () => {
 
     await waitFor(() =>
       expect(opening()).toHaveTextContent(
-        'Two folios, kept in two Volumes. One Tome bound.',
+        'Two folios. Two Volumes on the shelf. One Tome bound.',
       ),
     )
     // It sits between the heading and the search.
@@ -712,12 +727,12 @@ describe('IndexPage opening sentence', () => {
     expect(opening().tagName).toBe('P')
   })
 
-  it('says none are shelved when the facets list no Volume', async () => {
+  it('says no Volumes are on the shelf when the facets list none', async () => {
     searchMock.mockResolvedValue(page([folio()]))
     renderIndex()
     await waitFor(() =>
       expect(opening()).toHaveTextContent(
-        'One folio, none of them shelved in a Volume. No Tomes bound.',
+        /^One folio\. No Volumes on the shelf\. No Tomes bound\.$/,
       ),
     )
   })
@@ -770,6 +785,41 @@ describe('IndexPage opening sentence', () => {
         /^Two folios match 'bolt' within these filters\.$/,
       ),
     )
+  })
+
+  it('keeps a filtered sentence while the next page loads', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([folio()], 60))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    renderIndex('/index?finish=foil')
+
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(
+        /^Sixty folios match these filters\.$/,
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Later folios' }))
+    expect(where()).toHaveTextContent(/^\?finish=foil&page=2$/)
+    // Page two of the same filters has the same count.
+    expect(opening()).toHaveTextContent(/^Sixty folios match these filters\.$/)
+  })
+
+  it('drops the remembered sentence when the filters change while loading', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([], 0))
+    searchMock.mockResolvedValueOnce(page([folio()], 40))
+    searchMock.mockReturnValue(new Promise(() => {}))
+    renderIndex('/index?finish=etched')
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Clear filters' }),
+    )
+    await waitFor(() => expect(opening()).toHaveTextContent(/^Forty folios\./))
+    await user.click(screen.getByRole('checkbox', { name: 'foil' }))
+    expect(where()).toHaveTextContent(/^\?finish=foil$/)
+    // Forty is the whole Catalog's count, not the foils'.
+    expect(screen.getByRole('link', { name: 'Lightning Bolt' })).toBeVisible()
+    expect(opening()).toBeEmptyDOMElement()
   })
 
   it('keeps the paragraph empty while the first answer loads', () => {
@@ -836,6 +886,28 @@ describe('IndexPage plate', () => {
     ).toHaveTextContent('Edgar, Charmed Groom')
   })
 
+  it('stays, with the sentence, while a new sort loads', async () => {
+    const user = userEvent.setup()
+    searchMock.mockResolvedValueOnce(page([folio()], 30))
+    searchMock.mockReturnValueOnce(new Promise(() => {}))
+    newestMock.mockResolvedValue(newest(CROWN))
+    renderIndex()
+
+    await screen.findByRole('region', { name: 'Newest inscription' })
+    const sentence =
+      /^Thirty folios\. No Volumes on the shelf\. No Tomes bound\.$/
+    await waitFor(() => expect(opening()).toHaveTextContent(sentence))
+
+    const sortBy = screen.getByRole('group', { name: 'Sort by' })
+    await user.click(within(sortBy).getByRole('button', { name: 'Name' }))
+    expect(where()).toHaveTextContent(/^\?sort=name$/)
+    // Sorting changes neither the count nor the newest lot.
+    expect(
+      screen.getByRole('region', { name: 'Newest inscription' }),
+    ).toBeInTheDocument()
+    expect(opening()).toHaveTextContent(sentence)
+  })
+
   it('is left out when a filter narrows the Index', async () => {
     searchMock.mockResolvedValue(page([folio()]))
     newestMock.mockResolvedValue(newest(CROWN))
@@ -853,7 +925,12 @@ describe('IndexPage plate', () => {
     renderIndex('/index?page=2')
 
     await screen.findByRole('link', { name: 'Lightning Bolt' })
-    await waitFor(() => expect(opening()).not.toBeEmptyDOMElement())
+    // A later page of the whole Catalog still opens on the whole count.
+    await waitFor(() =>
+      expect(opening()).toHaveTextContent(
+        /^Thirty folios\. No Volumes on the shelf\. No Tomes bound\.$/,
+      ),
+    )
     expect(
       screen.queryByRole('region', { name: 'Newest inscription' }),
     ).not.toBeInTheDocument()

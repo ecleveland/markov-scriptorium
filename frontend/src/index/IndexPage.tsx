@@ -3,7 +3,7 @@ import {
   useQuery,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   INDEX_PAGE_SIZE,
@@ -56,6 +56,18 @@ const ORDER_LABELS: Record<SortKey, Record<SortOrder, string>> = {
   name: { asc: 'A to Z', desc: 'Z to A' },
   set: { asc: 'A to Z', desc: 'Z to A' },
   quantity: { asc: 'Fewest copies', desc: 'Most copies' },
+}
+
+/** The URL for what narrows a state, with how it is sorted, laid out and
+ *  paged left out. Two states with the same key have the same total. */
+function filterKey(state: IndexState): string {
+  return writeIndexParams({
+    ...state,
+    sort: EMPTY_INDEX.sort,
+    order: EMPTY_INDEX.order,
+    view: EMPTY_INDEX.view,
+    page: EMPTY_INDEX.page,
+  }).toString()
 }
 
 /** `/index` with the state's query string, or bare when it has none. */
@@ -130,6 +142,18 @@ export function IndexPage() {
   // may describe the current filters by it.
   const settled = query.isSuccess && !query.isPlaceholderData
 
+  // The last settled total and the filters it counted. A new sort, order or
+  // page leaves the filters alone, so the opening keeps saying that total
+  // while the reordered rows load instead of blanking and coming back.
+  const key = filterKey(state)
+  const [lastCount, setLastCount] = useState<{ key: string; total: number }>()
+  if (
+    settled &&
+    (lastCount?.key !== key || lastCount.total !== query.data.total)
+  ) {
+    setLastCount({ key, total: query.data.total })
+  }
+
   // While a new key loads, `data` is the previous key's answer. Its total says
   // nothing about this URL, so neither the redirect nor the empty collection
   // may act on it. Results still shows those rows as the placeholder.
@@ -156,29 +180,35 @@ export function IndexPage() {
     }
   }
 
+  let shownTotal: number | undefined
+  if (settled) shownTotal = query.data.total
+  else if (query.isPlaceholderData && lastCount?.key === key) {
+    shownTotal = lastCount.total
+  }
   let opening = ''
-  if (settled && query.data.total > 0) {
-    const { total } = query.data
+  if (shownTotal !== undefined && shownTotal > 0) {
     opening = filtered
       ? filteredOpening({
-          total,
+          total: shownTotal,
           name: state.name,
           otherFilters: isFiltered({ ...state, name: '' }),
         })
       : unfilteredOpening({
-          folios: total,
+          folios: shownTotal,
           volumes: facets.data?.locations.length,
           tomes: tomes.data?.length,
         })
   }
   // The newest lot opens the whole Catalog on its first page. A narrowed or
-  // later page is about other folios.
-  const showPlate =
-    settled && query.data.total > 0 && !filtered && state.page === 1
+  // later page is about other folios. The plate leaves itself out while its
+  // lot loads, fails or is missing, so it need not wait on the search, and a
+  // new sort leaves it standing.
+  const showPlate = !filtered && state.page === 1
 
   return (
     <Shell>
-      {/* Kept even when empty, so the page does not jump while it loads. */}
+      {/* Rendered even with nothing settled to say, so the sentence fills in
+          where it belongs once the count arrives. */}
       <p className="index__opening">{opening}</p>
       {showPlate && <NewestPlate />}
       <IndexSearch />

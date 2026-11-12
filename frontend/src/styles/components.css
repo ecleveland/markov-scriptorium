@@ -689,7 +689,15 @@ select.control {
 
 .ledger__note {
   display: block;
+  /* The figure and the stepper stay on one line, but a note in three
+     conditions with copies in Tomes has to wrap. The auto count track grows
+     to the note's longest line before the name's 1fr track gets any room,
+     so the cap decides where the note wraps. 8rem leaves the name about
+     144px beside the Index sidebar at 961px. */
+  max-width: 8rem;
   margin-top: var(--space-1);
+  margin-left: auto;
+  white-space: normal;
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
@@ -698,6 +706,10 @@ select.control {
   .ledger__entry {
     grid-template-columns: 1.75rem 2.5rem minmax(0, 1fr) auto;
     column-gap: var(--space-3);
+  }
+
+  .ledger__note {
+    max-width: 5.5rem;
   }
 }
 

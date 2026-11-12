@@ -27,7 +27,7 @@ test('browses from the root, then narrows by finish and by name', async ({
   // Three seeded lots, each its own folio. Only the Sol Ring is shelved, and
   // GET /decks starts empty.
   await expect(page.locator('.index__opening')).toHaveText(
-    'Three folios, kept in one Volume. No Tomes bound.',
+    'Three folios. One Volume on the shelf. No Tomes bound.',
   )
   const tiles = folios(page)
   await expect(tiles).toHaveCount(3)
@@ -110,7 +110,7 @@ test('pages the ledger, numbering on from one page to the next', async ({
   await page.goto('/index?view=list')
 
   await expect(page.locator('.index__opening')).toHaveText(
-    'Thirty-three folios, kept in one Volume. No Tomes bound.',
+    'Thirty-three folios. One Volume on the shelf. No Tomes bound.',
   )
   await expect(folios(page)).toHaveCount(24)
   await expect(page.locator('.ledger__number').first()).toHaveText('1')

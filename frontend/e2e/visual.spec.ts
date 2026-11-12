@@ -41,7 +41,7 @@ test.describe('the leaf', () => {
     await page.goto('/index')
     await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
     await expect(
-      page.getByText('Three folios, kept in one Volume. No Tomes bound.'),
+      page.getByText('Three folios. One Volume on the shelf. No Tomes bound.'),
     ).toBeVisible()
 
     const margin = page.locator('.leaf__margin')
@@ -79,7 +79,7 @@ test.describe('the leaf', () => {
 
     await page.goto('/index')
     await expect(
-      page.getByText('Three folios, kept in one Volume. No Tomes bound.'),
+      page.getByText('Three folios. One Volume on the shelf. No Tomes bound.'),
     ).toBeVisible()
     const indexBox = await page.locator('.index').boundingBox()
     expect(indexBox).not.toBeNull()
@@ -173,7 +173,9 @@ test.describe('the Index at 390px', () => {
       await page.goto(path)
       await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
       await expect(
-        page.getByText('Three folios, kept in one Volume. No Tomes bound.'),
+        page.getByText(
+          'Three folios. One Volume on the shelf. No Tomes bound.',
+        ),
       ).toBeVisible()
       await expect(
         page.getByRole('region', { name: 'Newest inscription' }),
@@ -202,7 +204,7 @@ test.describe('reflows at phone width', () => {
       path: '/index',
       slug: 'index',
       heading: 'The Index',
-      text: 'Three folios, kept in one Volume. No Tomes bound.',
+      text: 'Three folios. One Volume on the shelf. No Tomes bound.',
     },
     {
       path: '/index/bolt-lea',
@@ -247,6 +249,71 @@ test.describe('reflows at phone width', () => {
       })
     })
   }
+
+  // A folio in three conditions with copies in Tomes writes the longest note
+  // the ledger carries. The count column once kept it on one line and pushed
+  // the page sideways.
+  test('/index?view=list wraps a long ledger note at 375px', async ({
+    page,
+  }) => {
+    const note =
+      'near mint, moderately played, heavily played, 2 in Tomes, 2 free'
+    // Registered after stubApi, so it answers the search in its place.
+    await page.route('**/api/inventory/search**', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: [
+            {
+              scryfall_id: 'bolt-lea',
+              finish: 'nonfoil',
+              quantity: 4,
+              lots: 3,
+              conditions: ['NM', 'MP', 'HP'],
+              locations: [
+                'The oak cabinet in the west reading room, second drawer',
+              ],
+              tags: [],
+              card: {
+                name: 'Lightning Bolt',
+                set_code: 'lea',
+                set_name: 'Limited Edition Alpha',
+                collector_number: '161',
+                rarity: 'common',
+                image_uris: null,
+              },
+              reserved: 2,
+              available: 2,
+            },
+          ],
+          total: 1,
+          limit: 24,
+          offset: 0,
+        }),
+      }),
+    )
+
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto('/index?view=list')
+    await expect(page.locator('.status[data-state="ok"]')).toBeVisible()
+    await expect(page.getByText(note)).toBeVisible()
+
+    const widths = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }))
+    expect(widths.scrollWidth).toBeLessThanOrEqual(widths.innerWidth)
+    // A note that takes the whole column fits the page by squeezing the name
+    // to nothing, which the scroll check alone would miss.
+    const name = await page.locator('.ledger__name').boundingBox()
+    expect(name).not.toBeNull()
+    expect(name!.width).toBeGreaterThan(80)
+
+    await page.screenshot({
+      path: test.info().outputPath('index-ledger-long-note-375.png'),
+      fullPage: true,
+    })
+  })
 
   // The first step of each route fits, but the preview one step later holds
   // text the page does not control: a raw CSV row with no break opportunity,

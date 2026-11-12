@@ -4,25 +4,25 @@ import { filteredOpening, unfilteredOpening } from './opening'
 describe('unfilteredOpening', () => {
   it('counts folios, Volumes and Tomes in words under one hundred', () => {
     expect(unfilteredOpening({ folios: 3, volumes: 2, tomes: 0 })).toBe(
-      'Three folios, kept in two Volumes. No Tomes bound.',
+      'Three folios. Two Volumes on the shelf. No Tomes bound.',
     )
   })
 
   it('takes the singular for one of each', () => {
     expect(unfilteredOpening({ folios: 1, volumes: 1, tomes: 1 })).toBe(
-      'One folio, kept in one Volume. One Tome bound.',
+      'One folio. One Volume on the shelf. One Tome bound.',
     )
   })
 
   it('sets a count of one hundred or more in figures', () => {
     expect(unfilteredOpening({ folios: 312, volumes: 9, tomes: 4 })).toBe(
-      '312 folios, kept in nine Volumes. Four Tomes bound.',
+      '312 folios. Nine Volumes on the shelf. Four Tomes bound.',
     )
   })
 
-  it('says none are shelved when there are no Volumes', () => {
-    expect(unfilteredOpening({ folios: 3, volumes: 0, tomes: 0 })).toBe(
-      'Three folios, none of them shelved in a Volume. No Tomes bound.',
+  it('says no Volumes are on the shelf when there are none', () => {
+    expect(unfilteredOpening({ folios: 1, volumes: 0, tomes: 1 })).toBe(
+      'One folio. No Volumes on the shelf. One Tome bound.',
     )
   })
 
@@ -34,7 +34,7 @@ describe('unfilteredOpening', () => {
 
   it('leaves the Tomes out while their count is unknown', () => {
     expect(unfilteredOpening({ folios: 40, volumes: 3 })).toBe(
-      'Forty folios, kept in three Volumes.',
+      'Forty folios. Three Volumes on the shelf.',
     )
   })
 

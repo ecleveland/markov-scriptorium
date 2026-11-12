@@ -114,7 +114,7 @@ describe('LotRow', () => {
     renderRow(
       lot({ quantity: 1, folio: { owned: 4, reserved: 3, available: 1 } }),
     )
-    expect(screen.getByText('near mint, 3 of 4 in Tomes')).toHaveClass(
+    expect(screen.getByText('near mint, 3 of 4 in Tomes, 1 free')).toHaveClass(
       'ledger__note',
     )
   })

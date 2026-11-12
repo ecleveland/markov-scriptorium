@@ -31,7 +31,7 @@ export function LotRow({
     label: 'Back to the Catalog',
   }
   const finished = lot.finish === 'foil' || lot.finish === 'etched'
-  const { reserved, owned } = lot.folio
+  const { reserved, owned, available } = lot.folio
 
   return (
     <LedgerEntry
@@ -54,7 +54,7 @@ export function LotRow({
       count={<QuantityStepper lot={lot} />}
       note={
         reserved > 0
-          ? `${conditionWords(lot.condition)}, ${reserved} of ${owned} in Tomes`
+          ? `${conditionWords(lot.condition)}, ${reserved} of ${owned} in Tomes, ${available} free`
           : conditionWords(lot.condition)
       }
     />

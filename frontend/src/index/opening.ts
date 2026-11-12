@@ -10,9 +10,9 @@ function folios(n: number): string {
 }
 
 /**
- * The opening for the whole Catalog: "Three folios, kept in two Volumes. No
- * Tomes bound." A count left undefined is still loading or failed to load,
- * and its clause is left out rather than guessed.
+ * The opening for the whole Catalog: "Three folios. Two Volumes on the shelf.
+ * No Tomes bound." A count left undefined is still loading or failed to load,
+ * and its sentence is left out rather than guessed.
  */
 export function unfilteredOpening({
   folios: total,
@@ -23,14 +23,16 @@ export function unfilteredOpening({
   volumes?: number
   tomes?: number
 }): string {
-  let shelf = ''
-  if (volumes === 0) shelf = ', none of them shelved in a Volume'
-  else if (volumes !== undefined) {
-    shelf = `, kept in ${counted(volumes, 'Volume', 'Volumes')}`
+  const sentences = [`${folios(total)}.`]
+  if (volumes !== undefined) {
+    sentences.push(
+      `${capitalised(counted(volumes, 'Volume', 'Volumes'))} on the shelf.`,
+    )
   }
-  const first = `${folios(total)}${shelf}.`
-  if (tomes === undefined) return first
-  return `${first} ${capitalised(counted(tomes, 'Tome', 'Tomes'))} bound.`
+  if (tomes !== undefined) {
+    sentences.push(`${capitalised(counted(tomes, 'Tome', 'Tomes'))} bound.`)
+  }
+  return sentences.join(' ')
 }
 
 /**

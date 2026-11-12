@@ -181,7 +181,7 @@ describe('CatalogPage', () => {
     const { container } = renderCatalog()
 
     await screen.findByRole('list', { name: 'Lots' })
-    await user.click(screen.getByRole('button', { name: 'Later folios' }))
+    await user.click(screen.getByRole('button', { name: 'Older entries' }))
 
     expect(entryNumbers(container)).toEqual(['1'])
   })
@@ -196,27 +196,27 @@ describe('CatalogPage', () => {
     })
     expect(pager).toHaveClass('pager')
     expect(
-      within(pager).getByRole('button', { name: 'Earlier folios' }),
+      within(pager).getByRole('button', { name: 'Newer entries' }),
     ).toBeDisabled()
 
-    await user.click(screen.getByRole('button', { name: 'Later folios' }))
+    await user.click(screen.getByRole('button', { name: 'Older entries' }))
     await waitFor(() =>
       expect(listMock).toHaveBeenCalledWith(CATALOG_PAGE_SIZE),
     )
 
     await user.click(
-      await screen.findByRole('button', { name: 'Earlier folios' }),
+      await screen.findByRole('button', { name: 'Newer entries' }),
     )
     await waitFor(() => expect(listMock).toHaveBeenLastCalledWith(0))
   })
 
-  it('disables Later folios on the last page', async () => {
+  it('disables Older entries on the last page', async () => {
     listMock.mockResolvedValue(page([lot()], 30, CATALOG_PAGE_SIZE))
     renderCatalog('/catalog?page=2')
     expect(
-      await screen.findByRole('button', { name: 'Later folios' }),
+      await screen.findByRole('button', { name: 'Older entries' }),
     ).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Earlier folios' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Newer entries' })).toBeEnabled()
   })
 
   it('shows no pager when the collection fits on one page', async () => {
@@ -237,7 +237,7 @@ describe('CatalogPage', () => {
       expect(listMock).toHaveBeenCalledWith(CATALOG_PAGE_SIZE),
     )
     expect(
-      await screen.findByRole('button', { name: 'Earlier folios' }),
+      await screen.findByRole('button', { name: 'Newer entries' }),
     ).toBeEnabled()
   })
 
