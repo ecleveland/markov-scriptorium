@@ -154,7 +154,7 @@ test('gives up on a glass that never answers', async ({ page }) => {
   await page.clock.install()
   await page.getByRole('button', { name: 'Read the card' }).click()
   await expect(page.getByText('Reading the card…')).toBeVisible()
-  await page.clock.fastForward('00:31')
+  await page.clock.fastForward('00:46')
 
   await expect(page.getByRole('alert')).toContainText(
     'The glass did not answer. Try the capture again, or type the name instead.',

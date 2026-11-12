@@ -617,7 +617,7 @@ describe('ScanPage', () => {
   })
 })
 
-// A dead backend never answers, so the page gives up after 30 seconds. These
+// A dead backend never answers, so the page gives up after 45 seconds. These
 // tests click with fireEvent and advance fake timers by hand, because
 // findBy and waitFor poll on timers that no longer run by themselves.
 describe('ScanPage read timeout', () => {
@@ -645,11 +645,11 @@ describe('ScanPage read timeout', () => {
     })
   }
 
-  it('gives up on the glass after 30 seconds and offers both ways on', async () => {
+  it('gives up on the glass after 45 seconds and offers both ways on', async () => {
     recognizeMock.mockReturnValue(new Promise(() => {}))
     startReading()
 
-    await advance(29_999)
+    await advance(44_999)
     expect(screen.getByText('Reading the card…')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
@@ -669,7 +669,7 @@ describe('ScanPage read timeout', () => {
     await advance(10_000)
 
     fireEvent.click(screen.getByRole('button', { name: 'Retake' }))
-    await advance(30_000)
+    await advance(45_000)
 
     expect(screen.getByRole('button', { name: 'Capture' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -684,7 +684,7 @@ describe('ScanPage read timeout', () => {
       screen.getByRole('list', { name: 'Cards the glass read' }),
     ).toBeInTheDocument()
 
-    await advance(30_000)
+    await advance(45_000)
 
     expect(
       screen.getByRole('list', { name: 'Cards the glass read' }),

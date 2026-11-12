@@ -63,8 +63,13 @@ const READ_FAILED = 'The card could not be read. Try again.'
 const READ_TIMED_OUT =
   'The glass did not answer. Try the capture again, or type the name instead.'
 
-/** How long the glass has to answer before the page gives up on it. */
-const READ_TIMEOUT_MS = 30_000
+/**
+ * How long the glass has to answer before the page gives up on it. A live
+ * backend can run three title passes at up to 10 seconds each under Tesseract
+ * (see `_TIMEOUT_SECONDS` in the tesseract engine), so this leaves room above
+ * that sum for a slow but working read to come back with its own answer.
+ */
+const READ_TIMEOUT_MS = 45_000
 
 /**
  * The Scrying Glass: capture a card on the camera, let the scanner read its
