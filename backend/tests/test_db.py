@@ -31,3 +31,16 @@ def test_healthcheck_closes_its_connection(tmp_path: Path, monkeypatch: pytest.M
     for conn in opened:
         with pytest.raises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
+
+
+def test_connect_sets_the_busy_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A connection waits BUSY_TIMEOUT_MS for another's lock before failing (VEG-392)."""
+    monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
+    # Not the stdlib's 5000, so the test fails if connect stops setting it.
+    monkeypatch.setattr(db, "BUSY_TIMEOUT_MS", 1234)
+    conn = db.connect()
+    try:
+        timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    finally:
+        conn.close()
+    assert timeout == 1234

@@ -160,7 +160,7 @@ def test_backup_is_readable_copy_with_user_rows_and_version(seeded: Path) -> Non
     assert path.is_file()
     assert backup.size_bytes == path.stat().st_size
     with closing(sqlite3.connect(path)) as copy:
-        assert _user_version(copy) == backup.schema_version == 6
+        assert _user_version(copy) == backup.schema_version == 7
         assert copy.execute("SELECT count(*) FROM inventory").fetchone()[0] == 1
         assert copy.execute("SELECT count(*) FROM decks").fetchone()[0] == 1
         assert copy.execute("SELECT count(*) FROM deck_cards").fetchone()[0] == 2
@@ -170,7 +170,7 @@ def test_backup_is_readable_copy_with_user_rows_and_version(seeded: Path) -> Non
 def test_backup_filename_carries_utc_stamp_version_and_reason(seeded: Path) -> None:
     backup = archive.take_backup("premigration", now=_STAMP)
 
-    assert backup.filename == "scriptorium-20261015T142233Z-v6-premigration.db"
+    assert backup.filename == "scriptorium-20261015T142233Z-v7-premigration.db"
     assert backup.reason == "premigration"
     assert backup.created_at == "2026-10-15T14:22:33Z"
     assert [b.filename for b in archive.list_backups()] == [backup.filename]
@@ -262,7 +262,7 @@ def test_vanished_temp_file_fails_verification_instead_of_publishing_empty_copy(
         archive.take_backup("manual", now=_STAMP)
 
     [tmp] = seen
-    filename = "scriptorium-20261015T142233Z-v6-manual.db"
+    filename = "scriptorium-20261015T142233Z-v7-manual.db"
     assert tmp.name.startswith(f".{filename}.")
     assert tmp.name.endswith(".tmp")
     assert tmp.name != f".{filename}.tmp"  # unique per attempt
@@ -1057,7 +1057,7 @@ def test_json_shape_inventory_cards_and_tomes_with_slots(seeded: Path) -> None:
     assert doc["format"] == "markov-scriptorium-export"
     assert doc["format_version"] == 1
     assert doc["exported_at"] == "2026-10-15T14:22:33Z"
-    assert doc["schema_version"] == 6
+    assert doc["schema_version"] == 7
     assert doc["inventory"] == [
         {
             "id": 1,
@@ -1132,7 +1132,7 @@ def test_json_empty_collection(catalog: Path) -> None:
         "format": "markov-scriptorium-export",
         "format_version": 1,
         "exported_at": "2026-10-15T14:22:33Z",
-        "schema_version": 6,
+        "schema_version": 7,
         "inventory": [],
         "tomes": [],
     }

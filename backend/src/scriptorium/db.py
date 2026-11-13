@@ -20,6 +20,10 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_DB_PATH = _REPO_ROOT / "data" / "scriptorium.db"
 
+# How long a connection waits for another connection's lock before it fails
+# with "database is locked".
+BUSY_TIMEOUT_MS = 5000
+
 
 def db_path() -> Path:
     """Resolve the catalog database path (env override or default)."""
@@ -36,7 +40,11 @@ def connect() -> sqlite3.Connection:
     """
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # sqlite3.connect already waits five seconds by default. Passing the
+    # timeout makes the wait explicit rather than relying on the stdlib
+    # default (VEG-392). WAL mode, which would let readers through during an
+    # import, was left for a later decision.
+    conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT_MS / 1000)
     conn.row_factory = sqlite3.Row
     # SQLite defaults foreign-key enforcement OFF per connection; turn it on so
     # the catalog's foreign keys (e.g. card_faces -> cards) and their cascades

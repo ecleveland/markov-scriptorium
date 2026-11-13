@@ -100,6 +100,7 @@ def test_bundled_migrations_apply_cleanly(tmp_path: Path) -> None:
 
 def test_migrations_run_on_app_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCRIPTORIUM_DB_PATH", str(tmp_path / "catalog.db"))
+    monkeypatch.setenv("SCRIPTORIUM_AUTO_REFRESH", "0")
     from scriptorium.main import app
 
     with TestClient(app):  # entering the context runs the lifespan startup
