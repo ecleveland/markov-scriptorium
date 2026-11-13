@@ -2,6 +2,9 @@
 
 **Status:** accepted (2026-06-16)
 
+Amended by [0032](0032-refresh-failure-record-and-single-flight.md), which records
+the last attempt and its error, and runs one refresh at a time.
+
 Resolves [VEG-214]. Decides how the local catalog is kept current by tying the
 downloader ([VEG-212], [0006](0006-bulk-import.md)) and importer ([VEG-213]) into
 one staleness-gated refresh that runs in the background on startup and via a

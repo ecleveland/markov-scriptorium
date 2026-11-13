@@ -45,6 +45,9 @@ class RefreshStatus:
     file: str | None
     card_count: int | None
     face_count: int | None
+    # The most recent attempt, successful or not, and its error (VEG-392).
+    last_attempt_at: str | None = None
+    last_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,8 @@ def read_status(conn: sqlite3.Connection) -> RefreshStatus | None:
     """Return the recorded refresh metadata, or ``None`` if none exists yet."""
     row = conn.execute(
         "SELECT last_checked_at, source_updated_at, imported_at, file, "
-        "card_count, face_count FROM scryfall_refresh WHERE id = 1"
+        "card_count, face_count, last_attempt_at, last_error "
+        "FROM scryfall_refresh WHERE id = 1"
     ).fetchone()
     if row is None:
         return None
@@ -75,6 +79,8 @@ def read_status(conn: sqlite3.Connection) -> RefreshStatus | None:
         file=row[3],
         card_count=row[4],
         face_count=row[5],
+        last_attempt_at=row[6],
+        last_error=row[7],
     )
 
 
@@ -110,11 +116,38 @@ def _same_version(stored: str | None, fetched: str) -> bool:
 
 
 def _record_check(conn: sqlite3.Connection, *, now: datetime) -> None:
-    """Record that we checked Scryfall, preserving any imported-version fields."""
+    """Record that we checked Scryfall, preserving any imported-version fields.
+
+    The check is also a successful attempt, so the same write clears the last
+    error. The status then cannot show a new check beside an old failure.
+    """
     conn.execute(
-        "INSERT INTO scryfall_refresh (id, last_checked_at) VALUES (1, ?) "
-        "ON CONFLICT(id) DO UPDATE SET last_checked_at = excluded.last_checked_at",
-        (now.isoformat(),),
+        "INSERT INTO scryfall_refresh (id, last_checked_at, last_attempt_at, last_error) "
+        "VALUES (1, ?, ?, NULL) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "last_checked_at = excluded.last_checked_at, "
+        "last_attempt_at = excluded.last_attempt_at, "
+        "last_error = NULL",
+        (now.isoformat(), now.isoformat()),
+    )
+    conn.commit()
+
+
+def record_attempt(conn: sqlite3.Connection, *, now: datetime, error: str | None) -> None:
+    """Record a refresh attempt that started at ``now`` and how it ended.
+
+    ``error`` is a short description of the failure. The import fields are
+    left as they are. The wrappers in ``main`` call this for failures only, so
+    :func:`refresh_catalog` still writes nothing when it fails. A successful
+    check or import clears the error in its own write, through
+    :func:`_record_check` and :func:`_record_import`.
+    """
+    conn.execute(
+        "INSERT INTO scryfall_refresh (id, last_attempt_at, last_error) VALUES (1, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "last_attempt_at = excluded.last_attempt_at, "
+        "last_error = excluded.last_error",
+        (now.isoformat(), error),
     )
     conn.commit()
 
@@ -128,19 +161,34 @@ def _record_import(
     card_count: int,
     face_count: int,
 ) -> None:
-    """Record a successful import (version, counts, timestamps) as the one row."""
+    """Record a successful import (version, counts, timestamps) as the one row.
+
+    Like :func:`_record_check`, this stamps the attempt and clears the last
+    error in the same write.
+    """
     conn.execute(
         "INSERT INTO scryfall_refresh "
-        "(id, last_checked_at, source_updated_at, imported_at, file, card_count, face_count) "
-        "VALUES (1, ?, ?, ?, ?, ?, ?) "
+        "(id, last_checked_at, source_updated_at, imported_at, file, card_count, face_count, "
+        "last_attempt_at, last_error) "
+        "VALUES (1, ?, ?, ?, ?, ?, ?, ?, NULL) "
         "ON CONFLICT(id) DO UPDATE SET "
         "last_checked_at = excluded.last_checked_at, "
         "source_updated_at = excluded.source_updated_at, "
         "imported_at = excluded.imported_at, "
         "file = excluded.file, "
         "card_count = excluded.card_count, "
-        "face_count = excluded.face_count",
-        (now.isoformat(), source_updated_at, now.isoformat(), file, card_count, face_count),
+        "face_count = excluded.face_count, "
+        "last_attempt_at = excluded.last_attempt_at, "
+        "last_error = NULL",
+        (
+            now.isoformat(),
+            source_updated_at,
+            now.isoformat(),
+            file,
+            card_count,
+            face_count,
+            now.isoformat(),
+        ),
     )
     conn.commit()
 

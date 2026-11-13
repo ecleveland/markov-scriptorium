@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
-from collections.abc import AsyncIterator
+import threading
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, closing, suppress
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from scriptorium import archive
 from scriptorium.api.archive import router as archive_router
@@ -24,7 +26,13 @@ from scriptorium.db import connect, healthcheck
 from scriptorium.migrations import apply_migrations, pending_migrations
 from scriptorium.scanner.engines import select_engine
 from scriptorium.scanner.ocr import OcrUnavailable
-from scriptorium.scryfall.refresh import is_stale, maybe_refresh, read_status, refresh_catalog
+from scriptorium.scryfall.refresh import (
+    is_stale,
+    maybe_refresh,
+    read_status,
+    record_attempt,
+    refresh_catalog,
+)
 
 logger = logging.getLogger("scriptorium")
 
@@ -78,17 +86,99 @@ def _auto_refresh_enabled() -> bool:
     return os.environ.get("SCRIPTORIUM_AUTO_REFRESH", "1").strip().lower() not in _AUTO_REFRESH_OFF
 
 
+# One Scryfall refresh at a time (VEG-392). The startup and manual refreshes
+# both try to take this lock without waiting, and skip when another holds it.
+# The thread that takes it always releases it.
+_refresh_lock = threading.Lock()
+
+
+def refresh_in_progress() -> bool:
+    """Whether a Scryfall refresh is running right now."""
+    return _refresh_lock.locked()
+
+
+# The longest last_error kept. An exception message can run to pages, and the
+# status only needs enough to say what went wrong.
+_MAX_ERROR_CHARS = 500
+
+
+def _describe_failure(exc: Exception) -> str:
+    """The stored error, "Type: message" or the type alone, capped at _MAX_ERROR_CHARS."""
+    message = str(exc)
+    text = f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+    return text[:_MAX_ERROR_CHARS]
+
+
+def _record_refresh_failure(started: datetime, error: str) -> None:
+    """Record a failed refresh attempt. Never raises.
+
+    Uses a new connection, because by the time the failure reaches here the
+    refresh's connection is already closed and its uncommitted work rolled
+    back. If the failure was a lock another connection holds, this write
+    waits out the busy timeout, fails, and logs.
+    """
+    try:
+        with closing(connect()) as conn:
+            record_attempt(conn, now=started, error=error)
+    except Exception:
+        logger.exception("could not record the failed Scryfall refresh attempt")
+
+
+def _refresh_once(kind: str, run: Callable[[sqlite3.Connection], object]) -> None:
+    """Run one refresh under the lock and record a failure. Never raises.
+
+    A successful check or import records its own attempt and clears the last
+    error in the same write (see refresh.py), so only a failure is recorded
+    here. A call made while another refresh holds the lock logs that and
+    returns without recording.
+    """
+    if not _refresh_lock.acquire(blocking=False):
+        logger.info("a Scryfall refresh is already running; skipping the %s refresh", kind)
+        return
+    try:
+        started = datetime.now(UTC)
+        try:
+            with closing(connect()) as conn:
+                run(conn)
+        except Exception as exc:
+            logger.exception("%s Scryfall refresh failed", kind)
+            _record_refresh_failure(started, _describe_failure(exc))
+    finally:
+        _refresh_lock.release()
+
+
+def _catalog_is_fresh() -> bool:
+    """Whether the startup gate can skip the refresh, checked outside the lock.
+
+    A check that fails for any reason, such as a locked catalog or a
+    malformed last_checked_at, answers False. The refresh under the lock then
+    decides, and records the failure if it has one. Raising here would end
+    the upkeep task, and with it the hourly daily backup.
+    """
+    try:
+        with closing(connect()) as conn:
+            status = read_status(conn)
+        return not is_stale(status, now=datetime.now(UTC))
+    except Exception:
+        logger.exception("startup staleness check failed; trying the refresh anyway")
+        return False
+
+
 def _run_startup_refresh() -> None:
     """Staleness-gated refresh for startup; failures are logged, never raised.
 
     A broken refresh (no network, corrupt download) must not take down the app —
     the catalog simply stays at its last-good version until the next attempt.
+    The failure is recorded, so /scryfall/status can show it.
+
+    The staleness check runs before the lock. A fresh catalog then never holds
+    it, so a manual refresh in that moment is not turned away.
+    maybe_refresh checks again under the lock.
     """
-    try:
-        with closing(connect()) as conn:
-            maybe_refresh(conn)
-    except Exception:
-        logger.exception("startup Scryfall refresh failed")
+    if _catalog_is_fresh():
+        logger.info("Scryfall catalog is fresh; skipping refresh check")
+        return
+    _refresh_once("startup", maybe_refresh)
 
 
 def _seal_daily_backup() -> None:
@@ -137,11 +227,7 @@ def _run_manual_refresh() -> None:
     but still skips the heavy re-import when Scryfall's published version is
     unchanged.
     """
-    try:
-        with closing(connect()) as conn:
-            refresh_catalog(conn)
-    except Exception:
-        logger.exception("manual Scryfall refresh failed")
+    _refresh_once("manual", refresh_catalog)
 
 
 @asynccontextmanager
@@ -227,12 +313,34 @@ def health() -> dict[str, str]:
     return {"status": "ok", "database": "ok" if healthcheck() else "unavailable"}
 
 
+_REFRESH_BUSY_DETAIL = (
+    "The scribes are mid-transcription and the catalog is sealed. Ask again shortly."
+)
+
+
 @app.get("/scryfall/status")
 def scryfall_status() -> dict[str, Any]:
-    """Report when the local Scryfall catalog was last refreshed."""
-    with closing(connect()) as conn:
-        status = read_status(conn)
+    """Report when the local Scryfall catalog was last refreshed and last attempted.
+
+    An import holds the write lock, which blocks this read once the busy
+    timeout runs out. That answers 409 rather than 500. While a refresh runs
+    the read does not wait at all, so the answer comes at once.
+    """
+    refreshing = refresh_in_progress()
+    try:
+        with closing(connect()) as conn:
+            if refreshing:
+                conn.execute("PRAGMA busy_timeout = 0")
+            status = read_status(conn)
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc):
+            raise HTTPException(status_code=409, detail=_REFRESH_BUSY_DETAIL) from exc
+        raise
+    try:
         stale = is_stale(status, now=datetime.now(UTC))
+    except ValueError:
+        # A last_checked_at that will not parse cannot prove the catalog fresh.
+        stale = True
     return {
         "last_checked_at": status.last_checked_at if status else None,
         "source_updated_at": status.source_updated_at if status else None,
@@ -240,11 +348,27 @@ def scryfall_status() -> dict[str, Any]:
         "card_count": status.card_count if status else None,
         "face_count": status.face_count if status else None,
         "stale": stale,
+        "last_attempt_at": status.last_attempt_at if status else None,
+        "last_error": status.last_error if status else None,
+        "refreshing": refreshing,
     }
 
 
 @app.post("/scryfall/refresh", status_code=202)
-def scryfall_refresh(background_tasks: BackgroundTasks) -> dict[str, str]:
-    """Trigger a catalog refresh in the background; returns immediately (202)."""
+def scryfall_refresh(background_tasks: BackgroundTasks) -> dict[str, str | bool]:
+    """Trigger a catalog refresh in the background; returns immediately (202).
+
+    While a refresh runs, this schedules nothing and says so. A refresh that
+    starts between this check and the task is still safe, because the task
+    skips when it cannot take the lock.
+    """
+    if refresh_in_progress():
+        return {
+            "message": "The scriptorium is already transcribing the latest folios.",
+            "already_running": True,
+        }
     background_tasks.add_task(_run_manual_refresh)
-    return {"message": "The scriptorium begins transcribing the latest folios."}
+    return {
+        "message": "The scriptorium begins transcribing the latest folios.",
+        "already_running": False,
+    }

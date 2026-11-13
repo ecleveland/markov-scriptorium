@@ -72,8 +72,8 @@ def test_post_backup_then_list_shows_it_with_directory_and_keep(seeded_catalog: 
     assert created.status_code == 201, created.text
     backup = created.json()
     assert backup["reason"] == "manual"
-    assert backup["schema_version"] == 6
-    assert backup["filename"].endswith("-v6-manual.db")
+    assert backup["schema_version"] == 7
+    assert backup["filename"].endswith("-v7-manual.db")
     assert Path(backup["path"]).is_file()
 
     listed = client.get("/archive/backups")

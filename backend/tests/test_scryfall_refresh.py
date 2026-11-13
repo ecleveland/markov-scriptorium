@@ -31,6 +31,7 @@ from scriptorium.scryfall.refresh import (
     is_stale,
     maybe_refresh,
     read_status,
+    record_attempt,
     refresh_catalog,
 )
 
@@ -334,3 +335,88 @@ def test_maybe_refresh_runs_on_empty_catalog(catalog: sqlite3.Connection) -> Non
         result = maybe_refresh(conn, client=client, now=_now())
     assert result is not None
     assert result.imported is True
+
+
+# --- record_attempt (VEG-392) ----------------------------------------------
+
+
+def test_record_attempt_writes_failure_and_keeps_import_fields(
+    catalog: sqlite3.Connection,
+) -> None:
+    with closing(catalog) as conn:
+        with _client(_make_handler()) as client:
+            refresh_catalog(conn, client=client, now=_now())
+        before = read_status(conn)
+        assert before is not None
+
+        later = _now() + timedelta(hours=2)
+        record_attempt(conn, now=later, error="ScryfallBulkError: 503")
+
+        after = read_status(conn)
+        assert after is not None
+        assert after.last_attempt_at == later.isoformat()
+        assert after.last_error == "ScryfallBulkError: 503"
+        assert after.last_checked_at == before.last_checked_at
+        assert after.source_updated_at == before.source_updated_at
+        assert after.imported_at == before.imported_at
+        assert after.file == before.file
+        assert after.card_count == before.card_count
+        assert after.face_count == before.face_count
+
+
+def test_record_attempt_without_error_clears_the_last_one(catalog: sqlite3.Connection) -> None:
+    with closing(catalog) as conn:
+        record_attempt(conn, now=_now(), error="RuntimeError: no network")
+        later = _now() + timedelta(hours=1)
+        record_attempt(conn, now=later, error=None)
+
+        status = read_status(conn)
+        assert status is not None
+        assert status.last_attempt_at == later.isoformat()
+        assert status.last_error is None
+
+
+def test_record_attempt_on_empty_catalog_leaves_import_fields_empty(
+    catalog: sqlite3.Connection,
+) -> None:
+    """A first attempt that fails still writes the row, with no version in it."""
+    with closing(catalog) as conn:
+        record_attempt(conn, now=_now(), error="RuntimeError: no network")
+        status = read_status(conn)
+    assert status is not None
+    assert status.last_error == "RuntimeError: no network"
+    assert status.last_checked_at is None
+    assert status.source_updated_at is None
+    assert status.card_count is None
+    # A recorded attempt is no check, so the catalog still counts as stale.
+    assert is_stale(status, now=_now()) is True
+
+
+def test_unchanged_version_check_clears_the_last_error(catalog: sqlite3.Connection) -> None:
+    """A successful check records its attempt in the same write as the check."""
+    with closing(catalog) as conn:
+        with _client(_make_handler()) as client:
+            refresh_catalog(conn, client=client, now=_now())
+        record_attempt(conn, now=_now() + timedelta(hours=1), error="RuntimeError: no network")
+
+        later = _now() + timedelta(hours=2)
+        with _client(_make_handler()) as client:
+            result = refresh_catalog(conn, client=client, now=later)
+
+        assert result.imported is False
+        assert result.status.last_error is None
+        assert result.status.last_attempt_at == later.isoformat()
+        assert read_status(conn) == result.status
+
+
+def test_import_clears_the_last_error(catalog: sqlite3.Connection) -> None:
+    with closing(catalog) as conn:
+        record_attempt(conn, now=_now() - timedelta(hours=1), error="RuntimeError: no network")
+
+        with _client(_make_handler()) as client:
+            result = refresh_catalog(conn, client=client, now=_now())
+
+        assert result.imported is True
+        assert result.status.last_error is None
+        assert result.status.last_attempt_at == _now().isoformat()
+        assert read_status(conn) == result.status

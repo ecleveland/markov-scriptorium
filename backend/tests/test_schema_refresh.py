@@ -1,4 +1,4 @@
-"""Tests for the Scryfall refresh metadata schema (migration 0003, VEG-214).
+"""Tests for the Scryfall refresh metadata schema (migrations 0003 and 0007).
 
 The auto-refresh mechanism records when the local catalog was last brought up
 to date in a single-row ``scryfall_refresh`` table. These assert the shape the
@@ -45,6 +45,8 @@ def test_refresh_table_has_expected_columns(catalog: sqlite3.Connection) -> None
             "file",
             "card_count",
             "face_count",
+            "last_attempt_at",
+            "last_error",
         }
         assert expected <= _columns(conn, "scryfall_refresh")
 
