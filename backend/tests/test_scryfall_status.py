@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime, timedelta
@@ -338,7 +339,7 @@ def test_failed_manual_refresh_records_the_error_then_success_clears_it(
 
     failed = _status()
     assert failed is not None
-    assert failed.last_error is not None and "scryfall is down" in failed.last_error
+    assert failed.last_error == "RuntimeError: scryfall is down"
     assert failed.last_attempt_at is not None
     # The attempt is stamped when it starts, not when it fails.
     assert datetime.fromisoformat(failed.last_attempt_at) <= fetched_at[0]
@@ -366,7 +367,7 @@ def test_failed_startup_refresh_records_the_error_then_success_clears_it(
 
     failed = _status()
     assert failed is not None
-    assert failed.last_error is not None and "no network" in failed.last_error
+    assert failed.last_error == "RuntimeError: no network"
     assert failed.last_attempt_at is not None
     # A failed attempt is no check, so the next start tries again.
     assert failed.last_checked_at is None
@@ -524,5 +525,124 @@ def test_refresh_started_while_another_runs_is_skipped(
     finally:
         release.set()
         first.join(timeout=5)
-    assert not first.is_alive()
+        # A stuck first run would hold the lock for every later test.
+        stuck = first.is_alive() or main._refresh_lock.locked()
+        if stuck and main._refresh_lock.locked():
+            main._refresh_lock.release()
+    assert not stuck
+
+
+@contextmanager
+def _catalog_locked(db_file: Path) -> Iterator[None]:
+    """Hold an exclusive lock on the catalog from a second connection, as an import does."""
+    holder = sqlite3.connect(db_file, isolation_level=None)
+    try:
+        holder.execute("BEGIN EXCLUSIVE")
+        yield
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+
+
+def test_status_answers_409_at_once_when_a_running_refresh_holds_the_catalog(
+    fresh_catalog: Path,
+) -> None:
+    """While a refresh runs, status does not wait out the busy timeout."""
+    with _refresh_held(), _catalog_locked(fresh_catalog):
+        started = time.monotonic()
+        resp = client.get("/scryfall/status")
+        elapsed = time.monotonic() - started
+    assert resp.status_code == 409
+    assert elapsed < 1
+
+
+def test_status_answers_409_on_a_real_locked_catalog(
+    fresh_catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SQLite's own "locked" error, after the busy timeout, maps to 409."""
+    monkeypatch.setattr(db, "BUSY_TIMEOUT_MS", 50)
+    with _catalog_locked(fresh_catalog):
+        resp = client.get("/scryfall/status")
+    assert resp.status_code == 409
+
+
+def test_startup_refresh_survives_a_malformed_check_time(
+    fresh_catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bad last_checked_at must not end the upkeep task that runs the daily backup."""
+    _write_refresh_row("x")
+    calls: list[bool] = []
+    monkeypatch.setattr(main, "maybe_refresh", lambda conn: calls.append(True))
+
+    main._run_startup_refresh()
+
+    assert calls == [True]
     assert not main._refresh_lock.locked()
+
+
+def test_startup_refresh_records_a_malformed_check_time_as_the_error(
+    fresh_catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_refresh_row("x")
+    _fake_scryfall(monkeypatch)
+
+    main._run_startup_refresh()
+
+    status = _status()
+    assert status is not None
+    assert status.last_error is not None
+    assert status.last_error.startswith("ValueError: ")
+
+
+def test_failure_with_no_message_records_the_type_alone(
+    fresh_catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(conn: sqlite3.Connection) -> None:
+        raise RuntimeError()
+
+    monkeypatch.setattr(main, "refresh_catalog", boom)
+    main._run_manual_refresh()
+
+    status = _status()
+    assert status is not None
+    assert status.last_error == "RuntimeError"
+
+
+def test_long_failure_message_is_capped(
+    fresh_catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(main, "refresh_catalog", _fail("x" * 2000))
+    main._run_manual_refresh()
+
+    status = _status()
+    assert status is not None
+    assert status.last_error is not None
+    assert len(status.last_error) == 500
+    assert status.last_error.startswith("RuntimeError: ")
+
+
+def test_failure_is_recorded_without_committing_the_failed_runs_writes(
+    fresh_catalog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def half_write_then_fail(conn: sqlite3.Connection) -> None:
+        conn.execute("BEGIN")
+        conn.execute("INSERT INTO scryfall_refresh (id, card_count) VALUES (1, 999)")
+        raise RuntimeError("import died midway")
+
+    monkeypatch.setattr(main, "refresh_catalog", half_write_then_fail)
+    main._run_manual_refresh()
+
+    status = _status()
+    assert status is not None
+    assert status.last_error == "RuntimeError: import died midway"
+    assert status.card_count is None
+
+
+def test_status_treats_a_malformed_check_time_as_stale(fresh_catalog: Path) -> None:
+    """A last_checked_at that will not parse reads as stale instead of a 500."""
+    _write_refresh_row("x")
+    resp = client.get("/scryfall/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["last_checked_at"] == "x"
+    assert body["stale"] is True

@@ -4,10 +4,11 @@
 -- the same as one that never ran. These two columns record the most recent
 -- attempt, whether it worked or not, so /scryfall/status can show the failure.
 --
--- last_attempt_at is when the attempt started. last_error is a short
--- "ExceptionType: message" string, cleared to NULL by the next attempt that
--- succeeds. A startup check that finds the catalog fresh is no attempt and
--- writes neither column. Both are ISO-8601 UTC or NULL, like the rest of the row.
+-- last_attempt_at is when the attempt started, ISO-8601 UTC or NULL like the
+-- row's other timestamps. last_error is free text or NULL: "ExceptionType:
+-- message", or the type alone when there is no message, capped at 500
+-- characters. The next attempt that succeeds clears it to NULL. A startup
+-- check that finds the catalog fresh is no attempt and writes neither column.
 
 ALTER TABLE scryfall_refresh ADD COLUMN last_attempt_at TEXT;
 ALTER TABLE scryfall_refresh ADD COLUMN last_error TEXT;

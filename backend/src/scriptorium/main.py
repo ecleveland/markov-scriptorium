@@ -97,11 +97,25 @@ def refresh_in_progress() -> bool:
     return _refresh_lock.locked()
 
 
+# The longest last_error kept. An exception message can run to pages, and the
+# status only needs enough to say what went wrong.
+_MAX_ERROR_CHARS = 500
+
+
+def _describe_failure(exc: Exception) -> str:
+    """The stored error, "Type: message" or the type alone, capped at _MAX_ERROR_CHARS."""
+    message = str(exc)
+    text = f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+    return text[:_MAX_ERROR_CHARS]
+
+
 def _record_refresh_failure(started: datetime, error: str) -> None:
     """Record a failed refresh attempt. Never raises.
 
-    Uses a new connection, because the refresh's own connection may hold the
-    write lock it failed under, or the failure may be that lock.
+    Uses a new connection, because by the time the failure reaches here the
+    refresh's connection is already closed and its uncommitted work rolled
+    back. If the failure was a lock another connection holds, this write
+    waits out the busy timeout, fails, and logs.
     """
     try:
         with closing(connect()) as conn:
@@ -128,7 +142,7 @@ def _refresh_once(kind: str, run: Callable[[sqlite3.Connection], object]) -> Non
                 run(conn)
         except Exception as exc:
             logger.exception("%s Scryfall refresh failed", kind)
-            _record_refresh_failure(started, f"{type(exc).__name__}: {exc}")
+            _record_refresh_failure(started, _describe_failure(exc))
     finally:
         _refresh_lock.release()
 
@@ -136,16 +150,18 @@ def _refresh_once(kind: str, run: Callable[[sqlite3.Connection], object]) -> Non
 def _catalog_is_fresh() -> bool:
     """Whether the startup gate can skip the refresh, checked outside the lock.
 
-    A check that cannot read the catalog answers False, so the refresh under
-    the lock decides, and records the failure if it has one.
+    A check that fails for any reason, such as a locked catalog or a
+    malformed last_checked_at, answers False. The refresh under the lock then
+    decides, and records the failure if it has one. Raising here would end
+    the upkeep task, and with it the hourly daily backup.
     """
     try:
         with closing(connect()) as conn:
             status = read_status(conn)
+        return not is_stale(status, now=datetime.now(UTC))
     except Exception:
         logger.exception("startup staleness check failed; trying the refresh anyway")
         return False
-    return not is_stale(status, now=datetime.now(UTC))
 
 
 def _run_startup_refresh() -> None:
@@ -307,17 +323,24 @@ def scryfall_status() -> dict[str, Any]:
     """Report when the local Scryfall catalog was last refreshed and last attempted.
 
     An import holds the write lock, which blocks this read once the busy
-    timeout runs out. That answers 409 rather than 500.
+    timeout runs out. That answers 409 rather than 500. While a refresh runs
+    the read does not wait at all, so the answer comes at once.
     """
     refreshing = refresh_in_progress()
     try:
         with closing(connect()) as conn:
+            if refreshing:
+                conn.execute("PRAGMA busy_timeout = 0")
             status = read_status(conn)
     except sqlite3.OperationalError as exc:
         if "locked" in str(exc):
             raise HTTPException(status_code=409, detail=_REFRESH_BUSY_DETAIL) from exc
         raise
-    stale = is_stale(status, now=datetime.now(UTC))
+    try:
+        stale = is_stale(status, now=datetime.now(UTC))
+    except ValueError:
+        # A last_checked_at that will not parse cannot prove the catalog fresh.
+        stale = True
     return {
         "last_checked_at": status.last_checked_at if status else None,
         "source_updated_at": status.source_updated_at if status else None,

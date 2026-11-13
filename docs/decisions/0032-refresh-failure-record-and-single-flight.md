@@ -39,9 +39,11 @@ that records the check or the import. A separate write could fail on its own
 and leave a new `last_checked_at` beside an old error. A failure is recorded by
 the wrappers in `main.py` through `refresh.record_attempt`, never by
 `refresh_catalog`, which keeps ADR 0007's rule that the refresh writes nothing
-when it fails. The failure write uses a new connection, because the refresh's
-own connection may be the one that failed. If that write fails too, the
-wrapper logs it and carries on. A startup check that finds the catalog fresh
+when it fails. The failure write uses a new connection, because by then the
+refresh's connection is closed and its unfinished work rolled back. If that
+write fails too, the wrapper logs it and carries on. The stored error is
+`ExceptionType: message`, or the type name alone when the message is empty,
+capped at 500 characters. A startup check that finds the catalog fresh
 made no request, so it records nothing.
 
 `GET /scryfall/status` keeps every field it had and adds `last_attempt_at`,
@@ -67,15 +69,19 @@ skips.
 
 **Status during an import answers 409.** In SQLite's rollback journal, an
 import that spills its page cache holds the exclusive lock until it commits,
-and readers wait. When the status read runs out of busy timeout, the endpoint
-returns 409 with a themed detail instead of a 500. This is the same contract
-the archive endpoints already use for a read blocked by the refresh.
+and readers wait. While a refresh holds the single-flight lock, the status
+read skips the busy wait. It answers 200 with `refreshing: true` whenever the
+row is readable, which covers the whole download, and 409 with a themed detail
+at once when the import blocks the read. Without the lock, a blocked read waits
+out the busy timeout and then answers 409, never 500. This is the same 409 the
+archive endpoints already use for a read blocked by the refresh.
 
 **An explicit busy timeout.** `db.connect()` now passes
 `timeout=BUSY_TIMEOUT_MS / 1000` to `sqlite3.connect`, with the constant at
 5000 ms. Python already waits five seconds by default, so behavior does not
-change, and a separate `PRAGMA busy_timeout` would only repeat it. The point is that the wait is now written down and tested in one
-place. The archive code's comments already depend on it.
+change, and a separate `PRAGMA busy_timeout` would only repeat it. The point
+is that the wait is now written down and tested in one place. The archive
+code's comments already depend on it.
 
 ## Alternatives considered
 
