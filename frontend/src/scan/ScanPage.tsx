@@ -60,6 +60,16 @@ type Step =
     }
 
 const READ_FAILED = 'The card could not be read. Try again.'
+const READ_TIMED_OUT =
+  'The glass did not answer. Try the capture again, or type the name instead.'
+
+/**
+ * How long the glass has to answer before the page gives up on it. A live
+ * backend can run three title passes at up to 10 seconds each under Tesseract
+ * (see `_TIMEOUT_SECONDS` in the tesseract engine), so this leaves room above
+ * that sum for a slow but working read to come back with its own answer.
+ */
+const READ_TIMEOUT_MS = 45_000
 
 /**
  * The Scrying Glass: capture a card on the camera, let the scanner read its
@@ -74,17 +84,26 @@ export function ScanPage() {
   const [lastSealed, setLastSealed] = useState<SessionEntry | null>(null)
   // The recognize request in flight, aborted on Retake and on leaving.
   const readingRef = useRef<AbortController | null>(null)
+  // The timer that gives up on that request, cleared wherever a read ends.
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The object URL of the current still, so leaving the page can free it.
   const previewRef = useRef<string | null>(null)
 
+  function clearReadTimeout() {
+    if (timeoutRef.current !== null) clearTimeout(timeoutRef.current)
+    timeoutRef.current = null
+  }
+
   useEffect(() => {
     return () => {
+      clearReadTimeout()
       readingRef.current?.abort()
       if (previewRef.current) URL.revokeObjectURL(previewRef.current)
     }
   }, [])
 
   function letGoOfStill() {
+    clearReadTimeout()
     readingRef.current?.abort()
     readingRef.current = null
     if (previewRef.current) URL.revokeObjectURL(previewRef.current)
@@ -106,9 +125,28 @@ export function ScanPage() {
   }
 
   async function read(still: Still) {
+    clearReadTimeout()
     readingRef.current?.abort()
     const controller = new AbortController()
     readingRef.current = controller
+    // A plain timer rather than AbortSignal.timeout, because fake timers in
+    // the tests cannot drive that one. The timer shows the notice itself
+    // instead of waiting for the request to reject, so a request that ignores
+    // the abort still lets the page go.
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null
+      if (readingRef.current !== controller) return
+      readingRef.current = null
+      controller.abort(
+        new DOMException('The glass did not answer.', 'TimeoutError'),
+      )
+      setStep({
+        kind: 'readings',
+        still,
+        readings: [],
+        failure: READ_TIMED_OUT,
+      })
+    }, READ_TIMEOUT_MS)
     setStep({ kind: 'reading', still })
     try {
       const { readings } = await recognizeCard(still.image, controller.signal)
@@ -121,7 +159,10 @@ export function ScanPage() {
         err instanceof ApiError && err.detail ? err.detail : READ_FAILED
       setStep({ kind: 'readings', still, readings: [], failure })
     } finally {
-      if (readingRef.current === controller) readingRef.current = null
+      if (readingRef.current === controller) {
+        clearReadTimeout()
+        readingRef.current = null
+      }
     }
   }
 
