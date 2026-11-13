@@ -4,14 +4,14 @@ import { ApiError, ownedForPrinting } from '../api'
 import { LotRow, type LotBack } from '../catalog/LotRow'
 import { OwnershipSummary } from '../catalog/OwnershipSummary'
 import { inventoryKeys } from '../catalog/queryKeys'
-import { CardThumb, Consulting, Notice } from '../components'
+import { CardThumb, Consulting, Ledger, Notice } from '../components'
 import '../catalog/catalog.css'
 import './index.css'
 
 /**
  * One printing as the Index opens it: the card plate, copies per finish, every
- * lot of it as a Catalog row, and how much of the card the collection holds
- * across printings. Each row links on to the lot, which returns here.
+ * lot of it as a ledger entry, and how much of the card the collection holds
+ * across printings. Each entry links on to the lot, which returns here.
  */
 export function PrintingPage() {
   const { scryfallId = '' } = useParams()
@@ -95,35 +95,13 @@ export function PrintingPage() {
           None of this printing is in the collection.
         </Notice>
       ) : (
-        <div
-          className="catalog__scroll"
-          tabIndex={0}
-          role="region"
-          aria-label="Lots of this printing"
-        >
-          <table className="catalog__table">
-            <caption className="visually-hidden">
-              Every lot of this printing
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">
-                  <span className="visually-hidden">Art</span>
-                </th>
-                <th scope="col">Card</th>
-                <th scope="col">Finish</th>
-                <th scope="col">Condition</th>
-                <th scope="col">Volume</th>
-                <th scope="col">Copies</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((lot) => (
-                <LotRow key={lot.id} lot={lot} back={back} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section aria-label="Lots of this printing">
+          <Ledger aria-label="Lots">
+            {lots.map((lot, i) => (
+              <LotRow key={lot.id} lot={lot} number={i + 1} back={back} />
+            ))}
+          </Ledger>
+        </section>
       )}
 
       <OwnershipSummary scryfallId={scryfallId} />

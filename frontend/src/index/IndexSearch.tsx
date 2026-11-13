@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { searchFolios, type SearchParams } from '../api'
 import { inventoryKeys } from '../catalog/queryKeys'
-import { Field, Input } from '../components'
+import { Input } from '../components'
 import { useArrowKeyList } from '../hooks/useArrowKeyList'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { readIndexParams, refine, writeIndexParams } from './indexParams'
@@ -90,11 +90,16 @@ export function IndexSearch() {
 
   return (
     <div className="index__search" role="search">
-      <Field label="Search the Index">
+      {/* The lead and the box read as one sentence. The box names itself in
+          full, because the lead alone is half a question. */}
+      <label className="index__seek">
+        <span className="index__seek-lead">Seek a card by name,</span>
         <Input
           type="search"
+          className="index__seek-input"
+          aria-label="Seek a card by name, or part of one"
           autoComplete="off"
-          placeholder="A card name, or part of one…"
+          placeholder="or part of one"
           value={text}
           onChange={(event) => {
             setText(event.target.value)
@@ -104,7 +109,7 @@ export function IndexSearch() {
             if (event.key === 'Escape') setOpen(false)
           }}
         />
-      </Field>
+      </label>
       {showSuggestions && (
         <ul
           className="listbox index__suggestions"

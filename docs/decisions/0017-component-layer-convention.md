@@ -10,6 +10,7 @@ components live, how they are styled, and which vocabulary the page restyle
 (VEG-424) and the M4/M5 screens build on.
 
 [VEG-423]: https://linear.app/vega-apps/issue/VEG-423
+[VEG-624]: https://linear.app/cleveland-family-enterprises/issue/VEG-624
 
 ---
 
@@ -88,6 +89,12 @@ does not count. Contract-tested across every sheet.
 | `Sealed` | `.sealed`, `__seal`, `__text`, `__title`, `__body` | The confirmation moment: the seal pressed beside the message. `title` defaults to "Sealed into the catalog". No role of its own; callers pass `role="status"`. The seal plays `seal-press` once. |
 | `EmptyState` | `.empty-state`, `__seal`, `__title`, `__body` | An unpressed seal, an `h2` title, and a muted body whose links are gold. No role. |
 | `Consulting` | `.consulting`, `__candle`, `__text` | The loading line: a muted `Notice` with a flickering candle, defaulting to "Consulting the catalog…". No role by default. It takes no `as`, since the candle row is a flex box an inline span cannot be, and its text sits in one `__text` span. |
+| `CardThumb` | `.card-thumb`, `--thumb` (default) / `--full`, `--empty`, `__name` | Card art from the catalog's `image_uris`, the small image for a thumb and the normal one at full size. With no art it renders a dark plate with `role="img"` and the label `<name> (no image in the catalog)`: a gradient from the raised surface to the ground, edged by an inset hairline. At full size the plate sets the name in gold display italic in an `aria-hidden` span; a thumb stays blank ([VEG-624]). |
+| `Ledger`, `LedgerEntry`, `LedgerFigure` | `.ledger`, `__entry`, `__number`, `__thumb`, `__body`, `__name`, `__where`, `__count`, `__figure`, `__note` | The Index and the Catalog as a ruled list ([VEG-624]). `Ledger` is an `<ol>` that requires an `aria-label`. `LedgerEntry` takes slots: the running `number`, 1-based across pages and `aria-hidden` because it is ornament, a `thumb`, the `name` link, an italic `where` line, the `count` and an optional `note`. `LedgerFigure` is the gold count. The number is rubric at `--text-lg` and weight 700, which is large text. Hairline rules only, no boxes and no hover fill. |
+| `FinishWord` | `.finish-word` | "foil" or "etched" after a card's name, in gold small caps. Renders nothing for nonfoil. The caller writes the leading space ([VEG-624]). |
+| `Plate` | `.plate`, `__art`, `__text`, `__printing`, `__actions` | Full-size art beside a heading the caller renders and a few prose lines, under `--plate-glow`. A `<header>` by default, a `<section>` named by `label` when given. `.plate` is the only rule in any sheet that reads `--plate-glow`, and `components.test.ts` holds it there ([VEG-624]). |
+| Opening (classes only) | `.opening` | A section opening in the display face with a rubricated first letter, like the lot page's "Amend the entry" ([VEG-624]). |
+| Pager (classes only) | `.pager` | "Earlier folios" and "Later folios" at the foot of a ledger, held to either end of the line ([VEG-624]). |
 | Rubric (classes only) | `.rubric` | One word of a display title in `--rubric`. For display sizes only (24px and up), because the red falls short of body-text contrast at reading sizes. |
 | Listbox (classes only) | `.listbox`, `.listbox__option` | A labelled `<ul>` of option buttons with arrow-key focus movement from `useArrowKeyList` (`src/hooks`). No `listbox` or `option` roles. An option may not contain a button, and a list of buttons is what it is. `.listbox__option[aria-pressed='true']` draws the gold inset rule on the chosen row. |
 
@@ -161,9 +168,9 @@ accessibility pass (VEG-427) needs one page where every state is visible.
 - Double-faced printings show no thumbnail because their art lives on
   `card_faces` and the picker queries return `cards` rows only. Tracked as
   VEG-557.
-- `CardThumb` and its `.card-thumb` rules are already token-only and
-  presentational; move them from `catalog/` into `components/` when the next
-  consumer outside the Catalog appears.
+- `CardThumb` and its `.card-thumb` rules now live in `components/`, so this
+  follow-up is closed. VEG-624 turned its no-art placeholder into the dark
+  plate described in the table.
 - VEG-426 added `Seal`, `Sealed`, `EmptyState`, and `Consulting`, and gave
   `Notice` its `as` prop. VEG-427 folded the hover transitions into the
   motion rule.

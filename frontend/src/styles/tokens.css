@@ -155,4 +155,14 @@
   --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --elevation-2: 0 4px 12px rgba(0, 0, 0, 0.5);
   --elevation-3: 0 12px 32px rgba(0, 0, 0, 0.6);
+
+  /* ---- 3f. Glow (VEG-624) ----------------------------------------------- */
+  /* Candlelight from above the lit plate, mixed from the gold. This is the one
+     glow in the app, and only the .plate rule reads it; components.test.ts
+     holds every sheet to that. */
+  --plate-glow: radial-gradient(
+    120% 70% at 50% -10%,
+    color-mix(in srgb, var(--gold) 28%, transparent),
+    transparent 60%
+  );
 }

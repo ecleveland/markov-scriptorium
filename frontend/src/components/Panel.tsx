@@ -12,7 +12,7 @@ export type PanelProps<T extends PanelElement = 'div'> = {
 } & ComponentProps<T>
 
 /**
- * The bordered surface with the oxblood top-rule. Layout stays with the caller.
+ * The bordered surface, one hairline all round. Layout stays with the caller.
  * Add a page class beside `panel` for flex or grid rather than styling `.panel`.
  * A fieldset should get its `<legend>` as the first child.
  */

@@ -16,13 +16,24 @@ import {
   CardThumb,
   Consulting,
   Field,
+  FinishWord,
   Input,
   Notice,
+  Plate,
   Select,
   Textarea,
 } from '../components'
+import { languageName } from './language'
 import type { LotBack } from './LotRow'
 import { OwnershipSummary } from './OwnershipSummary'
+import {
+  capitalised,
+  conditionWords,
+  counted,
+  lotShelf,
+  printingLine,
+  tomeClaim,
+} from './prose'
 import { readQuantity } from './quantity'
 import { inventoryKeys } from './queryKeys'
 import './catalog.css'
@@ -30,6 +41,40 @@ import './catalog.css'
 /** Blank a text field back to null, so "cleared" reaches the API as a clear. */
 function orNull(text: string): string | null {
   return text.trim() === '' ? null : text.trim()
+}
+
+/** "Acquired 2026-03-01 for 4.50.", with whichever half is unknown left out. */
+function acquiredSentence(lot: InventoryLot): string | null {
+  const { acquired_at: when, price_paid: paid } = lot
+  if (when === null && paid === null) return null
+  const parts = ['Acquired']
+  if (when !== null) parts.push(when)
+  if (paid !== null) parts.push(`for ${paid}`)
+  return `${parts.join(' ')}.`
+}
+
+/**
+ * The lot told as one run of prose: its copies, condition and Volume, then
+ * finish and language, when it was bought, and what the Tomes claim. The
+ * claim sentences speak of the whole folio, which is what `lot.folio` counts,
+ * so they can name more copies than this one lot holds.
+ */
+function lotProse(lot: InventoryLot): string {
+  const copies = capitalised(counted(lot.quantity, 'copy', 'copies'))
+  const volume = lotShelf(lot.location)
+  const shelf = volume === null ? 'unshelved' : `in ${volume}`
+  const { reserved, available } = lot.folio
+  return [
+    `${copies}, ${conditionWords(lot.condition)}, ${shelf}.`,
+    `${capitalised(lot.finish)}, in ${languageName(lot.language)}.`,
+    acquiredSentence(lot),
+    tomeClaim(lot.folio),
+    reserved > 0
+      ? `${capitalised(counted(available, 'copy', 'copies'))} free for another Tome.`
+      : null,
+  ]
+    .filter((sentence) => sentence !== null)
+    .join(' ')
 }
 
 /**
@@ -202,8 +247,9 @@ function RemoveLot({ lot, back }: { lot: InventoryLot; back: LotBack }) {
   )
 }
 
-/** One inventory lot in full: the folio, what it costs to change, and what
- *  else of this card the collection holds. */
+/** One inventory lot as a leaf: the lit plate with the lot in prose, what else
+ *  of this card the collection holds, the form to amend it, and removal at
+ *  the foot. */
 export function LotDetailPage() {
   const { lotId } = useParams()
   const id = Number(lotId)
@@ -263,51 +309,44 @@ export function LotDetailPage() {
         </Link>
       </p>
 
-      <header className="lot-detail__head">
-        <CardThumb
-          images={lot.card.image_uris}
-          name={lot.card.name}
-          size="full"
-        />
-        <div>
-          <h1>{lot.card.name}</h1>
-          <p className="lot-detail__folio">
-            {lot.card.set_name} · {lot.card.set_code.toUpperCase()} #
-            {lot.card.collector_number} · {lot.card.rarity}
-          </p>
-          <dl className="lot-detail__facts">
-            <div>
-              <dt>Finish</dt>
-              <dd>{lot.finish}</dd>
-            </div>
-            <div>
-              <dt>Language</dt>
-              <dd>{lot.language}</dd>
-            </div>
-            <div>
-              <dt>Acquired</dt>
-              <dd>{lot.acquired_at ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Paid</dt>
-              <dd>{lot.price_paid ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>In Tomes</dt>
-              <dd>
-                {lot.folio.reserved} of {lot.folio.owned}
-              </dd>
-            </div>
-            <div>
-              <dt>Available</dt>
-              <dd>{lot.folio.available}</dd>
-            </div>
-          </dl>
-        </div>
-      </header>
+      <Plate
+        art={
+          <CardThumb
+            images={lot.card.image_uris}
+            name={lot.card.name}
+            size="full"
+          />
+        }
+        heading={
+          <h1>
+            {lot.card.name}
+            {(lot.finish === 'foil' || lot.finish === 'etched') && (
+              <>
+                {' '}
+                <FinishWord finish={lot.finish} />
+              </>
+            )}
+          </h1>
+        }
+        lines={
+          <>
+            <p className="plate__printing">
+              {`${printingLine(lot.card)}, ${lot.card.rarity}.`}
+            </p>
+            <p>{lotProse(lot)}</p>
+          </>
+        }
+      />
 
-      <LotEditor key={lot.id} lot={lot} />
       <OwnershipSummary scryfallId={lot.scryfall_id} />
+
+      <section aria-labelledby="amend-heading">
+        <h2 className="opening" id="amend-heading">
+          Amend the entry
+        </h2>
+        <LotEditor key={lot.id} lot={lot} />
+      </section>
+
       <RemoveLot lot={lot} back={back} />
     </section>
   )

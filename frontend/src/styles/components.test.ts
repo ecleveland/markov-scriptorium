@@ -503,9 +503,29 @@ describe('component stylesheet contract', () => {
       '.consulting',
       '.notice--inline',
       '.rubric',
+      '.ledger',
+      '.plate',
+      '.finish-word',
+      '.opening',
+      '.pager',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
     }
+  })
+})
+
+// VEG-624: the lit plate carries the app's one glow. A second reader would
+// spread candlelight across the page, so exactly one rule in every sheet reads
+// the token, and that rule is .plate.
+describe('plate glow', () => {
+  it('is read by the .plate rule and nothing else', () => {
+    const readers = sheets.flatMap(({ name, css }) =>
+      Array.from(
+        css.matchAll(/([^{}]+)\{[^}]*var\(--plate-glow\)/g),
+        (m) => `${name} ${m[1].trim()}`,
+      ),
+    )
+    expect(readers).toEqual(['styles/components.css .plate'])
   })
 })
 
@@ -529,18 +549,39 @@ describe('status candle', () => {
   })
 })
 
-// The Catalog's Card cell is a <td>. Giving a cell a flex or grid display
-// takes it out of table layout, so it stops stretching to the row height and
-// its bottom border floats above the row's. Keep every table cell a cell.
-describe('catalog table cells', () => {
-  const catalog = sheets.find((sheet) => sheet.name === 'catalog/catalog.css')
-  const cellClasses = ['.catalog__art', '.catalog__card', '.catalog__quantity']
+// VEG-624: the ledger is ruled with hairlines and nothing else, so hovering
+// an entry fills nothing in. The rule body pattern stops at braces, so a rule
+// nested in an @media block is read on its own rather than swallowed by the
+// media prelude.
+describe('ledger hover', () => {
+  const ledgerSheets = [
+    'styles/components.css',
+    'catalog/catalog.css',
+    'index/index.css',
+  ]
 
-  it.each(cellClasses)('%s does not leave table layout', (cls) => {
-    const block = catalog?.css.match(
-      new RegExp(`${cls.replace('.', '\\.')}\\s*\\{([^}]*)\\}`),
-    )
-    expect(block?.[1] ?? '').not.toMatch(/display\s*:/)
+  it('finds every sheet that styles a ledger', () => {
+    expect(
+      ledgerSheets.filter(
+        (name) => !sheets.some((sheet) => sheet.name === name),
+      ),
+    ).toEqual([])
+  })
+
+  it('sets no background on a hovered ledger rule', () => {
+    const filled = sheets
+      .filter(({ name }) => ledgerSheets.includes(name))
+      .flatMap(({ name, css }) =>
+        Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+          .filter(
+            ([, selector, body]) =>
+              /ledger/.test(selector) &&
+              /:hover/.test(selector) &&
+              /(^|[;\s])background(-color)?\s*:/.test(body),
+          )
+          .map(([, selector]) => `${name} ${selector.trim()}`),
+      )
+    expect(filled).toEqual([])
   })
 })
 

@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import type { InventoryLot } from '../api'
-import { CardThumb } from '../components'
+import { CardThumb, FinishWord, LedgerEntry } from '../components'
+import { conditionWords, lotShelf, printingLine } from './prose'
 import { QuantityStepper } from './QuantityStepper'
 
 /** Where a lot page returns to, and what to call it. */
@@ -11,8 +12,17 @@ export interface LotBack {
   state?: unknown
 }
 
-/** One owned lot as a row of the Catalog table. */
-export function LotRow({ lot, back }: { lot: InventoryLot; back?: LotBack }) {
+/** One owned lot as an entry in a ledger. The stepper is its one control. */
+export function LotRow({
+  lot,
+  number,
+  back,
+}: {
+  lot: InventoryLot
+  /** The running number, 1-based across pages. */
+  number: number
+  back?: LotBack
+}) {
   // Hand the folio the page it was opened from, so its back link returns there
   // instead of to page one. A caller outside the Catalog names its own page.
   const { search } = useLocation()
@@ -20,39 +30,33 @@ export function LotRow({ lot, back }: { lot: InventoryLot; back?: LotBack }) {
     to: `/catalog${search}`,
     label: 'Back to the Catalog',
   }
+  const finished = lot.finish === 'foil' || lot.finish === 'etched'
+  const { reserved, owned, available } = lot.folio
 
   return (
-    <tr className="catalog__row">
-      <td className="catalog__art">
-        <CardThumb images={lot.card.image_uris} name={lot.card.name} />
-      </td>
-      <td className="catalog__card">
-        <Link
-          to={`/catalog/${lot.id}`}
-          state={{ back: backTarget }}
-          className="catalog__name"
-        >
-          {lot.card.name}
-        </Link>
-        <span className="catalog__folio">
-          {lot.card.set_name} · {lot.card.set_code.toUpperCase()} #
-          {lot.card.collector_number}
-        </span>
-      </td>
-      <td>{lot.finish}</td>
-      <td>{lot.condition}</td>
-      <td>
-        {lot.location ?? <span className="catalog__unset">unshelved</span>}
-      </td>
-      <td className="catalog__quantity">
-        <QuantityStepper lot={lot} />
-        {lot.folio.reserved > 0 && (
-          <span className="catalog__reserved">
-            {lot.folio.reserved} of {lot.folio.owned} in Tomes ·{' '}
-            {lot.folio.available} free
-          </span>
-        )}
-      </td>
-    </tr>
+    <LedgerEntry
+      number={number}
+      thumb={<CardThumb images={lot.card.image_uris} name={lot.card.name} />}
+      name={
+        <>
+          <Link to={`/catalog/${lot.id}`} state={{ back: backTarget }}>
+            {lot.card.name}
+          </Link>
+          {finished && (
+            <>
+              {' '}
+              <FinishWord finish={lot.finish} />
+            </>
+          )}
+        </>
+      }
+      where={`${printingLine(lot.card)}. ${lotShelf(lot.location) ?? 'Unshelved'}.`}
+      count={<QuantityStepper lot={lot} />}
+      note={
+        reserved > 0
+          ? `${conditionWords(lot.condition)}, ${reserved} of ${owned} in Tomes, ${available} free`
+          : conditionWords(lot.condition)
+      }
+    />
   )
 }

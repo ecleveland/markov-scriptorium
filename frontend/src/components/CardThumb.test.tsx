@@ -24,6 +24,27 @@ describe('CardThumb', () => {
     expect(placeholder).toHaveClass('card-thumb--empty')
   })
 
+  it('leaves the thumb-size plate empty', () => {
+    render(<CardThumb images={null} name="Sol Ring" />)
+    const placeholder = screen.getByRole('img', {
+      name: 'Sol Ring (no image in the catalog)',
+    })
+    expect(placeholder).toHaveClass('card-thumb--thumb')
+    expect(placeholder).toBeEmptyDOMElement()
+  })
+
+  it('sets the name on the full-size plate, hidden from the accessible name', () => {
+    render(<CardThumb images={null} name="Sol Ring" size="full" />)
+    const placeholder = screen.getByRole('img', {
+      name: 'Sol Ring (no image in the catalog)',
+    })
+    expect(placeholder).toHaveClass('card-thumb--full', 'card-thumb--empty')
+    const name = placeholder.querySelector('.card-thumb__name')
+    expect(name).toHaveTextContent('Sol Ring')
+    expect(name).toHaveAttribute('aria-hidden', 'true')
+    expect(placeholder).not.toHaveTextContent('✦')
+  })
+
   it('picks the small image for a thumb and the normal one for a plate', () => {
     const { rerender } = render(
       <CardThumb images={images} name="Lightning Bolt" />,

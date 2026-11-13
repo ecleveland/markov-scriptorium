@@ -10,7 +10,10 @@ export interface CardThumbProps {
  * Card art from the catalog's stored `image_uris`. Plenty of rows have none
  * (the dev seed carries no images, and the bulk data leaves the field null on
  * multi-faced layouts), so the placeholder is a first-class state, not an
- * afterthought: a broken <img> in every row would read as a bug.
+ * afterthought: a broken <img> in every row would read as a bug. It is a dark
+ * plate in the card's proportions. At full size the card's name is set on it
+ * in the display face, hidden from assistive tech because the label already
+ * carries the name; a thumb is too small for text and stays blank.
  */
 export function CardThumb({ images, name, size = 'thumb' }: CardThumbProps) {
   const src =
@@ -25,7 +28,11 @@ export function CardThumb({ images, name, size = 'thumb' }: CardThumbProps) {
         role="img"
         aria-label={`${name} (no image in the catalog)`}
       >
-        <span aria-hidden="true">✦</span>
+        {size === 'full' && (
+          <span className="card-thumb__name" aria-hidden="true">
+            {name}
+          </span>
+        )}
       </div>
     )
   }

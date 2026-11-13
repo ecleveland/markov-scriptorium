@@ -122,6 +122,14 @@ describe('design tokens contract', () => {
     expect(valueOf('--rubric')).toBe('var(--oxblood-bright)')
   })
 
+  // VEG-624: the lit plate's glow, the only one in the app, mixed from gold
+  // so a palette retune carries it along.
+  it('defines the plate glow as a radial gradient from the gold', () => {
+    expect(declares('--plate-glow')).toBe(true)
+    expect(valueOf('--plate-glow')).toMatch(/^radial-gradient\(/)
+    expect(valueOf('--plate-glow')).toContain('var(--gold)')
+  })
+
   it('defines type, spacing, radius, and elevation scales', () => {
     for (const name of [
       '--text-base',

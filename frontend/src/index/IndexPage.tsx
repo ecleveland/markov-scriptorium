@@ -3,11 +3,13 @@ import {
   useQuery,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   INDEX_PAGE_SIZE,
   SORT_KEYS,
+  listDecks,
+  listFacets,
   searchFolios,
   type SearchFoliosResponse,
   type SortKey,
@@ -18,15 +20,16 @@ import {
   Button,
   Consulting,
   EmptyState,
-  Field,
   Notice,
   PageHeader,
-  Select,
 } from '../components'
+import { tomeKeys } from '../tomes/queryKeys'
 import { FacetSidebar } from './FacetSidebar'
-import { FolioTable } from './FolioTable'
+import { FolioLedger } from './FolioLedger'
 import { FolioTile } from './FolioTile'
 import { IndexSearch } from './IndexSearch'
+import { NewestPlate } from './NewestPlate'
+import { filteredOpening, unfilteredOpening } from './opening'
 import {
   EMPTY_INDEX,
   isFiltered,
@@ -55,9 +58,16 @@ const ORDER_LABELS: Record<SortKey, Record<SortOrder, string>> = {
   quantity: { asc: 'Fewest copies', desc: 'Most copies' },
 }
 
-/** "Showing 1 to 24 of 87 folios", 1-based and inclusive, as people read it. */
-function pageRange(offset: number, shown: number): string {
-  return shown === 0 ? '0' : `${offset + 1} to ${offset + shown}`
+/** The URL for what narrows a state, with how it is sorted, laid out and
+ *  paged left out. Two states with the same key have the same total. */
+function filterKey(state: IndexState): string {
+  return writeIndexParams({
+    ...state,
+    sort: EMPTY_INDEX.sort,
+    order: EMPTY_INDEX.order,
+    view: EMPTY_INDEX.view,
+    page: EMPTY_INDEX.page,
+  }).toString()
 }
 
 /** `/index` with the state's query string, or bare when it has none. */
@@ -119,12 +129,35 @@ export function IndexPage() {
     placeholderData: keepPreviousData,
   })
 
+  // The facets endpoint is unfiltered and the sidebar reads the same key, so
+  // counting the Volumes here costs no second request.
+  const facets = useQuery({
+    queryKey: inventoryKeys.facets(),
+    queryFn: listFacets,
+  })
+  const tomes = useQuery({ queryKey: tomeKeys.list(), queryFn: listDecks })
+
   const filtered = isFiltered(state)
+  // A placeholder's total belongs to the previous request, so nothing below
+  // may describe the current filters by it.
+  const settled = query.isSuccess && !query.isPlaceholderData
+
+  // The last settled total and the filters it counted. A new sort, order or
+  // page leaves the filters alone, so the opening keeps saying that total
+  // while the reordered rows load instead of blanking and coming back.
+  const key = filterKey(state)
+  const [lastCount, setLastCount] = useState<{ key: string; total: number }>()
+  if (
+    settled &&
+    (lastCount?.key !== key || lastCount.total !== query.data.total)
+  ) {
+    setLastCount({ key, total: query.data.total })
+  }
 
   // While a new key loads, `data` is the previous key's answer. Its total says
   // nothing about this URL, so neither the redirect nor the empty collection
   // may act on it. Results still shows those rows as the placeholder.
-  if (query.isSuccess && !query.isPlaceholderData) {
+  if (settled) {
     const { total } = query.data
     const offset = params.offset ?? 0
     // The collection can shrink under a bookmarked or returned-to page. Land
@@ -147,28 +180,62 @@ export function IndexPage() {
     }
   }
 
+  let shownTotal: number | undefined
+  if (settled) shownTotal = query.data.total
+  else if (query.isPlaceholderData && lastCount?.key === key) {
+    shownTotal = lastCount.total
+  }
+  let opening = ''
+  if (shownTotal !== undefined && shownTotal > 0) {
+    opening = filtered
+      ? filteredOpening({
+          total: shownTotal,
+          name: state.name,
+          otherFilters: isFiltered({ ...state, name: '' }),
+        })
+      : unfilteredOpening({
+          folios: shownTotal,
+          volumes: facets.data?.locations.length,
+          tomes: tomes.data?.length,
+        })
+  }
+  // The newest lot opens the whole Catalog on its first page. A narrowed or
+  // later page is about other folios. The plate leaves itself out while its
+  // lot loads, fails or is missing, so it need not wait on the search, and a
+  // new sort leaves it standing.
+  const showPlate = !filtered && state.page === 1
+
   return (
     <Shell>
+      {/* Rendered even with nothing settled to say, so the sentence fills in
+          where it belongs once the count arrives. */}
+      <p className="index__opening">{opening}</p>
+      {showPlate && <NewestPlate />}
       <IndexSearch />
       <div className="index__layout">
         <FacetSidebar state={state} onRefine={narrow} />
         <div className="index__results">
           <div className="index__toolbar">
-            <Field label="Sort by" className="index__sort">
-              <Select
-                value={state.sort}
-                onChange={(event) =>
-                  narrow({ sort: event.target.value as SortKey })
-                }
-              >
-                {SORT_KEYS.map((key) => (
-                  <option key={key} value={key}>
-                    {SORT_LABELS[key]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <div className="index__sort" role="group" aria-label="Sort by">
+              {/* The group is named already, so this is for the eye only. */}
+              <span className="index__toggle-lead" aria-hidden="true">
+                Sort by
+              </span>
+              {SORT_KEYS.map((key) => (
+                <Button
+                  key={key}
+                  variant="ghost"
+                  className="index__toggle"
+                  aria-pressed={state.sort === key}
+                  onClick={() => narrow({ sort: key })}
+                >
+                  {SORT_LABELS[key]}
+                </Button>
+              ))}
+            </div>
             <Button
+              variant="ghost"
+              className="index__toggle"
               onClick={() =>
                 narrow({ order: state.order === 'asc' ? 'desc' : 'asc' })
               }
@@ -178,6 +245,7 @@ export function IndexPage() {
             <div className="index__views" role="group" aria-label="View">
               <Button
                 variant="ghost"
+                className="index__toggle"
                 aria-pressed={state.view === 'grid'}
                 onClick={() => view('grid')}
               >
@@ -185,6 +253,7 @@ export function IndexPage() {
               </Button>
               <Button
                 variant="ghost"
+                className="index__toggle"
                 aria-pressed={state.view === 'list'}
                 onClick={() => view('list')}
               >
@@ -247,12 +316,8 @@ function Results({
 
   return (
     <>
-      <Notice>
-        Showing {pageRange(shownOffset, results.length)} of {total}{' '}
-        {total === 1 ? 'folio' : 'folios'}
-      </Notice>
       {state.view === 'list' ? (
-        <FolioTable folios={results} />
+        <FolioLedger folios={results} offset={shownOffset} />
       ) : (
         <ul className="index__grid" aria-label="Folios">
           {results.map((folio) => (
@@ -263,20 +328,24 @@ function Results({
           ))}
         </ul>
       )}
-      <nav className="index__pager" aria-label="Index pages">
-        <Button
-          disabled={stale || state.page <= 1}
-          onClick={() => onPage(state.page - 1)}
-        >
-          Previous
-        </Button>
-        <Button
-          disabled={stale || onLastPage}
-          onClick={() => onPage(state.page + 1)}
-        >
-          Next
-        </Button>
-      </nav>
+      {total > INDEX_PAGE_SIZE && (
+        <nav className="pager" aria-label="Index pages">
+          <Button
+            variant="ghost"
+            disabled={stale || state.page <= 1}
+            onClick={() => onPage(state.page - 1)}
+          >
+            Earlier folios
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={stale || onLastPage}
+            onClick={() => onPage(state.page + 1)}
+          >
+            Later folios
+          </Button>
+        </nav>
+      )}
     </>
   )
 }
