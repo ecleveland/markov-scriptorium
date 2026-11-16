@@ -71,11 +71,12 @@
 }
 
 /* The ledger's count column does not wrap, so a long refusal would widen
-   it. The error takes its own line under the steps and wraps there. */
+   it. The error takes the whole row (flex-basis), and inline-size
+   containment keeps its text out of the column's width, so it falls under
+   the steps and wraps to their width. */
 .qty-stepper__error {
-  display: block;
-  max-width: 12rem;
-  margin-left: auto;
+  flex-basis: 100%;
+  contain: inline-size;
   font-size: var(--text-xs);
   white-space: normal;
   text-align: right;
