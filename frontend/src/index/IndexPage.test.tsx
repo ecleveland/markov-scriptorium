@@ -195,7 +195,7 @@ describe('IndexPage', () => {
     expect(ring.getByText('foil')).toHaveClass('finish-word')
     expect(ring.getByText('×4')).toBeInTheDocument()
     expect(ring.getByText('4 copies')).toBeInTheDocument()
-    expect(ring.getByText('2 of 4 in Tomes · 2 free')).toBeInTheDocument()
+    expect(ring.getByText('2 of 4 in Tomes, 2 free')).toBeInTheDocument()
     expect(
       ring.getByText('Commander 2021, no. 263. Red binder and Trade box.'),
     ).toBeInTheDocument()

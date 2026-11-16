@@ -196,11 +196,15 @@ describe('ScanPage', () => {
       await screen.findByRole('button', { name: 'Capture' }),
     ).toBeInTheDocument()
     expect(region).toHaveTextContent('Sealed into the catalog')
-    expect(region).toHaveTextContent('1× Sol Ring (C21 #263) · nonfoil')
+    expect(region).toHaveTextContent(
+      'One copy of Sol Ring, C21 no. 263, nonfoil.',
+    )
     const session = screen.getByRole('complementary', {
       name: 'Scried this session',
     })
-    expect(within(session).getByText(/1× Sol Ring/)).toBeInTheDocument()
+    expect(
+      within(session).getByText(/One copy of Sol Ring/),
+    ).toBeInTheDocument()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:preview')
   })
 
@@ -322,12 +326,11 @@ describe('ScanPage', () => {
       await screen.findByRole('button', { name: /Sol Ring.*Commander 2021/ }),
     )
 
+    const plate = screen.getByRole('region', { name: 'Inscribe this printing' })
     expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: /Sol Ring.*Commander 2021 \(C21\) · #263/,
-      }),
+      within(plate).getByRole('heading', { level: 2, name: 'Sol Ring' }),
     ).toBeInTheDocument()
+    expect(plate).toHaveTextContent('Commander 2021, no. 263')
     expect(
       screen.queryByRole('heading', { name: /Choose a printing/ }),
     ).not.toBeInTheDocument()

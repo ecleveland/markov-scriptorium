@@ -1,5 +1,3 @@
-import { Panel } from '../components'
-
 /** One line or row the parser could not read, flattened from either flow. */
 export interface Problem {
   number: number
@@ -24,15 +22,15 @@ interface Props {
 export function UnreadableProblems({ label, noun, problems }: Props) {
   if (problems.length === 0) return null
   return (
-    <Panel as="aside" className="decklist__problems" aria-label={label}>
-      <h2>{label}</h2>
+    <aside className="import__problems" aria-label={label}>
+      <h2 className="opening">{label}</h2>
       <ul>
         {problems.map((problem) => (
           <li key={problem.number}>
-            {noun} {problem.number}: {problem.reason} — “{problem.text}”
+            {noun} {problem.number}, {problem.reason}: “{problem.text}”
           </li>
         ))}
       </ul>
-    </Panel>
+    </aside>
   )
 }

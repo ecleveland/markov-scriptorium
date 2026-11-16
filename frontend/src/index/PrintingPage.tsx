@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { ApiError, ownedForPrinting } from '../api'
 import { LotRow, type LotBack } from '../catalog/LotRow'
 import { OwnershipSummary } from '../catalog/OwnershipSummary'
+import { printingLine } from '../catalog/prose'
 import { inventoryKeys } from '../catalog/queryKeys'
 import { CardThumb, Consulting, Ledger, Notice } from '../components'
 import '../catalog/catalog.css'
@@ -71,8 +72,7 @@ export function PrintingPage() {
         <div>
           <h1>{card.name}</h1>
           <p className="lot-detail__folio">
-            {card.set_name} · {card.set_code.toUpperCase()} #
-            {card.collector_number} · {card.rarity}
+            {printingLine(card)}, {card.rarity}.
           </p>
           {reservations.length > 0 && (
             <dl className="lot-detail__facts">
@@ -80,7 +80,7 @@ export function PrintingPage() {
                 <div key={entry.finish}>
                   <dt>{entry.finish}</dt>
                   <dd>
-                    {entry.owned} owned · {entry.reserved} in Tomes ·{' '}
+                    {entry.owned} owned, {entry.reserved} in Tomes,{' '}
                     {entry.available} free
                   </dd>
                 </div>

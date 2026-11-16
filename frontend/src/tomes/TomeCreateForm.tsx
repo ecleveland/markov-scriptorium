@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createDeck, type DeckCreate } from '../api'
-import { Button, Field, Input, Notice, Panel } from '../components'
+import { Button, Field, Input, Notice } from '../components'
 import { tomeKeys } from './queryKeys'
 import { orNull } from './status'
 
@@ -18,6 +18,7 @@ export function TomeCreateForm() {
   const [format, setFormat] = useState('')
   const [claims, setClaims] = useState(true)
   const [blankName, setBlankName] = useState(false)
+  const headingId = useId()
 
   const bind = useMutation({
     mutationFn: (body: DeckCreate) => createDeck(body),
@@ -42,8 +43,10 @@ export function TomeCreateForm() {
   }
 
   return (
-    <Panel as="section" className="tome-create" aria-label="Bind a new Tome">
-      <h2>Bind a new Tome</h2>
+    <section className="tome-create" aria-labelledby={headingId}>
+      <h2 className="opening" id={headingId}>
+        Bind a new Tome
+      </h2>
       <form onSubmit={handleSubmit}>
         <div className="tome-create__fields">
           <Field label="Name">
@@ -86,6 +89,6 @@ export function TomeCreateForm() {
           )}
         </div>
       </form>
-    </Panel>
+    </section>
   )
 }

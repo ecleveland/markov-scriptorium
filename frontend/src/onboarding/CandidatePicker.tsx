@@ -12,8 +12,9 @@ interface Props {
 /**
  * Pick one printing for an ambiguous import row. Unlike the Inscribe flow's
  * PrintingPicker (which re-queries the catalog by name), this renders the
- * candidate printings the resolve step already returned — one catalog round-trip
- * per import, and the choices can't drift from what resolution actually matched.
+ * candidate printings the resolve step already returned. That keeps one
+ * catalog round-trip per import, and the choices can't drift from what
+ * resolution actually matched.
  */
 export function CandidatePicker({
   name,

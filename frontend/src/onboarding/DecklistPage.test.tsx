@@ -48,6 +48,11 @@ function inputOf(name: string, quantity: number) {
 
 afterEach(() => vi.clearAllMocks())
 
+/** The ledger's own entries, leaving out the candidate picker's options. */
+function entriesOf(list: HTMLElement): HTMLElement[] {
+  return Array.from(list.children) as HTMLElement[]
+}
+
 async function resolveText(text: string) {
   const user = userEvent.setup()
   render(<DecklistPage />)
@@ -57,6 +62,138 @@ async function resolveText(text: string) {
 }
 
 describe('DecklistPage', () => {
+  it('asks for a decklist without dashes in the instructions', () => {
+    render(<DecklistPage />)
+    expect(
+      screen.getByText(/Paste a decklist, one card per line, such as/),
+    ).toBeInTheDocument()
+  })
+
+  it('lays the preview out as a ledger under a summary sentence', async () => {
+    parseMock.mockResolvedValue(
+      parsed(
+        [
+          {
+            line_number: 1,
+            name: 'Sol Ring',
+            quantity: 1,
+            set_code: null,
+            collector_number: null,
+          },
+          {
+            line_number: 2,
+            name: 'Lightning Bolt',
+            quantity: 4,
+            set_code: null,
+            collector_number: null,
+          },
+          {
+            line_number: 3,
+            name: 'Black Lotus',
+            quantity: 1,
+            set_code: null,
+            collector_number: null,
+          },
+        ],
+        [{ line_number: 4, text: '4', reason: 'quantity with no card name' }],
+      ),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Sol Ring', 1),
+          status: 'matched',
+          match: printing({
+            scryfall_id: 'sol-1',
+            name: 'Sol Ring',
+            set_name: 'Commander 2021',
+            collector_number: '263',
+          }),
+          candidates: [],
+        },
+        {
+          input: inputOf('Lightning Bolt', 4),
+          status: 'ambiguous',
+          match: null,
+          candidates: [
+            printing({ scryfall_id: 'lea-bolt' }),
+            printing({
+              scryfall_id: 'm10-bolt',
+              set_name: 'Magic 2010',
+              set_code: 'm10',
+              collector_number: '146',
+            }),
+          ],
+        },
+        {
+          input: inputOf('Black Lotus', 1),
+          status: 'unmatched',
+          match: null,
+          candidates: [],
+        },
+      ],
+      summary: { matched: 1, ambiguous: 1, unmatched: 1 },
+    })
+
+    const user = await resolveText('Sol Ring\n4 Lightning Bolt\nBlack Lotus')
+    await screen.findByRole('heading', { name: 'Review the Decklist' })
+
+    expect(
+      screen.getByText(
+        'One ready, one to choose, one unmatched, one unreadable.',
+      ),
+    ).toHaveClass('import__summary')
+    // The batch choices sit in a plain fieldset, not a panel.
+    const controls = screen.getByRole('group', {
+      name: 'Applied to every inscribed card',
+    })
+    expect(controls).toHaveClass('import__controls')
+    expect(controls).not.toHaveClass('panel')
+
+    const list = screen.getByRole('list', { name: 'Lines' })
+    const [sol, bolt, lotus] = entriesOf(list)
+    expect(entriesOf(list)).toHaveLength(3)
+
+    // The status word opens the line, then the name as typed.
+    const solName = sol.querySelector('.ledger__name') as HTMLElement
+    expect(solName.firstElementChild).toHaveTextContent('ready')
+    expect(solName.firstElementChild).toHaveClass('tag--success')
+    expect(solName).toHaveTextContent('ready Sol Ring')
+    expect(sol).toHaveTextContent('Commander 2021, no. 263.')
+    expect(sol).toHaveTextContent('1 copy')
+
+    const boltName = bolt.querySelector('.ledger__name') as HTMLElement
+    expect(boltName.firstElementChild).toHaveTextContent('choose printing')
+    expect(boltName.firstElementChild).toHaveClass('tag--warning')
+    expect(bolt).toHaveTextContent('Several printings match; choose one below.')
+    expect(bolt).toHaveTextContent('4 copies')
+    // The picker rides on the entry's own line beneath it.
+    expect(
+      within(bolt).getByRole('list', { name: 'Printings of Lightning Bolt' }),
+    ).toBeInTheDocument()
+
+    const lotusName = lotus.querySelector('.ledger__name') as HTMLElement
+    expect(lotusName.firstElementChild).toHaveTextContent('unmatched')
+    expect(lotusName.firstElementChild).toHaveClass('tag--danger')
+    expect(lotus).toHaveTextContent(
+      'No printing of “Black Lotus” resides in the catalog.',
+    )
+
+    // Once chosen, the picker goes and the printing line carries a Change.
+    await user.click(within(bolt).getByRole('button', { name: /Magic 2010/ }))
+    expect(boltName.firstElementChild).toHaveTextContent('ready')
+    expect(bolt).toHaveTextContent('Magic 2010, no. 146.')
+    expect(
+      within(bolt).getByRole('button', { name: 'Change' }),
+    ).toBeInTheDocument()
+    expect(within(bolt).queryByRole('list')).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Two ready, none to choose, one unmatched, one unreadable.',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('parses, resolves, disambiguates, and bulk-inscribes', async () => {
     parseMock.mockResolvedValue(
       parsed([
@@ -137,7 +274,7 @@ describe('DecklistPage', () => {
     // Some lines matched, so the empty state stays away.
     expect(screen.queryByText('Nothing matched')).not.toBeInTheDocument()
 
-    // One match is ready; the ambiguous Bolt is not yet — so 1 ready.
+    // One match is ready and the ambiguous Bolt is not yet, so 1 ready.
     const inscribeButton = screen.getByRole('button', {
       name: /Inscribe 1 folio/,
     })
@@ -306,12 +443,14 @@ describe('DecklistPage', () => {
     )
     await resolveText('4')
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /No readable card lines/,
+      'No readable card lines were found. See the problems below.',
     )
     const problems = screen.getByRole('complementary', {
       name: 'Unreadable lines',
     })
-    expect(within(problems).getByText(/Line 1:/)).toBeInTheDocument()
+    expect(
+      within(problems).getByText(/Line 1, quantity with no card name/),
+    ).toBeInTheDocument()
     expect(resolveMock).not.toHaveBeenCalled()
   })
 

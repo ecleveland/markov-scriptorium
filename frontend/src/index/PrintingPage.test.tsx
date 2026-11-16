@@ -77,7 +77,7 @@ describe('PrintingPage', () => {
       await screen.findByRole('heading', { level: 1, name: 'Lightning Bolt' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('Limited Edition Alpha · LEA #161 · common'),
+      screen.getByText('Limited Edition Alpha, no. 161, common.'),
     ).toBeInTheDocument()
     // The plate comes first; each lot row below carries its own thumb.
     expect(
@@ -94,11 +94,11 @@ describe('PrintingPage', () => {
 
     const nonfoil = await screen.findByText('nonfoil', { selector: 'dt' })
     expect(nonfoil.nextElementSibling).toHaveTextContent(
-      '2 owned · 1 in Tomes · 1 free',
+      '2 owned, 1 in Tomes, 1 free',
     )
     expect(
       screen.getByText('foil', { selector: 'dt' }).nextElementSibling,
-    ).toHaveTextContent('1 owned · 0 in Tomes · 1 free')
+    ).toHaveTextContent('1 owned, 0 in Tomes, 1 free')
   })
 
   it('lists every lot as a ledger entry that opens the lot', async () => {

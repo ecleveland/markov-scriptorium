@@ -34,3 +34,16 @@ export function groupByBoard<T extends { board: Board; quantity: number }>(
     }
   }).filter((group) => group.rows.length > 0)
 }
+
+/**
+ * Where each group's running numbers start, so the ledger numbering carries
+ * on from one board to the next. Counts rows, not copies.
+ */
+export function boardOffsets(groups: readonly BoardGroup<unknown>[]): number[] {
+  let start = 0
+  return groups.map((group) => {
+    const offset = start
+    start += group.rows.length
+    return offset
+  })
+}

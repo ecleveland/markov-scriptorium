@@ -63,7 +63,7 @@ function lot(overrides: Partial<InventoryLot>): InventoryLot {
 afterEach(() => vi.clearAllMocks())
 
 describe('InscribePage', () => {
-  it('walks search → printing → inscribe and records the session entry', async () => {
+  it('walks search, printing and inscribe, and records the session entry', async () => {
     const user = userEvent.setup()
     autocompleteMock.mockResolvedValue(['Lightning Bolt'])
     searchMock.mockResolvedValue({
@@ -127,11 +127,23 @@ describe('InscribePage', () => {
     const session = screen.getByRole('complementary', {
       name: 'Inscribed this session',
     })
-    expect(within(session).getByText(/2× Lightning Bolt/)).toBeInTheDocument()
+    expect(
+      within(session).getByRole('heading', {
+        level: 2,
+        name: 'Inscribed this session',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(session).getByText(
+        'Two copies of Lightning Bolt, LEA no. 161, foil.',
+      ),
+    ).toBeInTheDocument()
     // The seal presses above the search box, naming the folio just inscribed.
     const sealed = screen.getByRole('status')
     expect(sealed).toHaveTextContent('Sealed into the catalog')
-    expect(sealed).toHaveTextContent('2× Lightning Bolt (LEA #161) · foil')
+    expect(sealed).toHaveTextContent(
+      'Two copies of Lightning Bolt, LEA no. 161, foil.',
+    )
     // The seal sits inside the region rather than being it.
     expect(sealed).toBe(region)
     expect(sealed).not.toHaveClass('sealed')
@@ -236,7 +248,7 @@ describe('InscribePage', () => {
     ).toBeInTheDocument()
     // Returned to the picker, not all the way to the search box.
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument()
-    // The retained name is what was (re)searched — never some other card.
+    // The retained name is what was searched again, never some other card.
     expect(searchMock.mock.calls.every(([n]) => n === 'Lightning Bolt')).toBe(
       true,
     )

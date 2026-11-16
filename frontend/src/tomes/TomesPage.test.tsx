@@ -45,7 +45,7 @@ describe('TomesPage', () => {
     )
   })
 
-  it('lists each Tome with its format, status, claim, and copy count', async () => {
+  it('shelves each Tome as a spine with its format, count, and status', async () => {
     listMock.mockResolvedValue([
       deck({
         id: 2,
@@ -65,22 +65,61 @@ describe('TomesPage', () => {
     ])
     renderPage()
 
-    const edgar = (
-      await screen.findByRole('link', { name: 'Edgar Markov' })
-    ).closest('li')!
-    expect(edgar).toHaveTextContent('commander')
-    expect(within(edgar).getByText('Active')).toHaveClass('tag')
-    expect(edgar).toHaveTextContent('100 cards')
-    expect(edgar).toHaveTextContent('Claims its cards')
-    expect(screen.getByRole('link', { name: 'Edgar Markov' })).toHaveAttribute(
-      'href',
-      '/tomes/2',
-    )
+    const shelf = await screen.findByRole('list', { name: 'Tomes' })
+    expect(shelf).toHaveClass('shelf')
 
-    const brew = screen.getByRole('link', { name: 'Burn brew' }).closest('li')!
-    expect(within(brew).getByText('Playtest')).toBeInTheDocument()
-    expect(brew).toHaveTextContent('1 card')
-    expect(brew).toHaveTextContent('References only')
+    const edgar = within(shelf).getByRole('link', { name: /^Edgar Markov/ })
+    expect(edgar).toHaveClass('spine')
+    expect(edgar).toHaveAttribute('href', '/tomes/2')
+    expect(edgar.querySelector('.spine__name')).toHaveTextContent(
+      'Edgar Markov',
+    )
+    expect(edgar.querySelector('.spine__meta')).toHaveTextContent(
+      'commander, 100 cards',
+    )
+    expect(edgar.querySelector('.spine__status')).toHaveTextContent(/^Active$/)
+    expect(edgar.querySelector('.tag')).toBeNull()
+
+    const brew = within(shelf).getByRole('link', { name: /^Burn brew/ })
+    expect(brew.querySelector('.spine__meta')).toHaveTextContent(
+      'no format, one card',
+    )
+    expect(brew.querySelector('.spine__status')).toHaveTextContent(
+      'Playtest, references only',
+    )
+  })
+
+  it('colours the edge of each spine by status and format', async () => {
+    listMock.mockResolvedValue([
+      deck({ id: 1, name: 'Edgar Markov', status: 'active' }),
+      deck({ id: 2, name: 'Vintage cube', format: 'cube' }),
+      deck({ id: 3, name: 'Burn brew', format: 'modern' }),
+    ])
+    renderPage()
+
+    expect(
+      await screen.findByRole('link', { name: /^Edgar Markov/ }),
+    ).toHaveAttribute('data-edge', 'gold')
+    expect(screen.getByRole('link', { name: /^Vintage cube/ })).toHaveAttribute(
+      'data-edge',
+      'moss',
+    )
+    expect(screen.getByRole('link', { name: /^Burn brew/ })).toHaveAttribute(
+      'data-edge',
+      'oxblood',
+    )
+  })
+
+  it('binds a new Tome under a rubricated heading in a ruled section', async () => {
+    listMock.mockResolvedValue([])
+    renderPage()
+
+    const form = await screen.findByRole('region', { name: 'Bind a new Tome' })
+    expect(form).toHaveClass('tome-create')
+    expect(form).not.toHaveClass('panel')
+    expect(
+      within(form).getByRole('heading', { level: 2, name: 'Bind a new Tome' }),
+    ).toHaveClass('opening')
   })
 
   it('says so when no Tome is bound yet', async () => {
@@ -167,7 +206,7 @@ describe('TomesPage', () => {
       .mockResolvedValueOnce([deck({ id: 2, name: 'Edgar Markov' })])
       .mockRejectedValue(new ApiError('The scriptorium is closed.', 503))
     renderPage()
-    await screen.findByRole('link', { name: 'Edgar Markov' })
+    await screen.findByRole('link', { name: /^Edgar Markov/ })
 
     // Regaining focus refetches the stale list, and this time it fails.
     act(() => {
@@ -179,7 +218,7 @@ describe('TomesPage', () => {
       'The Tomes could not be refreshed. The scriptorium is closed.',
     )
     expect(
-      screen.getByRole('link', { name: 'Edgar Markov' }),
+      screen.getByRole('link', { name: /^Edgar Markov/ }),
     ).toBeInTheDocument()
     focusManager.setFocused(undefined)
   })

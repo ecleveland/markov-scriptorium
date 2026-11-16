@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { autocompleteNames } from '../api'
-import { Field, Input, Notice } from '../components'
+import { Input, Notice } from '../components'
 import { useArrowKeyList } from '../hooks/useArrowKeyList'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
@@ -61,16 +61,22 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
 
   return (
     <div className="card-search">
-      <Field label="Card name">
+      {/* The lead and the box read as one sentence, as on the Index. The box
+          keeps the short name "Card name", which the Tomes page and the e2e
+          specs find it by. */}
+      <label className="seek">
+        <span className="seek__lead">Seek a card by name,</span>
         <Input
           ref={inputRef}
-          type="text"
+          type="search"
+          className="seek__input"
+          aria-label="Card name"
           autoComplete="off"
-          placeholder="Search the catalog…"
+          placeholder="or part of one"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-      </Field>
+      </label>
       {showResults && failed && (
         <Notice tone="danger" role="alert">
           The catalog could not be reached.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CardPrinting } from '../api'
-import { Notice, Panel } from '../components'
+import { Notice } from '../components'
 import { CardSearch } from '../inscribe/CardSearch'
 import { PrintingPicker } from '../inscribe/PrintingPicker'
 import { SlotForm } from './SlotForm'
@@ -26,8 +26,10 @@ export function AddCard({ deckId }: { deckId: number }) {
   }
 
   return (
-    <Panel as="section" className="tome-add" aria-labelledby="tome-add-title">
-      <h2 id="tome-add-title">Add a card</h2>
+    <section className="tome-add" aria-labelledby="tome-add-title">
+      <h2 className="opening" id="tome-add-title">
+        Add a card
+      </h2>
 
       {/* Mounted on every step, so the confirmation is announced. */}
       <div role="status">
@@ -57,6 +59,6 @@ export function AddCard({ deckId }: { deckId: number }) {
           onChangePrinting={() => setPrinting(null)}
         />
       )}
-    </Panel>
+    </section>
   )
 }

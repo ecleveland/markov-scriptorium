@@ -129,11 +129,11 @@ function renderEditor(
 }
 
 /** The card names inside one board group, in the order shown. */
-function namesIn(heading: string): string[] {
-  const group = screen.getByRole('region', { name: heading })
+function namesIn(board: string): string[] {
+  const group = screen.getByRole('region', { name: board })
   return within(group)
     .getAllByRole('listitem')
-    .map((item) => item.querySelector('.tome-slot__name')!.textContent!)
+    .map((item) => item.querySelector('.ledger__name')!.textContent!)
 }
 
 afterEach(() => vi.clearAllMocks())
@@ -146,13 +146,43 @@ describe('TomeEditorPage', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Edgar Markov' }),
     ).toBeInTheDocument()
-    const groups = screen
-      .getAllByRole('heading', { level: 3 })
-      .map((h) => h.textContent)
-    expect(groups).toEqual(['Commander · 1', 'Main · 36', 'Sideboard · 3'])
+    const headings = screen.getAllByRole('heading', { level: 3 })
+    expect(headings.map((h) => h.textContent)).toEqual([
+      'Commander',
+      'Main',
+      'Sideboard',
+    ])
+    for (const heading of headings) expect(heading).toHaveClass('opening')
+
+    const main = screen.getByRole('region', { name: 'Main' })
+    const count = main.querySelector('.tome-board__count')!
+    expect(count.querySelector('.ledger__figure')).toHaveTextContent(/^36$/)
+    expect(count).toHaveTextContent('36 cards')
+    expect(
+      screen
+        .getByRole('region', { name: 'Commander' })
+        .querySelector('.tome-board__count'),
+    ).toHaveTextContent('1 card')
     expect(
       screen.getByRole('link', { name: 'Owned and needed' }),
     ).toHaveAttribute('href', '/tomes/4/breakdown')
+  })
+
+  it('lists each board as a ledger, numbered on across the whole Tome', async () => {
+    getMock.mockResolvedValue(tome([duress, bolt, edgar, swamp, bloodghast]))
+    renderEditor()
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByRole('list', { name: 'Main cards' }).tagName).toBe('OL')
+    const numbers = [...document.querySelectorAll('.ledger__number')].map(
+      (n) => n.textContent,
+    )
+    expect(numbers).toEqual(['1', '2', '3', '4', '5'])
+    expect(
+      within(screen.getByRole('region', { name: 'Sideboard' }))
+        .getByRole('listitem')
+        .querySelector('.ledger__number'),
+    ).toHaveTextContent('5')
   })
 
   it('links back to the Tomes without an arrow glyph', async () => {
@@ -196,11 +226,14 @@ describe('TomeEditorPage', () => {
     renderEditor()
 
     await screen.findByRole('heading', { level: 1 })
-    expect(namesIn('Main · 36')).toEqual([
-      'Bloodghast',
-      'Lightning Bolt',
-      'Swamp',
-    ])
+    expect(namesIn('Main')).toEqual(['Bloodghast', 'Lightning Bolt', 'Swamp'])
+    expect(screen.getByRole('button', { name: 'by type' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(
+      screen.getByRole('button', { name: 'by mana value' }),
+    ).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('sorts by mana value when the URL asks', async () => {
@@ -208,12 +241,10 @@ describe('TomeEditorPage', () => {
     renderEditor('/tomes/4?sort=cmc')
 
     await screen.findByRole('heading', { level: 1 })
-    expect(namesIn('Main · 36')).toEqual([
-      'Swamp',
-      'Lightning Bolt',
-      'Bloodghast',
-    ])
-    expect(screen.getByLabelText('Sort by')).toHaveValue('cmc')
+    expect(namesIn('Main')).toEqual(['Swamp', 'Lightning Bolt', 'Bloodghast'])
+    expect(
+      screen.getByRole('button', { name: 'by mana value' }),
+    ).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('remembers a sort change in the URL', async () => {
@@ -221,34 +252,80 @@ describe('TomeEditorPage', () => {
     getMock.mockResolvedValue(tome([bolt, swamp]))
     renderEditor()
 
-    await user.selectOptions(await screen.findByLabelText('Sort by'), 'cmc')
+    const byManaValue = await screen.findByRole('button', {
+      name: 'by mana value',
+    })
+    expect(byManaValue).toHaveClass('tome-cards__toggle')
+    await user.click(byManaValue)
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/tomes/4?sort=cmc',
     )
-    expect(namesIn('Main · 34')).toEqual(['Swamp', 'Lightning Bolt'])
+    expect(namesIn('Main')).toEqual(['Swamp', 'Lightning Bolt'])
 
-    await user.selectOptions(screen.getByLabelText('Sort by'), 'type')
+    await user.click(screen.getByRole('button', { name: 'by type' }))
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/tomes\/4$/)
+    expect(namesIn('Main')).toEqual(['Lightning Bolt', 'Swamp'])
   })
 
-  it('shows the printing and finish on each row, and no stepper on the commander', async () => {
+  it('shows the printing on each row, and no stepper on the commander', async () => {
     getMock.mockResolvedValue(tome([edgar, bolt]))
     renderEditor()
 
     const row = (await screen.findByText('Lightning Bolt')).closest('li')!
-    expect(row).toHaveTextContent('Limited Edition Alpha (LEA) · #161')
-    expect(row).toHaveTextContent('nonfoil')
+    expect(row.querySelector('.ledger__where')).toHaveTextContent(
+      /^Limited Edition Alpha, no\. 161\.$/,
+    )
+    // Nonfoil is the plain case and says nothing.
+    expect(row).not.toHaveTextContent('foil')
     expect(
       within(row).getByRole('button', {
         name: 'Increase quantity of Lightning Bolt',
       }),
     ).toBeInTheDocument()
 
+    const commander = screen
+      .getByText('Edgar Markov', {
+        selector: '.ledger__name',
+      })
+      .closest('li')!
     expect(
-      screen.queryByRole('button', {
+      within(commander).queryByRole('button', {
         name: 'Increase quantity of Edgar Markov',
       }),
     ).not.toBeInTheDocument()
+    expect(commander.querySelector('.ledger__count')).toHaveTextContent(
+      '1 copy',
+    )
+    expect(
+      commander.querySelector('.ledger__count .ledger__figure'),
+    ).toHaveTextContent(/^1$/)
+  })
+
+  it('names the finish of a foil slot after the card', async () => {
+    getMock.mockResolvedValue(
+      tome([
+        { ...bolt, finish: 'foil' },
+        { ...bloodghast, finish: 'etched' },
+      ]),
+    )
+    renderEditor()
+
+    const row = (await screen.findByText('Lightning Bolt')).closest('li')!
+    const name = row.querySelector('.ledger__name')!
+    expect(name).toHaveTextContent(/^Lightning Bolt foil$/)
+    expect(within(row).getByText('foil')).toHaveClass('finish-word')
+    expect(screen.getByText('etched')).toHaveClass('finish-word')
+  })
+
+  it('keeps the Remove button under the stepper on each row', async () => {
+    getMock.mockResolvedValue(tome([bolt]))
+    renderEditor()
+
+    const remove = await screen.findByRole('button', {
+      name: 'Remove Lightning Bolt',
+    })
+    expect(remove).toHaveTextContent('Remove')
+    expect(remove.closest('.ledger__note')).not.toBeNull()
   })
 
   it('invites a first card when the Tome is empty', async () => {
@@ -575,6 +652,34 @@ describe('TomeEditorPage, adding a card', () => {
     expect(await screen.findByLabelText('Card name')).toBeInTheDocument()
     expect(
       screen.getByText('Added 3× Lightning Bolt to Sideboard.'),
+    ).toBeInTheDocument()
+  })
+
+  it('sets the add flow in a ruled section and names the chosen printing in prose', async () => {
+    const user = userEvent.setup()
+    getMock.mockResolvedValue(tome([]))
+    renderEditor()
+
+    const section = await screen.findByRole('region', { name: 'Add a card' })
+    expect(section).toHaveClass('tome-add')
+    expect(section).not.toHaveClass('panel')
+    expect(
+      within(section).getByRole('heading', { level: 2, name: 'Add a card' }),
+    ).toHaveClass('opening')
+
+    await pickBolt(user)
+    expect(
+      within(section).getByRole('heading', {
+        level: 2,
+        name: 'Lightning Bolt',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(section).getByText('Limited Edition Alpha, no. 161.'),
+    ).toHaveClass('slot-form__printing')
+    expect(section.querySelector('.slot-form__fields')).not.toHaveClass('panel')
+    expect(
+      within(section).getByRole('button', { name: 'Change printing' }),
     ).toBeInTheDocument()
   })
 

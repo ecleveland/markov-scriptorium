@@ -57,7 +57,7 @@ describe('OwnershipSummary', () => {
       ),
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/4× Double Masters 2022 \(2X2 #117\)/),
+      screen.getByText(/4 in Double Masters 2022, no\. 117/),
     ).toBeInTheDocument()
   })
 
@@ -98,9 +98,9 @@ describe('OwnershipSummary', () => {
 
     const items = await screen.findAllByRole('listitem')
     expect(items[0]).toHaveTextContent(
-      '3× Limited Edition Alpha (LEA #161) · 2 in Tomes',
+      '3 in Limited Edition Alpha, no. 161, 2 in Tomes',
     )
-    expect(items[1]).toHaveTextContent('4× Double Masters 2022 (2X2 #117)')
+    expect(items[1]).toHaveTextContent('4 in Double Masters 2022, no. 117')
     expect(items[1]).not.toHaveTextContent('in Tomes')
   })
 

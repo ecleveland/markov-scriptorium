@@ -9,6 +9,6 @@ describe('describePrinting', () => {
         set_code: 'lea',
         collector_number: '161',
       }),
-    ).toBe('Limited Edition Alpha (LEA) · #161')
+    ).toBe('Limited Edition Alpha (LEA), no. 161')
   })
 })

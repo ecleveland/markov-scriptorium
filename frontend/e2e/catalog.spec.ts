@@ -95,7 +95,7 @@ test('opens a folio, reads its ownership across printings, and amends it', async
   await expect(ownership).toContainText(
     'You own 6 copies of Lightning Bolt across 2 printings.',
   )
-  await expect(ownership).toContainText('4× Double Masters 2022')
+  await expect(ownership).toContainText('4 in Double Masters 2022, no. 117')
 
   await page.getByLabel('Condition').selectOption('LP')
   await page.getByLabel('Volume').fill('Long box')

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ownedForPrinting } from '../api'
 import { Consulting, Notice } from '../components'
+import { printingLine } from './prose'
 import { inventoryKeys } from './queryKeys'
 
 function plural(count: number, one: string, many: string): string {
@@ -55,9 +56,8 @@ export function OwnershipSummary({ scryfallId }: { scryfallId: string }) {
                 printing.scryfall_id === scryfallId ? 'true' : undefined
               }
             >
-              {printing.quantity}× {printing.set_name} (
-              {printing.set_code.toUpperCase()} #{printing.collector_number})
-              {printing.reserved > 0 && ` · ${printing.reserved} in Tomes`}
+              {printing.quantity} in {printingLine(printing)}
+              {printing.reserved > 0 && `, ${printing.reserved} in Tomes`}
             </li>
           ))}
         </ul>

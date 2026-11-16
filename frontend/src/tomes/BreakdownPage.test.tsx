@@ -91,26 +91,79 @@ describe('BreakdownPage', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Edgar Markov' }),
     ).toBeInTheDocument()
-    expect(
-      await screen.findByText('5 cards, 2 in hand, 3 needed'),
-    ).toBeInTheDocument()
+    const tally = await screen.findByText(
+      'Five cards, two in hand, three needed.',
+    )
+    expect(tally).toHaveClass('tome__tally')
     expect(
       screen.getByRole('link', { name: 'Back to the Tome' }),
     ).toHaveAttribute('href', '/tomes/4')
   })
 
-  it('tags each line as in hand or needed, grouped by board', async () => {
+  it('tallies each line as in hand or needed, grouped by board', async () => {
     deckMock.mockResolvedValue({ ...deck({ id: 4 }), cards: [] })
     breakdownMock.mockResolvedValue(result)
     renderPage()
 
-    const commander = await screen.findByRole('region', {
-      name: 'Commander · 1',
+    const commander = await screen.findByRole('region', { name: 'Commander' })
+    expect(within(commander).getByRole('heading', { level: 3 })).toHaveClass(
+      'opening',
+    )
+    expect(
+      commander.querySelector('.tome-board__count .ledger__figure'),
+    ).toHaveTextContent(/^1$/)
+    expect(commander.querySelector('.ledger__note')).toHaveTextContent(
+      /^in hand$/,
+    )
+    expect(
+      commander.querySelector('.ledger__count .ledger__figure'),
+    ).toHaveTextContent(/^1$/)
+    expect(commander.querySelector('.tag')).toBeNull()
+
+    const main = screen.getByRole('region', { name: 'Main' })
+    expect(
+      main.querySelector('.tome-board__count .ledger__figure'),
+    ).toHaveTextContent(/^4$/)
+    expect(main.querySelector('.ledger__name')).toHaveTextContent(
+      '4× Lightning Bolt',
+    )
+    expect(main.querySelector('.ledger__where')).toHaveTextContent(
+      /^Limited Edition Alpha, no\. 161\.$/,
+    )
+    // The figure is what is in hand; the note says so once, then what is needed.
+    expect(main.querySelector('.ledger__count')).toHaveTextContent(
+      /^1in hand, 3 needed$/,
+    )
+    expect(main.querySelector('.ledger__note')).toHaveTextContent(
+      /^in hand, 3 needed$/,
+    )
+    expect(main.querySelector('.ledger__count .visually-hidden')).toBeNull()
+  })
+
+  it('numbers the lines on across the boards', async () => {
+    deckMock.mockResolvedValue({ ...deck({ id: 4 }), cards: [] })
+    breakdownMock.mockResolvedValue(result)
+    renderPage()
+
+    await screen.findByRole('list', { name: 'Main tally' })
+    expect(screen.getByRole('list', { name: 'Commander tally' }).tagName).toBe(
+      'OL',
+    )
+    const numbers = [...document.querySelectorAll('.ledger__number')].map(
+      (n) => n.textContent,
+    )
+    expect(numbers).toEqual(['1', '2'])
+  })
+
+  it('names the finish of a foil line after the card', async () => {
+    deckMock.mockResolvedValue({ ...deck({ id: 4 }), cards: [] })
+    breakdownMock.mockResolvedValue({
+      ...result,
+      lines: [{ ...ring, finish: 'foil' }],
     })
-    expect(within(commander).getByText('in hand')).toHaveClass('tag--success')
-    const main = screen.getByRole('region', { name: 'Main · 4' })
-    expect(within(main).getByText('3 needed')).toHaveClass('tag--warning')
-    expect(main).toHaveTextContent('Limited Edition Alpha (LEA) · #161')
+    renderPage()
+
+    expect(await screen.findByText('foil')).toHaveClass('finish-word')
   })
 
   it('points a needed line at the free copies in other printings', async () => {
@@ -118,12 +171,46 @@ describe('BreakdownPage', () => {
     breakdownMock.mockResolvedValue(result)
     renderPage()
 
-    const main = await screen.findByRole('region', { name: 'Main · 4' })
+    const main = await screen.findByRole('region', { name: 'Main' })
     const hint = within(main).getByRole('note')
-    expect(hint).toHaveTextContent('You own 3 free in other printings')
-    expect(hint).toHaveTextContent('Double Masters 2022 (2X2) · #117')
+    expect(hint).toHaveTextContent(
+      /^You own three free in other printings: three in Double Masters 2022, no\. 117\.$/,
+    )
+    expect(hint.closest('.ledger__aside')).not.toBeNull()
     // A printing with nothing free is no help, so it is not offered.
     expect(hint).not.toHaveTextContent('Limited Edition Alpha')
+  })
+
+  it('lists several free printings as one sentence', async () => {
+    deckMock.mockResolvedValue({ ...deck({ id: 4 }), cards: [] })
+    const [, doubleMasters] = bolt.swap_hint!.printings
+    const free = (n: number, set_name: string, collector_number: string) => ({
+      ...doubleMasters,
+      scryfall_id: `bolt-${collector_number}`,
+      set_name,
+      collector_number,
+      available: n,
+    })
+    breakdownMock.mockResolvedValue({
+      ...result,
+      lines: [
+        {
+          ...bolt,
+          swap_hint: across({
+            printings: [
+              free(2, 'Double Masters 2022', '117'),
+              free(1, 'Modern Horizons 2', '3'),
+              free(1, 'Magic 2010', '146'),
+            ],
+          }),
+        },
+      ],
+    })
+    renderPage()
+
+    expect(await screen.findByRole('note')).toHaveTextContent(
+      'You own four free in other printings: two in Double Masters 2022, no. 117, one in Modern Horizons 2, no. 3 and one in Magic 2010, no. 146.',
+    )
   })
 
   it("does not offer the line's own printing as another one", async () => {
@@ -143,7 +230,7 @@ describe('BreakdownPage', () => {
     renderPage()
 
     const hint = await screen.findByRole('note')
-    expect(hint).toHaveTextContent('You own 3 free in other printings')
+    expect(hint).toHaveTextContent('You own three free in other printings')
     expect(hint).not.toHaveTextContent('Limited Edition Alpha')
   })
 
@@ -155,7 +242,7 @@ describe('BreakdownPage', () => {
     })
     renderPage()
 
-    await screen.findByText('3 needed')
+    await screen.findByText('in hand, 3 needed', { selector: '.ledger__note' })
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
@@ -184,7 +271,7 @@ describe('BreakdownPage', () => {
       .mockResolvedValueOnce(result)
       .mockRejectedValue(new ApiError('The scriptorium is closed.', 503))
     renderPage()
-    await screen.findByText('5 cards, 2 in hand, 3 needed')
+    await screen.findByText('Five cards, two in hand, three needed.')
 
     act(() => {
       focusManager.setFocused(false)
@@ -194,7 +281,9 @@ describe('BreakdownPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The breakdown could not be refreshed. The scriptorium is closed.',
     )
-    expect(screen.getByText('5 cards, 2 in hand, 3 needed')).toBeInTheDocument()
+    expect(
+      screen.getByText('Five cards, two in hand, three needed.'),
+    ).toBeInTheDocument()
     focusManager.setFocused(undefined)
   })
 })

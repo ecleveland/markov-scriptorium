@@ -12,7 +12,7 @@ describe('PrintingChip', () => {
   it('describes the printing and keeps an unlabelled slot when there is no art', () => {
     const { container } = render(<PrintingChip printing={bolt} />)
     expect(
-      screen.getByText('Limited Edition Alpha (LEA) · #161'),
+      screen.getByText('Limited Edition Alpha (LEA), no. 161'),
     ).toBeInTheDocument()
     expect(container.querySelector('img')).toBeNull()
     const slot = container.querySelector('.printing-chip__thumb--empty')
@@ -66,7 +66,7 @@ describe('PrintingChip', () => {
     const printing: PrintingSummary = owned
     render(<PrintingChip printing={printing} />)
     expect(
-      screen.getByText('Limited Edition Alpha (LEA) · #161'),
+      screen.getByText('Limited Edition Alpha (LEA), no. 161'),
     ).toBeInTheDocument()
   })
 

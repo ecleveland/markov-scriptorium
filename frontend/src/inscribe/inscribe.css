@@ -1,38 +1,27 @@
 /*
- * Inscribe pages: layout only. Buttons, fields, notices, listboxes, and the
- * panel come from the component layer (styles/components.css, ADR 0017); what
- * is left here is where those pieces sit on the page.
+ * Inscribe pages: layout only. Buttons, fields, notices, listboxes, the seek
+ * field, and the plate come from the component layer (styles/components.css,
+ * ADR 0017); what is left here is where those pieces sit on the page.
  */
 
-/* Card art beside the acquisition fields, stacking on a narrow window. */
-.inscribe-form__body {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-5);
-  margin-bottom: var(--space-4);
-}
-
-.inscribe-form__preview {
-  display: block;
-  flex-shrink: 0;
-  /* The 240px plate shrinks to fit a phone instead of widening the page. */
-  max-width: 100%;
-  height: auto;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elevation-2);
-}
-
+/* The acquisition fields among the plate's lines: two columns where they
+   fit, one on a phone. */
 .inscribe-form__fields {
-  flex: 1;
   display: grid;
-  /* Two columns where they fit, one on a phone. */
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: var(--space-4);
+  margin-top: var(--space-3);
 }
 
+/* The session log is a section under a hairline rather than a panel. */
 .inscribe__session {
   margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.inscribe__session .opening {
+  margin-top: 0;
 }
 
 .inscribe__session ul {

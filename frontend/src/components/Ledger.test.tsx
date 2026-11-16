@@ -99,6 +99,40 @@ describe('LedgerEntry', () => {
     expect(document.querySelector('.ledger__note')).toBeNull()
   })
 
+  it('sets an aside on a full-width line after the count', () => {
+    render(
+      <Ledger aria-label="The catalog">
+        <LedgerEntry
+          number={1}
+          thumb={null}
+          name="Sol Ring"
+          where="Unshelved"
+          count={<LedgerFigure>1</LedgerFigure>}
+          aside={<button type="button">Choose a printing</button>}
+        />
+      </Ledger>,
+    )
+    const item = screen.getByRole('listitem')
+    expect([...item.children].map((child) => child.className)).toEqual([
+      'ledger__number',
+      'ledger__thumb',
+      'ledger__body',
+      'ledger__count',
+      'ledger__aside',
+    ])
+    expect(
+      within(item.querySelector('.ledger__aside') as HTMLElement).getByRole(
+        'button',
+        { name: 'Choose a printing' },
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('leaves the aside out when there is none', () => {
+    render(<Ledger aria-label="The catalog">{entry(1)}</Ledger>)
+    expect(document.querySelector('.ledger__aside')).toBeNull()
+  })
+
   it('merges a caller className onto the entry', () => {
     render(
       <Ledger aria-label="The catalog">

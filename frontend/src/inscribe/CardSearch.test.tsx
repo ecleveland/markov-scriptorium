@@ -15,6 +15,14 @@ const autocompleteMock = vi.mocked(autocompleteNames)
 afterEach(() => vi.clearAllMocks())
 
 describe('CardSearch', () => {
+  it('reads as one sentence with a search box named Card name', () => {
+    render(<CardSearch onSelect={vi.fn()} />)
+    const box = screen.getByRole('searchbox', { name: 'Card name' })
+    expect(box).toHaveAttribute('placeholder', 'or part of one')
+    expect(box).toHaveClass('seek__input')
+    expect(box.closest('label')).toHaveTextContent('Seek a card by name,')
+  })
+
   it('queries autocomplete as the user types and selects a suggestion', async () => {
     const user = userEvent.setup()
     autocompleteMock.mockResolvedValue(['Lightning Bolt', 'Lightning Helix'])

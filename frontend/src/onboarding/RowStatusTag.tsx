@@ -7,10 +7,11 @@ interface Props {
 }
 
 /**
- * Where an import preview row stands, as a pill. Ready once it carries a
- * printing, which is what both the decklist and the CSV flow inscribe on. Page
- * local rather than part of the component layer: the ready / choose printing /
- * unmatched vocabulary belongs to the importers.
+ * Where an import preview row stands, as a small-caps word at the start of
+ * its ledger line. Ready once it carries a printing, which is what both the
+ * decklist and the CSV flow inscribe on. Page local rather than part of the
+ * component layer, because the ready, choose printing and unmatched
+ * vocabulary belongs to the importers.
  */
 export function RowStatusTag({ status, chosen }: Props) {
   if (status === 'unmatched') return <Tag tone="danger">unmatched</Tag>
