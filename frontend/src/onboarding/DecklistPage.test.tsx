@@ -194,6 +194,70 @@ describe('DecklistPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('sets a thumb only on lines with a chosen printing', async () => {
+    const line = (line_number: number, name: string) => ({
+      line_number,
+      name,
+      quantity: 1,
+      set_code: null,
+      collector_number: null,
+    })
+    parseMock.mockResolvedValue(
+      parsed([
+        line(1, 'Sol Ring'),
+        line(2, 'Black Lotus'),
+        line(3, 'Lightning Bolt'),
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Sol Ring', 1),
+          status: 'matched',
+          match: printing({ scryfall_id: 'sol-1', name: 'Sol Ring' }),
+          candidates: [],
+        },
+        {
+          input: inputOf('Black Lotus', 1),
+          status: 'unmatched',
+          match: null,
+          candidates: [],
+        },
+        {
+          input: inputOf('Lightning Bolt', 1),
+          status: 'ambiguous',
+          match: null,
+          candidates: [
+            printing({ scryfall_id: 'lea-bolt' }),
+            printing({ scryfall_id: 'm10-bolt', set_name: 'Magic 2010' }),
+          ],
+        },
+      ],
+      summary: { matched: 1, ambiguous: 1, unmatched: 1 },
+    })
+
+    await resolveText('1 Sol Ring')
+    const list = await screen.findByRole('list', { name: 'Lines' })
+    const [sol, lotus, bolt] = entriesOf(list)
+
+    const thumbOf = (entry: HTMLElement) =>
+      entry.querySelector('.ledger__thumb') as HTMLElement
+    expect(within(thumbOf(sol)).getByRole('img')).toBeInTheDocument()
+    for (const entry of [lotus, bolt]) {
+      // No printing chosen, so no plate claims the typed name has no art.
+      expect(within(thumbOf(entry)).queryByRole('img')).toBeNull()
+      expect(thumbOf(entry).firstElementChild).toHaveClass(
+        'card-thumb',
+        'card-thumb--thumb',
+        'card-thumb--empty',
+      )
+      expect(thumbOf(entry).firstElementChild).toHaveAttribute(
+        'aria-hidden',
+        'true',
+      )
+    }
+  })
+
   it('parses, resolves, disambiguates, and bulk-inscribes', async () => {
     parseMock.mockResolvedValue(
       parsed([
@@ -349,13 +413,14 @@ describe('DecklistPage', () => {
 
     const user = await resolveText('4 Lightning Bolt')
 
-    // Nothing chosen yet → inscribe disabled.
+    // Nothing chosen yet, so Inscribe is disabled.
     await screen.findByRole('heading', { name: 'Review the Decklist' })
     expect(
       screen.getByRole('button', { name: /Inscribe 0 folios/ }),
     ).toBeDisabled()
 
-    // Pick LEA → ready; then "Change" → back to the picker, count resets to 0.
+    // Picking LEA makes the row ready. "Change" brings the picker back and the
+    // count returns to 0.
     await user.click(
       screen.getByRole('button', { name: /Limited Edition Alpha/ }),
     )

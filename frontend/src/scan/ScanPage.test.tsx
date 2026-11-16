@@ -256,7 +256,7 @@ describe('ScanPage', () => {
     await user.click(
       screen.getByRole('button', { name: 'Type the name instead' }),
     )
-    const search = screen.getByLabelText('Card name')
+    const search = screen.getByLabelText('Seek a card by name, or part of one')
     expect(search).toHaveFocus()
     await user.type(search, 'sol')
     await user.click(await screen.findByRole('button', { name: 'Sol Ring' }))
@@ -269,7 +269,9 @@ describe('ScanPage', () => {
 
     // Changing the card goes back to typing, not to the failed reading.
     await user.click(screen.getByRole('button', { name: 'Change card' }))
-    expect(screen.getByLabelText('Card name')).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument()
   })
 

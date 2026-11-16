@@ -91,7 +91,10 @@ describe('InscribePage', () => {
     expect(region).toBeEmptyDOMElement()
 
     // 1. Search by name and pick the autocomplete suggestion.
-    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     const suggestion = await screen.findByRole('button', {
       name: 'Lightning Bolt',
     })
@@ -122,7 +125,9 @@ describe('InscribePage', () => {
     )
 
     // The flow returned to the search box (fast multi-add)…
-    expect(await screen.findByLabelText('Card name')).toBeInTheDocument()
+    expect(
+      await screen.findByLabelText('Seek a card by name, or part of one'),
+    ).toBeInTheDocument()
     // …and the session list recorded the inscription.
     const session = screen.getByRole('complementary', {
       name: 'Inscribed this session',
@@ -164,7 +169,10 @@ describe('InscribePage', () => {
     inscribeMock.mockResolvedValue(lot({ id: 3, quantity: 1 }))
 
     render(<InscribePage />)
-    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
     )
@@ -177,7 +185,10 @@ describe('InscribePage', () => {
     )
 
     // Typing alone keeps the seal; choosing the next name lifts it.
-    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     expect(screen.getByRole('status')).toBeInTheDocument()
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
@@ -202,7 +213,10 @@ describe('InscribePage', () => {
     inscribeMock.mockRejectedValue(new Error('boom'))
 
     render(<InscribePage />)
-    await user.type(screen.getByLabelText('Card name'), 'sol')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'sol',
+    )
     await user.click(await screen.findByRole('button', { name: 'Sol Ring' }))
     await user.click(
       await screen.findByRole('button', { name: /Limited Edition Alpha/ }),
@@ -213,7 +227,9 @@ describe('InscribePage', () => {
       /could not be inscribed/i,
     )
     // Still on the form, not bounced to search.
-    expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText('Seek a card by name, or part of one'),
+    ).not.toBeInTheDocument()
   })
 
   it('returns to the picker (keeping the card) on "Change printing"', async () => {
@@ -231,7 +247,10 @@ describe('InscribePage', () => {
     })
 
     render(<InscribePage />)
-    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
     )
@@ -247,7 +266,9 @@ describe('InscribePage', () => {
       }),
     ).toBeInTheDocument()
     // Returned to the picker, not all the way to the search box.
-    expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText('Seek a card by name, or part of one'),
+    ).not.toBeInTheDocument()
     // The retained name is what was searched again, never some other card.
     expect(searchMock.mock.calls.every(([n]) => n === 'Lightning Bolt')).toBe(
       true,
@@ -271,7 +292,10 @@ describe('InscribePage', () => {
     render(<InscribePage />)
 
     // First card: inscribe quantity 5.
-    await user.type(screen.getByLabelText('Card name'), 'bolt')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
     )
@@ -284,7 +308,10 @@ describe('InscribePage', () => {
     await user.click(screen.getByRole('button', { name: 'Inscribe' }))
 
     // Second card: the form must come up fresh (quantity back to 1), not '5'.
-    await user.type(await screen.findByLabelText('Card name'), 'bolt')
+    await user.type(
+      await screen.findByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
     )

@@ -89,6 +89,40 @@ describe('TomesPage', () => {
     )
   })
 
+  it('reads each spine as one spaced phrase to assistive tech', async () => {
+    // The spine stacks its parts, so only the spaces in the source keep the
+    // name from running "Edgar Markovcommander".
+    listMock.mockResolvedValue([
+      deck({
+        id: 2,
+        name: 'Edgar Markov',
+        format: 'commander',
+        status: 'active',
+        card_count: 100,
+      }),
+      deck({
+        id: 1,
+        name: 'Burn brew',
+        format: null,
+        status: 'playtest',
+        claims_cards: false,
+        card_count: 1,
+      }),
+    ])
+    renderPage()
+
+    expect(
+      await screen.findByRole('link', {
+        name: 'Edgar Markov commander, 100 cards Active',
+      }),
+    ).toHaveAttribute('href', '/tomes/2')
+    expect(
+      screen.getByRole('link', {
+        name: 'Burn brew no format, one card Playtest, references only',
+      }),
+    ).toHaveAttribute('href', '/tomes/1')
+  })
+
   it('colours the edge of each spine by status and format', async () => {
     listMock.mockResolvedValue([
       deck({ id: 1, name: 'Edgar Markov', status: 'active' }),

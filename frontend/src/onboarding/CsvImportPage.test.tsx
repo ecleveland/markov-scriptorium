@@ -394,13 +394,13 @@ describe('CsvImportPage', () => {
 
     const user = await resolveText('Name,Quantity\nLightning Bolt,1')
 
-    // Nothing chosen yet → inscribe disabled.
+    // Nothing chosen yet, so Inscribe is disabled.
     await screen.findByRole('heading', { name: 'Review the Import' })
     expect(
       screen.getByRole('button', { name: /Inscribe 0 folios/ }),
     ).toBeDisabled()
 
-    // Pick the M10 printing → row becomes ready and inscribes with that id.
+    // Picking the M10 printing makes the row ready, and it inscribes that id.
     await user.click(screen.getByRole('button', { name: /Magic 2010/ }))
     await user.click(
       await screen.findByRole('button', { name: /Inscribe 1 folio/ }),
@@ -416,6 +416,115 @@ describe('CsvImportPage', () => {
         },
       ]),
     )
+  })
+
+  it('writes the chosen printing into the where line and takes it back on Change', async () => {
+    parseMock.mockResolvedValue(
+      parsed([
+        csvRow({ name: 'Lightning Bolt', finish: 'foil', condition: 'LP' }),
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Lightning Bolt', 1),
+          status: 'ambiguous',
+          match: null,
+          candidates: [
+            printing({
+              scryfall_id: 'lea-bolt',
+              name: 'Lightning Bolt',
+              set_name: 'Limited Edition Alpha',
+            }),
+            printing({
+              scryfall_id: 'm10-bolt',
+              name: 'Lightning Bolt',
+              set_name: 'Magic 2010',
+              set_code: 'm10',
+            }),
+          ],
+        },
+      ],
+      summary: { matched: 0, ambiguous: 1, unmatched: 0 },
+    })
+
+    const user = await resolveText('Name,Quantity\nLightning Bolt,1')
+    const list = await screen.findByRole('list', { name: 'Rows' })
+    const [bolt] = entriesOf(list)
+    const where = () => bolt.querySelector('.ledger__where') as HTMLElement
+
+    await user.click(within(bolt).getByRole('button', { name: /Magic 2010/ }))
+    expect(where()).toHaveTextContent(
+      'Magic 2010, no. 256, foil, lightly played.',
+    )
+    expect(
+      within(bolt).queryByRole('button', { name: /Magic 2010/ }),
+    ).not.toBeInTheDocument()
+
+    await user.click(within(bolt).getByRole('button', { name: 'Change' }))
+    expect(
+      within(bolt).getByRole('button', { name: /Magic 2010/ }),
+    ).toBeInTheDocument()
+    expect(where()).toHaveTextContent(
+      'Several printings match; choose one below. Foil, lightly played.',
+    )
+  })
+
+  it('sets a thumb only on rows with a chosen printing', async () => {
+    parseMock.mockResolvedValue(
+      parsed([
+        csvRow({ row_number: 1, name: 'Sol Ring' }),
+        csvRow({ row_number: 2, name: 'Black Lotus' }),
+        csvRow({ row_number: 3, name: 'Lightning Bolt' }),
+      ]),
+    )
+    resolveMock.mockResolvedValue({
+      results: [
+        {
+          input: inputOf('Sol Ring', 1),
+          status: 'matched',
+          match: printing({ scryfall_id: 'sol-cmd' }),
+          candidates: [],
+        },
+        {
+          input: inputOf('Black Lotus', 1),
+          status: 'unmatched',
+          match: null,
+          candidates: [],
+        },
+        {
+          input: inputOf('Lightning Bolt', 1),
+          status: 'ambiguous',
+          match: null,
+          candidates: [
+            printing({ scryfall_id: 'lea-bolt', name: 'Lightning Bolt' }),
+            printing({ scryfall_id: 'm10-bolt', name: 'Lightning Bolt' }),
+          ],
+        },
+      ],
+      summary: { matched: 1, ambiguous: 1, unmatched: 1 },
+    })
+
+    await resolveText('Name,Quantity\nSol Ring,1')
+    const list = await screen.findByRole('list', { name: 'Rows' })
+    const [sol, lotus, bolt] = entriesOf(list)
+
+    const thumbOf = (entry: HTMLElement) =>
+      entry.querySelector('.ledger__thumb') as HTMLElement
+    expect(within(thumbOf(sol)).getByRole('img')).toBeInTheDocument()
+    for (const entry of [lotus, bolt]) {
+      // No printing chosen, so no plate claims the typed name has no art.
+      expect(within(thumbOf(entry)).queryByRole('img')).toBeNull()
+      expect(thumbOf(entry).firstElementChild).toHaveClass(
+        'card-thumb',
+        'card-thumb--thumb',
+        'card-thumb--empty',
+      )
+      expect(thumbOf(entry).firstElementChild).toHaveAttribute(
+        'aria-hidden',
+        'true',
+      )
+    }
   })
 
   it('populates the textarea from an uploaded file', async () => {

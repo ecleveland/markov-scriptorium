@@ -61,16 +61,16 @@ export function CardSearch({ onSelect, autoFocus }: Props) {
 
   return (
     <div className="card-search">
-      {/* The lead and the box read as one sentence, as on the Index. The box
-          keeps the short name "Card name", which the Tomes page and the e2e
-          specs find it by. */}
+      {/* The lead and the box read as one sentence, as on the Index. The
+          box's name is that whole sentence, so a voice user can say what they
+          see on screen. */}
       <label className="seek">
         <span className="seek__lead">Seek a card by name,</span>
         <Input
           ref={inputRef}
           type="search"
           className="seek__input"
-          aria-label="Card name"
+          aria-label="Seek a card by name, or part of one"
           autoComplete="off"
           placeholder="or part of one"
           value={query}

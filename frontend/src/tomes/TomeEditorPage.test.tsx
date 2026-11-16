@@ -618,7 +618,10 @@ describe('TomeEditorPage, adding a card', () => {
       printings: [printing({ finishes: ['nonfoil', 'foil'] })],
       truncated: false,
     })
-    await user.type(await screen.findByLabelText('Card name'), 'bolt')
+    await user.type(
+      await screen.findByLabelText('Seek a card by name, or part of one'),
+      'bolt',
+    )
     await user.click(
       await screen.findByRole('button', { name: 'Lightning Bolt' }),
     )
@@ -649,7 +652,9 @@ describe('TomeEditorPage, adding a card', () => {
         quantity: 3,
       }),
     )
-    expect(await screen.findByLabelText('Card name')).toBeInTheDocument()
+    expect(
+      await screen.findByLabelText('Seek a card by name, or part of one'),
+    ).toBeInTheDocument()
     expect(
       screen.getByText('Added 3× Lightning Bolt to Sideboard.'),
     ).toBeInTheDocument()

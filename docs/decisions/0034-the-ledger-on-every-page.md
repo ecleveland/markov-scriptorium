@@ -50,9 +50,9 @@ so the next page that adopts the ledger starts from the same answers.
   figure is what is in hand. The note says what is still needed, "in hand" or
   "in hand, 2 needed". The totals are one sentence from `tallySentence`.
 - **The seek field moved from `index.css` to `components.css`.** It is `.seek`,
-  `.seek__lead` and `.seek__input`, classes only. `CardSearch` uses it with
-  the input named "Card name", the name the Tomes page and the E2E specs
-  already use.
+  `.seek__lead` and `.seek__input`, classes only. `CardSearch` uses it and
+  names its input "Seek a card by name, or part of one", as the Index does.
+  The name holds the words on screen, which WCAG 2.5.3 asks for.
 - **Inscribe's form sits inside the `Plate`.** The fields are among its lines.
   The seal button and "Change printing" are its actions.
 - **Session entries read as a sentence.** `describeEntry()` returns "One copy
@@ -75,9 +75,9 @@ so the next page that adopts the ledger starts from the same answers.
 
 ## Consequences
 
-- The done-when grep is clean except for two hits that are not copy. Two
-  contract tests assert that `--font-mono` is not declared, and the type-line
-  split in `tomes/sort.ts` cuts on Scryfall's own dash.
+- The done-when grep over `src/` returns only the two contract tests that
+  assert `--font-mono` is not declared. The em dash in `tomes/sort.ts` stays,
+  because it splits Scryfall's own type line.
 - The E2E specs for tomes, inscribe, archive, index, scan and visual were
   updated for the new copy.
 - A board's heading no longer carries its count, so tests select boards by

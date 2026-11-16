@@ -116,7 +116,9 @@ describe('App routing', () => {
 
   it('renders the Inscribe view at /inscribe', () => {
     renderAt('/inscribe')
-    expect(screen.getByLabelText('Card name')).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+    ).toBeInTheDocument()
   })
 
   it('renders the Scrying Glass at /scan', () => {
@@ -145,7 +147,9 @@ describe('App routing', () => {
     expect(
       await screen.findByRole('heading', { name: 'No such Tome' }),
     ).toBeInTheDocument()
-    expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText('Seek a card by name, or part of one'),
+    ).not.toBeInTheDocument()
   })
 
   it('renders the breakdown route at /tomes/:deckId/breakdown', async () => {

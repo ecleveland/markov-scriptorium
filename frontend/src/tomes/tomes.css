@@ -91,6 +91,9 @@
   font-size: var(--text-lg);
   font-weight: 500;
   line-height: var(--leading-tight);
+  /* A one-word name longer than the shelf breaks rather than widen a phone
+     page. */
+  overflow-wrap: anywhere;
 }
 
 .spine:hover .spine__name {
@@ -101,6 +104,7 @@
   font-size: var(--text-sm);
   font-style: italic;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .spine__status {

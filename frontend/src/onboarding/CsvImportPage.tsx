@@ -294,10 +294,19 @@ export function CsvImportPage() {
               key={index}
               number={index + 1}
               thumb={
-                <CardThumb
-                  images={row.chosen?.image_uris ?? null}
-                  name={row.chosen?.name ?? row.entry.name}
-                />
+                // With no printing chosen there is no art to speak of, and
+                // the name is already in the entry, so the slot stays silent.
+                row.chosen ? (
+                  <CardThumb
+                    images={row.chosen.image_uris}
+                    name={row.chosen.name}
+                  />
+                ) : (
+                  <span
+                    className="card-thumb card-thumb--thumb card-thumb--empty"
+                    aria-hidden="true"
+                  />
+                )
               }
               name={
                 <>

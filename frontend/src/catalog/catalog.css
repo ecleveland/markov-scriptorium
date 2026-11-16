@@ -28,6 +28,8 @@
 
 .qty-stepper {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--space-2);
 }
@@ -68,8 +70,15 @@
   text-align: center;
 }
 
+/* The ledger's count column does not wrap, so a long refusal would widen
+   it. The error takes its own line under the steps and wraps there. */
 .qty-stepper__error {
+  display: block;
+  max-width: 12rem;
+  margin-left: auto;
   font-size: var(--text-xs);
+  white-space: normal;
+  text-align: right;
 }
 
 /* ---- Detail view --------------------------------------------------------

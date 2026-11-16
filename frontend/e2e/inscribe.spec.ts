@@ -12,7 +12,7 @@ test('inscribes a card through the full search, pick and inscribe flow', async (
   await page.goto('/inscribe')
 
   // 1. Search the catalog by name; the debounced type-ahead surfaces a match.
-  await page.getByLabel('Card name').fill('Sol Ring')
+  await page.getByLabel('Seek a card by name, or part of one').fill('Sol Ring')
   await page.getByRole('button', { name: 'Sol Ring' }).click()
 
   // 2. Pick the specific printing (folio) from the catalog's printings list.
@@ -39,5 +39,7 @@ test('inscribes a card through the full search, pick and inscribe flow', async (
   await expect(session).toContainText('Sol Ring')
   await expect(session).toContainText('C21 no. 263')
   await expect(session).toContainText('nonfoil')
-  await expect(page.getByLabel('Card name')).toBeVisible()
+  await expect(
+    page.getByLabel('Seek a card by name, or part of one'),
+  ).toBeVisible()
 })

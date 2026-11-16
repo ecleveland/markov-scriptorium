@@ -25,7 +25,8 @@ export function PrintingPicker({ name, onPick, onCancel }: Props) {
   const arrowKeys = useArrowKeyList()
 
   // The parent gives this component a `key={name}`, so each card name gets a
-  // fresh mount (result === null → loading) rather than a synchronous reset.
+  // fresh mount, where a null result means loading, rather than a synchronous
+  // reset.
   useEffect(() => {
     const controller = new AbortController()
     searchPrintings(name, controller.signal)

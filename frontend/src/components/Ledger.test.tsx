@@ -133,6 +133,23 @@ describe('LedgerEntry', () => {
     expect(document.querySelector('.ledger__aside')).toBeNull()
   })
 
+  it('leaves the aside out when a caller passes false', () => {
+    // Callers write cond && <Picker />, which hands over false.
+    render(
+      <Ledger aria-label="The catalog">
+        <LedgerEntry
+          number={1}
+          thumb={null}
+          name="Sol Ring"
+          where="Unshelved"
+          count={<LedgerFigure>1</LedgerFigure>}
+          aside={false}
+        />
+      </Ledger>,
+    )
+    expect(document.querySelector('.ledger__aside')).toBeNull()
+  })
+
   it('merges a caller className onto the entry', () => {
     render(
       <Ledger aria-label="The catalog">

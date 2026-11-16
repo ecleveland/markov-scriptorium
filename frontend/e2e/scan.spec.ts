@@ -140,7 +140,7 @@ test('offers to type the name when the glass reads nothing', async ({
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Type the name instead' }).click()
-  await page.getByLabel('Card name').fill('Sol Ring')
+  await page.getByLabel('Seek a card by name, or part of one').fill('Sol Ring')
   await page.getByRole('button', { name: 'Sol Ring' }).click()
   await expect(
     page.getByRole('heading', { name: /Choose a printing of “Sol Ring”/ }),

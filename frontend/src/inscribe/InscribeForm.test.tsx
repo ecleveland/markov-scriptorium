@@ -196,4 +196,46 @@ describe('InscribeForm quantity submission', () => {
       ),
     )
   })
+
+  it('submits the typed Volume as the location', async () => {
+    const user = userEvent.setup()
+    inscribeMock.mockResolvedValue({
+      id: 1,
+      scryfall_id: 'lea-bolt',
+      quantity: 1,
+      finish: 'nonfoil',
+      condition: 'NM',
+      language: 'en',
+      location: 'Binder I',
+      acquired_at: null,
+      price_paid: null,
+      notes: null,
+      tags: null,
+      folio: { owned: 1, reserved: 0, available: 1 },
+      card: {
+        name: 'Lightning Bolt',
+        set_code: 'lea',
+        set_name: 'Limited Edition Alpha',
+        collector_number: '161',
+        rarity: 'common',
+        image_uris: null,
+      },
+    })
+
+    render(
+      <InscribeForm
+        printing={printing({})}
+        onInscribed={vi.fn()}
+        onChangePrinting={vi.fn()}
+      />,
+    )
+    await user.type(screen.getByLabelText('Volume'), 'Binder I')
+    await user.click(screen.getByRole('button', { name: 'Inscribe' }))
+
+    await waitFor(() =>
+      expect(inscribeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ location: 'Binder I' }),
+      ),
+    )
+  })
 })

@@ -25,7 +25,7 @@ async function addCard(
   printing: RegExp,
   board: string,
 ) {
-  await page.getByLabel('Card name').fill(query)
+  await page.getByLabel('Seek a card by name, or part of one').fill(query)
   await page.getByRole('button', { name, exact: true }).click()
   await page.getByRole('button', { name: printing }).click()
   await page.getByLabel('Board').selectOption({ label: board })

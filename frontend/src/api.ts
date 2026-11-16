@@ -130,7 +130,10 @@ async function requestVoid(path: string, init?: RequestInit): Promise<void> {
   await send(path, init)
 }
 
-/** Distinct card names matching `query`, for type-ahead. Blank query → []. */
+/**
+ * Distinct card names matching `query`, for type-ahead. A blank query gives an
+ * empty list.
+ */
 export async function autocompleteNames(
   query: string,
   signal?: AbortSignal,
