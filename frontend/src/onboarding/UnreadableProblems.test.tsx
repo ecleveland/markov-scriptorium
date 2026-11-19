@@ -22,12 +22,15 @@ describe('UnreadableProblems', () => {
       />,
     )
     const aside = screen.getByRole('complementary', { name: 'Unreadable rows' })
+    // A section under a hairline, not a boxed panel.
+    expect(aside).toHaveClass('import__problems')
+    expect(aside).not.toHaveClass('panel')
     expect(
-      within(aside).getByRole('heading', { name: 'Unreadable rows' }),
-    ).toBeInTheDocument()
+      within(aside).getByRole('heading', { level: 2, name: 'Unreadable rows' }),
+    ).toHaveClass('opening')
     const items = within(aside).getAllByRole('listitem')
     expect(items).toHaveLength(2)
-    expect(items[0]).toHaveTextContent('Row 1: missing card name — “,cmd,...”')
-    expect(items[1]).toHaveTextContent('Row 4: quantity with no card name')
+    expect(items[0]).toHaveTextContent('Row 1, missing card name: “,cmd,...”')
+    expect(items[1]).toHaveTextContent('Row 4, quantity with no card name: “4”')
   })
 })

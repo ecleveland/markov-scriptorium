@@ -30,6 +30,8 @@ export interface LedgerEntryProps {
   count: ReactNode
   /** A small line under the count: condition, Tome claim. */
   note?: ReactNode
+  /** A full-width line under the row, for what the four cells cannot hold: a candidate picker, a swap hint. */
+  aside?: ReactNode
   className?: string
 }
 
@@ -44,6 +46,7 @@ export function LedgerEntry({
   where,
   count,
   note,
+  aside,
   className,
 }: LedgerEntryProps) {
   return (
@@ -63,6 +66,9 @@ export function LedgerEntry({
           <span className="ledger__note">{note}</span>
         )}
       </div>
+      {aside != null && aside !== false && (
+        <div className="ledger__aside">{aside}</div>
+      )}
     </li>
   )
 }

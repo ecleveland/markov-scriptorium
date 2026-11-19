@@ -1,4 +1,5 @@
-import type { DeckStatus } from '../api'
+import type { DeckListEntry, DeckStatus } from '../api'
+import { capitalised, counted, numberWords } from '../catalog/prose'
 
 export const STATUS_LABELS: Record<DeckStatus, string> = {
   in_progress: 'In progress',
@@ -7,9 +8,34 @@ export const STATUS_LABELS: Record<DeckStatus, string> = {
   shelved: 'Shelved',
 }
 
-/** "1 card", "60 cards". */
-export function cardCount(count: number): string {
-  return `${count} ${count === 1 ? 'card' : 'cards'}`
+/** The colour of a spine's left edge on the shelf. */
+export type SpineEdge = 'gold' | 'moss' | 'oxblood'
+
+/**
+ * Gold for a complete Tome, which is an active one. Moss for a cube, the one
+ * format that marks a list rather than a deck. Oxblood for every other Tome.
+ */
+export function spineEdge(
+  deck: Pick<DeckListEntry, 'status' | 'format'>,
+): SpineEdge {
+  if (deck.status === 'active') return 'gold'
+  if ((deck.format ?? '').trim().toLowerCase() === 'cube') return 'moss'
+  return 'oxblood'
+}
+
+/** A count in words, with "none" for zero: "none needed", "three in hand". */
+function noneOr(n: number): string {
+  return n === 0 ? 'none' : numberWords(n)
+}
+
+/** The breakdown's totals as a sentence: "Five cards, three in hand, two needed." */
+export function tallySentence(totals: {
+  cards: number
+  have: number
+  needed: number
+}): string {
+  const cards = capitalised(counted(totals.cards, 'card', 'cards'))
+  return `${cards}, ${noneOr(totals.have)} in hand, ${noneOr(totals.needed)} needed.`
 }
 
 /** Read a Tome id from the route, or null when it is not a positive integer. */

@@ -3,7 +3,7 @@ import { SOL_RING_PRINTING, stubApi } from './stubs'
 
 // Proves headless screenshot capture works, at desktop and a narrow (mobile)
 // width, so presentational tickets (the rest of M3.7) can attach before/after
-// evidence. This is NOT pixel visual-regression — there is no committed
+// evidence. This is NOT pixel visual-regression. There is no committed
 // baseline to diff against; that is deliberately out of scope (see the ticket).
 
 test.beforeEach(async ({ page }) => {
@@ -392,22 +392,32 @@ test.describe('reflows at phone width', () => {
       innerWidth: window.innerWidth,
     }))
     expect(widths.scrollWidth).toBeLessThanOrEqual(widths.innerWidth)
-    // The long name spills out of its row's content box into the padding,
-    // inside the page gutter, so the page-wide check alone misses it. Measure
-    // the widest child of the row against the room the row gives it.
-    const row = await page.locator('.decklist__row').evaluate((el) => {
+    // The long name can spill out of its ledger entry inside the page gutter,
+    // so the page-wide check alone misses it. Measure the widest cell of the
+    // entry against the room the entry gives it. The name sits in a grid track
+    // that shrinks to fit while its text can still overflow the track, so
+    // measure the laid-out text of the name and the where line as well.
+    const entry = await page.locator('.ledger__entry').evaluate((el) => {
       const style = getComputedStyle(el)
       const box = el.getBoundingClientRect()
       const contentRight =
         box.right -
         parseFloat(style.borderRightWidth) -
         parseFloat(style.paddingRight)
+      const textRights = [
+        ...el.querySelectorAll('.ledger__name, .ledger__where'),
+      ].map((line) => {
+        const range = document.createRange()
+        range.selectNodeContents(line)
+        return range.getBoundingClientRect().right
+      })
       const childRight = Math.max(
         ...[...el.children].map((child) => child.getBoundingClientRect().right),
+        ...textRights,
       )
       return { childRight, contentRight }
     })
-    expect(row.childRight).toBeLessThanOrEqual(row.contentRight)
+    expect(entry.childRight).toBeLessThanOrEqual(entry.contentRight)
 
     await page.screenshot({
       path: test.info().outputPath('import-decklist-preview-375.png'),

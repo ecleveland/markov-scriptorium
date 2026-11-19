@@ -507,6 +507,7 @@ describe('component stylesheet contract', () => {
       '.plate',
       '.finish-word',
       '.opening',
+      '.seek',
       '.pager',
     ]) {
       expect(declarations, `missing ${block}`).toContain(`${block} {`)
@@ -582,6 +583,20 @@ describe('ledger hover', () => {
           .map(([, selector]) => `${name} ${selector.trim()}`),
       )
     expect(filled).toEqual([])
+  })
+})
+
+// VEG-625: the seek field is shared, so its rules live in the component layer
+// and no page sheet restyles it. The pattern takes `.seek` and its elements
+// (`.seek__input`) but not a longer block name such as `.seeker`.
+describe('seek', () => {
+  it('is declared in the component sheet and no other', () => {
+    const seek = /(^|[\s,}])\.seek(__|[^\w-]|$)/m
+    const others = sheets
+      .filter(({ name }) => name !== 'styles/components.css')
+      .filter(({ css }) => seek.test(css))
+      .map(({ name }) => name)
+    expect(others).toEqual([])
   })
 })
 

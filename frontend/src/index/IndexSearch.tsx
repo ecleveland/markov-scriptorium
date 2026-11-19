@@ -92,11 +92,11 @@ export function IndexSearch() {
     <div className="index__search" role="search">
       {/* The lead and the box read as one sentence. The box names itself in
           full, because the lead alone is half a question. */}
-      <label className="index__seek">
-        <span className="index__seek-lead">Seek a card by name,</span>
+      <label className="seek">
+        <span className="seek__lead">Seek a card by name,</span>
         <Input
           type="search"
-          className="index__seek-input"
+          className="seek__input"
           aria-label="Seek a card by name, or part of one"
           autoComplete="off"
           placeholder="or part of one"

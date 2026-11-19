@@ -59,7 +59,9 @@ describe('ArchivePage', () => {
         "Seal one above. The scriptorium also seals a copy on its own before any change to the catalog's shape.",
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('list', { name: 'Sealed copies' }),
+    ).not.toBeInTheDocument()
   })
 
   it('lists each copy with when, why, schema, and size, and where they rest', async () => {
@@ -83,30 +85,25 @@ describe('ArchivePage', () => {
     listMock.mockResolvedValue(backupList([byHand, premigration, daily]))
     renderWithQuery(<ArchivePage />)
 
-    const table = await screen.findByRole('table', { name: 'Backups' })
-    const headers = within(table)
-      .getAllByRole('columnheader')
-      .map((cell) => cell.textContent)
-    expect(headers).toEqual(['Sealed', 'Reason', 'Schema', 'Size'])
+    const ledger = await screen.findByRole('list', { name: 'Sealed copies' })
+    const items = within(ledger).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    const [first, second, third] = items
 
-    const [, first, second, third] = within(table).getAllByRole('row')
-    const firstCells = within(first).getAllByRole('cell')
-    expect(firstCells[0]).toHaveTextContent(
+    expect(first).toHaveTextContent(
       new Date('2026-10-15T14:22:33Z').toLocaleString(),
     )
-    expect(within(firstCells[1]).getByText('By hand')).toHaveClass('tag')
-    expect(firstCells[2]).toHaveTextContent('v6')
-    expect(firstCells[3]).toHaveTextContent('2.4 MB')
+    expect(within(first).getByText('By hand')).toHaveClass('tag')
+    expect(first).toHaveTextContent('By hand schema v6')
+    expect(within(first).getByText('2.4')).toHaveClass('ledger__figure')
+    expect(within(first).getByText('MB')).toHaveClass('ledger__note')
 
-    const secondCells = within(second).getAllByRole('cell')
-    expect(within(secondCells[1]).getByText('Before migration')).toHaveClass(
-      'tag',
-    )
-    expect(secondCells[2]).toHaveTextContent('v5')
-    expect(secondCells[3]).toHaveTextContent('< 0.1 MB')
+    expect(within(second).getByText('Before migration')).toHaveClass('tag')
+    expect(second).toHaveTextContent('schema v5')
+    expect(within(second).getByText('< 0.1')).toHaveClass('ledger__figure')
+    expect(within(second).getByText('MB')).toHaveClass('ledger__note')
 
-    const thirdCells = within(third).getAllByRole('cell')
-    expect(within(thirdCells[1]).getByText('Daily')).toHaveClass('tag')
+    expect(within(third).getByText('Daily')).toHaveClass('tag')
 
     expect(
       screen.getByText(
@@ -135,11 +132,10 @@ describe('ArchivePage', () => {
     listMock.mockResolvedValue(backupList([backup({ size_bytes: 100_000 })]))
     renderWithQuery(<ArchivePage />)
 
-    const table = await screen.findByRole('table', { name: 'Backups' })
-    const sizeCell = within(within(table).getAllByRole('row')[1]).getAllByRole(
-      'cell',
-    )[3]
-    expect(sizeCell).toHaveTextContent(/^0\.1 MB$/)
+    const ledger = await screen.findByRole('list', { name: 'Sealed copies' })
+    const [entry] = within(ledger).getAllByRole('listitem')
+    expect(within(entry).getByText('0.1')).toHaveClass('ledger__figure')
+    expect(within(entry).getByText('MB')).toHaveClass('ledger__note')
   })
 
   it('seals a copy, confirms it by filename, and reads the list again', async () => {
@@ -170,7 +166,7 @@ describe('ArchivePage', () => {
     )
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2))
     expect(
-      await screen.findByRole('table', { name: 'Backups' }),
+      await screen.findByRole('list', { name: 'Sealed copies' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Seal a copy' })).toBeEnabled()
   })
@@ -190,27 +186,37 @@ describe('ArchivePage', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('offers both exports as downloads', async () => {
+  it('opens each section with a heading', async () => {
     listMock.mockResolvedValue(backupList([]))
     renderWithQuery(<ArchivePage />)
 
     expect(
-      screen.getByRole('heading', { name: 'Carry the collection elsewhere' }),
-    ).toBeInTheDocument()
-    const csv = screen.getByRole('link', {
-      name: 'Export the collection as CSV',
-    })
+      screen.getByRole('heading', { level: 2, name: 'Sealed copies' }),
+    ).toHaveClass('opening')
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Carry the collection elsewhere',
+      }),
+    ).toHaveClass('opening')
+  })
+
+  it('offers both exports as downloads, each in a sentence', async () => {
+    listMock.mockResolvedValue(backupList([]))
+    renderWithQuery(<ArchivePage />)
+
+    const csv = screen.getByRole('link', { name: 'The collection as CSV' })
     expect(csv).toHaveAttribute('href', '/api/archive/export.csv')
     expect(csv).toHaveAttribute('download')
-    const json = screen.getByRole('link', {
-      name: 'Export the collection as JSON',
-    })
+    expect(csv.closest('p')).toHaveTextContent(
+      'The collection as CSV, which reads back through the CSV import, though location, notes, tags, acquisition date and price are not imported yet.',
+    )
+
+    const json = screen.getByRole('link', { name: 'The collection as JSON' })
     expect(json).toHaveAttribute('href', '/api/archive/export.json')
     expect(json).toHaveAttribute('download')
-    expect(
-      screen.getByText(
-        'The CSV reads back through the CSV import, though location, notes, tags, acquisition date and price are not imported yet. The JSON carries every folio and every Tome.',
-      ),
-    ).toBeInTheDocument()
+    expect(json.closest('p')).toHaveTextContent(
+      'The collection as JSON, carrying every folio and every Tome.',
+    )
   })
 })

@@ -11,9 +11,12 @@ import {
   Button,
   Consulting,
   EmptyState,
+  Ledger,
+  LedgerEntry,
+  LedgerFigure,
   Notice,
   PageHeader,
-  Panel,
+  Seal,
   Sealed,
   Tag,
 } from '../components'
@@ -26,10 +29,13 @@ const REASON_LABELS: Record<BackupReason, string> = {
   daily: 'Daily',
 }
 
-/** Decimal megabytes, as Finder and most file managers count them. */
-function megabytes(bytes: number): string {
+/**
+ * Decimal megabytes, as Finder and most file managers count them. The figure
+ * and the unit come apart so the ledger can set the unit beneath the figure.
+ */
+function megabytes(bytes: number): { figure: string; unit: string } {
   const mb = bytes / 1_000_000
-  return mb < 0.05 ? '< 0.1 MB' : `${mb.toFixed(1)} MB`
+  return { figure: mb < 0.05 ? '< 0.1' : mb.toFixed(1), unit: 'MB' }
 }
 
 /** Seal a copy of the database by hand, list the copies, and export the collection. */
@@ -57,12 +63,10 @@ export function ArchivePage() {
         }
       />
 
-      <Panel
-        as="section"
-        className="archive__panel"
-        aria-labelledby={copiesHeading}
-      >
-        <h2 id={copiesHeading}>Sealed copies</h2>
+      <section className="archive__section" aria-labelledby={copiesHeading}>
+        <h2 className="opening" id={copiesHeading}>
+          Sealed copies
+        </h2>
         <div className="archive__actions">
           <Button
             variant="primary"
@@ -98,30 +102,29 @@ export function ArchivePage() {
           </EmptyState>
         )}
         {query.data !== undefined && query.data.backups.length > 0 && (
-          <div className="archive__scroll">
-            <table className="archive__table" aria-label="Backups">
-              <thead>
-                <tr>
-                  <th scope="col">Sealed</th>
-                  <th scope="col">Reason</th>
-                  <th scope="col">Schema</th>
-                  <th scope="col">Size</th>
-                </tr>
-              </thead>
-              <tbody>
-                {query.data.backups.map((copy) => (
-                  <tr key={copy.filename}>
-                    <td>{new Date(copy.created_at).toLocaleString()}</td>
-                    <td>
-                      <Tag>{REASON_LABELS[copy.reason]}</Tag>
-                    </td>
-                    <td>v{copy.schema_version}</td>
-                    <td>{megabytes(copy.size_bytes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Ledger aria-label="Sealed copies">
+            {query.data.backups.map((copy, index) => {
+              const size = megabytes(copy.size_bytes)
+              return (
+                <LedgerEntry
+                  key={copy.filename}
+                  number={index + 1}
+                  thumb={<Seal className="archive__seal" />}
+                  name={
+                    <span>{new Date(copy.created_at).toLocaleString()}</span>
+                  }
+                  where={
+                    <>
+                      <Tag>{REASON_LABELS[copy.reason]}</Tag> schema v
+                      {copy.schema_version}
+                    </>
+                  }
+                  count={<LedgerFigure>{size.figure}</LedgerFigure>}
+                  note={size.unit}
+                />
+              )
+            })}
+          </Ledger>
         )}
         {query.data !== undefined && (
           <p className="archive__note archive__wrap">
@@ -131,32 +134,26 @@ export function ArchivePage() {
             daily copies. To restore one, follow the README.
           </p>
         )}
-      </Panel>
+      </section>
 
-      <Panel
-        as="section"
-        className="archive__panel"
-        aria-labelledby={exportsHeading}
-      >
-        <h2 id={exportsHeading}>Carry the collection elsewhere</h2>
-        <ul className="archive__exports">
-          <li>
-            <a href={EXPORT_CSV_URL} download>
-              Export the collection as CSV
-            </a>
-          </li>
-          <li>
-            <a href={EXPORT_JSON_URL} download>
-              Export the collection as JSON
-            </a>
-          </li>
-        </ul>
-        <p className="archive__note">
-          The CSV reads back through the CSV import, though location, notes,
-          tags, acquisition date and price are not imported yet. The JSON
-          carries every folio and every Tome.
+      <section className="archive__section" aria-labelledby={exportsHeading}>
+        <h2 className="opening" id={exportsHeading}>
+          Carry the collection elsewhere
+        </h2>
+        <p className="archive__export">
+          <a href={EXPORT_CSV_URL} download>
+            The collection as CSV
+          </a>
+          , which reads back through the CSV import, though location, notes,
+          tags, acquisition date and price are not imported yet.
         </p>
-      </Panel>
+        <p className="archive__export">
+          <a href={EXPORT_JSON_URL} download>
+            The collection as JSON
+          </a>
+          , carrying every folio and every Tome.
+        </p>
+      </section>
     </section>
   )
 }

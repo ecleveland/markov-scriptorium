@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CardPrinting, InventoryLot } from '../api'
-import { PageHeader, Panel, Sealed } from '../components'
+import { PageHeader, Sealed } from '../components'
 import { CardSearch } from './CardSearch'
 import { InscribeForm } from './InscribeForm'
 import { PrintingPicker } from './PrintingPicker'
@@ -8,8 +8,8 @@ import { describeEntry, entryFromLot, type SessionEntry } from './session'
 import './inscribe.css'
 
 /**
- * The Inscribe flow: search a name → pick a printing → set acquisition details
- * → inscribe. After each inscription the flow returns to the search box (which
+ * The Inscribe flow: search a name, pick a printing, set acquisition details,
+ * inscribe. After each inscription the flow returns to the search box (which
  * regains focus) so several cards can be added in a row without leaving the
  * page; a running list records what was inscribed this session.
  */
@@ -71,18 +71,17 @@ export function InscribePage() {
       )}
 
       {session.length > 0 && (
-        <Panel
-          as="aside"
+        <aside
           className="inscribe__session"
           aria-label="Inscribed this session"
         >
-          <h2>Inscribed this session</h2>
+          <h2 className="opening">Inscribed this session</h2>
           <ul>
             {session.map((entry) => (
               <li key={entry.id}>{describeEntry(entry)}</li>
             ))}
           </ul>
-        </Panel>
+        </aside>
       )}
     </section>
   )

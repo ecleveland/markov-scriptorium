@@ -1,4 +1,5 @@
 import type { InventoryLot } from '../api'
+import { capitalised, counted } from '../catalog/prose'
 
 /** One inscription made on this visit, as the session list and seal show it. */
 export interface SessionEntry {
@@ -11,11 +12,13 @@ export interface SessionEntry {
 }
 
 /**
- * One inscription as a line of text. The session list and the seal both use
- * it, so the confirmation always reads the same as the entry it adds.
+ * One inscription as a sentence: "One copy of Sol Ring, C21 no. 263, nonfoil."
+ * The session list and the seal both use it, so the confirmation always reads
+ * the same as the entry it adds.
  */
 export function describeEntry(entry: SessionEntry): string {
-  return `${entry.quantity}× ${entry.name} (${entry.setCode.toUpperCase()} #${entry.collectorNumber}) · ${entry.finish}`
+  const copies = capitalised(counted(entry.quantity, 'copy', 'copies'))
+  return `${copies} of ${entry.name}, ${entry.setCode.toUpperCase()} no. ${entry.collectorNumber}, ${entry.finish}.`
 }
 
 /** The session entry for a lot the backend just inscribed. */

@@ -105,6 +105,31 @@ describe('SlotStepper', () => {
     expect(alert).toHaveClass('notice--danger')
   })
 
+  it('sets a long refusal as the stepper error, which wraps under the steps', async () => {
+    // catalog.css lets .qty-stepper__error wrap, so a long reason does not
+    // widen the ledger's nowrap count column.
+    const user = userEvent.setup()
+    updateMock.mockRejectedValue(
+      new ApiError(
+        "Edgar's Court and Brew hold the other copies of this printing.",
+        409,
+      ),
+    )
+    renderWithQuery(<SlotStepper slot={slot({ quantity: 2 })} />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Increase quantity of Lightning Bolt',
+      }),
+    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      "Edgar's Court and Brew hold the other copies of this printing.",
+    )
+    expect(alert).toHaveClass('qty-stepper__error')
+    expect(alert.parentElement).toHaveClass('qty-stepper')
+  })
+
   it('stays disabled until the Tome has been read back', async () => {
     // Re-enabling as soon as the PATCH lands lets a quick second click send
     // the same stale quantity, and one increment is lost.

@@ -37,6 +37,71 @@ function finishOptions(): string[] {
 
 afterEach(() => vi.clearAllMocks())
 
+describe('InscribeForm plate', () => {
+  it('sets the name, the printing line and the four fields on the plate', () => {
+    render(
+      <InscribeForm
+        printing={printing({})}
+        onInscribed={vi.fn()}
+        onChangePrinting={vi.fn()}
+      />,
+    )
+    const plate = screen.getByRole('region', { name: 'Inscribe this printing' })
+    expect(
+      within(plate).getByRole('heading', { level: 2, name: 'Lightning Bolt' }),
+    ).toBeInTheDocument()
+    expect(
+      within(plate).getByText('Limited Edition Alpha, no. 161, common.'),
+    ).toBeInTheDocument()
+    expect(
+      within(plate).getByRole('img', {
+        name: 'Lightning Bolt (no image in the catalog)',
+      }),
+    ).toBeInTheDocument()
+    for (const label of ['Finish', 'Condition', 'Quantity', 'Volume']) {
+      expect(within(plate).getByLabelText(label)).toBeInTheDocument()
+    }
+    expect(
+      within(plate).getByRole('button', { name: 'Inscribe' }),
+    ).toBeInTheDocument()
+  })
+
+  it('goes back to the printings on Change printing', async () => {
+    const user = userEvent.setup()
+    const onChangePrinting = vi.fn()
+    render(
+      <InscribeForm
+        printing={printing({})}
+        onInscribed={vi.fn()}
+        onChangePrinting={onChangePrinting}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Change printing' }))
+    expect(onChangePrinting).toHaveBeenCalledOnce()
+    expect(inscribeMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the reason the backend gave when the inscription fails', async () => {
+    const user = userEvent.setup()
+    const { ApiError } =
+      await vi.importActual<typeof import('../api')>('../api')
+    inscribeMock.mockRejectedValue(
+      new ApiError('bad finish', 422, 'finish is not offered'),
+    )
+    render(
+      <InscribeForm
+        printing={printing({})}
+        onInscribed={vi.fn()}
+        onChangePrinting={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Inscribe' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This card could not be inscribed: finish is not offered',
+    )
+  })
+})
+
 describe('InscribeForm finish derivation', () => {
   it('offers only the finishes the printing exists in, defaulting to the first', () => {
     render(
@@ -74,7 +139,7 @@ describe('InscribeForm finish derivation', () => {
 })
 
 describe('coerceQuantity', () => {
-  // The pure coercion logic — tested directly because the number input's native
+  // The pure coercion logic, tested directly because the number input's native
   // min/step validation blocks submitting 0/negative/decimal through the DOM.
   it.each([
     ['', 1],
@@ -89,7 +154,7 @@ describe('coerceQuantity', () => {
 })
 
 describe('InscribeForm quantity submission', () => {
-  it('submits the typed quantity (cleared → defaults to 1)', async () => {
+  it('submits the typed quantity, falling back to 1 when cleared', async () => {
     const user = userEvent.setup()
     inscribeMock.mockResolvedValue({
       id: 1,
@@ -128,6 +193,48 @@ describe('InscribeForm quantity submission', () => {
     await waitFor(() =>
       expect(inscribeMock).toHaveBeenCalledWith(
         expect.objectContaining({ quantity: 1 }),
+      ),
+    )
+  })
+
+  it('submits the typed Volume as the location', async () => {
+    const user = userEvent.setup()
+    inscribeMock.mockResolvedValue({
+      id: 1,
+      scryfall_id: 'lea-bolt',
+      quantity: 1,
+      finish: 'nonfoil',
+      condition: 'NM',
+      language: 'en',
+      location: 'Binder I',
+      acquired_at: null,
+      price_paid: null,
+      notes: null,
+      tags: null,
+      folio: { owned: 1, reserved: 0, available: 1 },
+      card: {
+        name: 'Lightning Bolt',
+        set_code: 'lea',
+        set_name: 'Limited Edition Alpha',
+        collector_number: '161',
+        rarity: 'common',
+        image_uris: null,
+      },
+    })
+
+    render(
+      <InscribeForm
+        printing={printing({})}
+        onInscribed={vi.fn()}
+        onChangePrinting={vi.fn()}
+      />,
+    )
+    await user.type(screen.getByLabelText('Volume'), 'Binder I')
+    await user.click(screen.getByRole('button', { name: 'Inscribe' }))
+
+    await waitFor(() =>
+      expect(inscribeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ location: 'Binder I' }),
       ),
     )
   })

@@ -2,16 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, deleteDeck, getDeck, type Deck, type DeckSlot } from '../api'
-import {
-  Button,
-  Consulting,
-  EmptyState,
-  Field,
-  Notice,
-  Select,
-} from '../components'
+import { Button, Consulting, EmptyState, Ledger, Notice } from '../components'
 import { AddCard } from './AddCard'
-import { BOARD_LABELS, groupByBoard, type BoardGroup } from './boards'
+import { BoardHead } from './BoardHead'
+import {
+  BOARD_LABELS,
+  boardOffsets,
+  groupByBoard,
+  type BoardGroup,
+} from './boards'
 import { SlotRow } from './SlotRow'
 import { TomeAmendForm } from './TomeAmendForm'
 import { TomeHead } from './TomeHead'
@@ -96,26 +95,43 @@ function SlotList({ slots }: { slots: DeckSlot[] }) {
     )
   }
 
+  const groups = groupByBoard(slots)
+  const offsets = boardOffsets(groups)
+  // Type is the default, so it is the bare URL.
+  const sortBy = (next: SlotSort) =>
+    setSearchParams(next === 'cmc' ? { sort: 'cmc' } : {})
+
   return (
     <div className="tome-cards">
-      <div className="tome-cards__toolbar">
-        <Field label="Sort by">
-          <Select
-            value={sort}
-            onChange={(event) =>
-              // Type is the default, so it is the bare URL.
-              setSearchParams(
-                event.target.value === 'cmc' ? { sort: 'cmc' } : {},
-              )
-            }
-          >
-            <option value="type">Card type</option>
-            <option value="cmc">Mana value</option>
-          </Select>
-        </Field>
+      <div className="tome-cards__toolbar" role="group" aria-label="Sorted">
+        {/* The group is named already, so this is for the eye only. */}
+        <span className="tome-cards__lead" aria-hidden="true">
+          Sorted
+        </span>
+        <Button
+          variant="ghost"
+          className="tome-cards__toggle"
+          aria-pressed={sort === 'type'}
+          onClick={() => sortBy('type')}
+        >
+          by type
+        </Button>
+        <Button
+          variant="ghost"
+          className="tome-cards__toggle"
+          aria-pressed={sort === 'cmc'}
+          onClick={() => sortBy('cmc')}
+        >
+          by mana value
+        </Button>
       </div>
-      {groupByBoard(slots).map((group) => (
-        <BoardSection key={group.board} group={group} sort={sort} />
+      {groups.map((group, i) => (
+        <BoardSection
+          key={group.board}
+          group={group}
+          sort={sort}
+          offset={offsets[i]}
+        />
       ))}
     </div>
   )
@@ -124,21 +140,22 @@ function SlotList({ slots }: { slots: DeckSlot[] }) {
 function BoardSection({
   group,
   sort,
+  offset,
 }: {
   group: BoardGroup<DeckSlot>
   sort: SlotSort
+  /** Rows on the boards above, so the numbering carries on. */
+  offset: number
 }) {
   const headingId = useId()
   return (
     <section className="tome-board" aria-labelledby={headingId}>
-      <h3 id={headingId}>
-        {BOARD_LABELS[group.board]} · {group.copies}
-      </h3>
-      <ul className="tome-board__slots">
-        {sortSlots(group.rows, sort).map((slot) => (
-          <SlotRow key={slot.id} slot={slot} />
+      <BoardHead id={headingId} group={group} />
+      <Ledger aria-label={`${BOARD_LABELS[group.board]} cards`}>
+        {sortSlots(group.rows, sort).map((slot, i) => (
+          <SlotRow key={slot.id} slot={slot} number={offset + i + 1} />
         ))}
-      </ul>
+      </Ledger>
     </section>
   )
 }

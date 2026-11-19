@@ -57,11 +57,11 @@ export function Specimens() {
         Every folio is entered by hand with its printing and finish, so the
         catalog can say <em>which</em> copy sits in which Volume.
       </p>
-      <p className="specimens__caps">The Index · The Catalog · Tomes</p>
+      <p className="specimens__caps">The Index, The Catalog, Tomes</p>
       <p className="specimens__figures">
         0123456789
         <br />
-        fol. 312 · 4 copies
+        fol. 312, 4 copies
       </p>
       <p className="specimens__rubric">VII</p>
 

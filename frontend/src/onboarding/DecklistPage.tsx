@@ -12,21 +12,25 @@ import {
   type ParsedLine,
   type ParseProblem,
 } from '../api'
+import { printingLine } from '../catalog/prose'
 import {
   Button,
+  CardThumb,
   EmptyState,
   Field,
+  Ledger,
+  LedgerEntry,
+  LedgerFigure,
   Notice,
   PageHeader,
-  Panel,
   Sealed,
   Select,
   Textarea,
-  describePrinting,
 } from '../components'
 import { CandidatePicker } from './CandidatePicker'
 import { errorMessage } from './errorMessage'
 import { RowStatusTag } from './RowStatusTag'
+import { importSummary } from './summary'
 import { UnreadableProblems } from './UnreadableProblems'
 import './decklist.css'
 
@@ -64,10 +68,10 @@ function UnreadableLines({ problems }: { problems: ParseProblem[] }) {
 }
 
 /**
- * Inscribe a whole decklist at once: paste text → resolve every line against the
- * catalog → disambiguate the rows that matched several printings → inscribe the
- * lot in one atomic batch. Unmatched and unresolved lines are reported in the
- * summary, never silently dropped (VEG-414).
+ * Inscribe a whole decklist at once: paste text, resolve every line against
+ * the catalog, disambiguate the rows that matched several printings, then
+ * inscribe the lot in one atomic batch. Unmatched and unresolved lines are
+ * reported in the summary, never silently dropped (VEG-414).
  */
 export function DecklistPage() {
   const [step, setStep] = useState<Step>('paste')
@@ -106,7 +110,7 @@ export function DecklistPage() {
       if (parsed.entries.length === 0) {
         setError(
           parsed.problems.length > 0
-            ? 'No readable card lines were found — see the problems below.'
+            ? 'No readable card lines were found. See the problems below.'
             : 'Paste a decklist to begin.',
         )
         return
@@ -126,8 +130,8 @@ export function DecklistPage() {
         })),
       )
       // resolve preserves order 1:1; if the counts diverge the response is
-      // unusable — say so plainly instead of letting an undefined row read as a
-      // network error below.
+      // unusable, so say so plainly instead of letting an undefined row read
+      // as a network error below.
       if (resolved.results.length !== parsed.entries.length) {
         setError(
           `The catalog returned ${resolved.results.length} results for ${parsed.entries.length} lines; nothing was imported.`,
@@ -240,11 +244,14 @@ export function DecklistPage() {
             summary text arrives. */}
         <div role="status" />
 
-        <Notice className="decklist__counts">
-          {readyRows.length} ready · {unresolvedCount} to choose ·{' '}
-          {unmatchedCount} unmatched
-          {problems.length > 0 && ` · ${problems.length} unreadable`}
-        </Notice>
+        <p className="import__summary">
+          {importSummary({
+            ready: readyRows.length,
+            toChoose: unresolvedCount,
+            unmatched: unmatchedCount,
+            unreadable: problems.length,
+          })}
+        </p>
 
         {nothingMatched && (
           <EmptyState title="Nothing matched">
@@ -255,7 +262,7 @@ export function DecklistPage() {
           </EmptyState>
         )}
 
-        <Panel as="fieldset" className="decklist__controls">
+        <fieldset className="import__controls">
           <legend>Applied to every inscribed card</legend>
           <Field label="Finish">
             <Select
@@ -283,42 +290,78 @@ export function DecklistPage() {
               ))}
             </Select>
           </Field>
-        </Panel>
+        </fieldset>
 
-        <ol className="decklist__rows">
+        <Ledger aria-label="Lines" className="import__ledger">
           {rows.map((row, index) => (
-            <li
+            <LedgerEntry
               key={index}
-              className={`decklist__row decklist__row--${row.status}`}
-            >
-              <RowStatusTag status={row.status} chosen={row.chosen} />
-              <span className="decklist__line">
-                {row.entry.quantity}× {row.entry.name}
-              </span>
-              {row.chosen ? (
-                <span className="decklist__chosen">
-                  {describePrinting(row.chosen)}
-                  {row.status === 'ambiguous' && (
-                    <Button variant="ghost" onClick={() => choose(index, null)}>
-                      Change
-                    </Button>
-                  )}
-                </span>
-              ) : row.status === 'ambiguous' ? (
-                <CandidatePicker
-                  name={row.entry.name}
-                  candidates={row.candidates}
-                  selectedId={null}
-                  onPick={(printing) => choose(index, printing)}
-                />
-              ) : (
-                <span className="decklist__unmatched">
-                  No printing of “{row.entry.name}” resides in the catalog.
-                </span>
-              )}
-            </li>
+              number={index + 1}
+              thumb={
+                // With no printing chosen there is no art to speak of, and
+                // the name is already in the entry, so the slot stays silent.
+                row.chosen ? (
+                  <CardThumb
+                    images={row.chosen.image_uris}
+                    name={row.chosen.name}
+                  />
+                ) : (
+                  <span
+                    className="card-thumb card-thumb--thumb card-thumb--empty"
+                    aria-hidden="true"
+                  />
+                )
+              }
+              name={
+                <>
+                  <RowStatusTag status={row.status} chosen={row.chosen} />{' '}
+                  {row.entry.name}
+                </>
+              }
+              where={
+                row.chosen ? (
+                  <>
+                    {printingLine(row.chosen)}.
+                    {row.status === 'ambiguous' && (
+                      <>
+                        {' '}
+                        <Button
+                          variant="ghost"
+                          onClick={() => choose(index, null)}
+                        >
+                          Change
+                        </Button>
+                      </>
+                    )}
+                  </>
+                ) : row.status === 'ambiguous' ? (
+                  'Several printings match; choose one below.'
+                ) : (
+                  <>No printing of “{row.entry.name}” resides in the catalog.</>
+                )
+              }
+              count={
+                <>
+                  <LedgerFigure>{row.entry.quantity}</LedgerFigure>
+                  <span className="visually-hidden">
+                    {row.entry.quantity === 1 ? ' copy' : ' copies'}
+                  </span>
+                </>
+              }
+              aside={
+                row.status === 'ambiguous' &&
+                !row.chosen && (
+                  <CandidatePicker
+                    name={row.entry.name}
+                    candidates={row.candidates}
+                    selectedId={null}
+                    onPick={(printing) => choose(index, printing)}
+                  />
+                )
+              }
+            />
           ))}
-        </ol>
+        </Ledger>
 
         <UnreadableLines problems={problems} />
 
@@ -352,7 +395,7 @@ export function DecklistPage() {
     <section className="decklist">
       <PageHeader title="Inscribe a Decklist" />
       <p>
-        Paste a decklist — one card per line, e.g.{' '}
+        Paste a decklist, one card per line, such as{' '}
         <code>4 Lightning Bolt (2X2)</code>. Quantities, set codes, comments,
         and section headers are understood.
       </p>

@@ -24,10 +24,12 @@ test('seals a copy by hand and lists it', async ({ page }) => {
   await expect(
     page.getByRole('status').filter({ hasText: 'Sealed scriptorium-' }),
   ).toContainText('Sealed scriptorium-20261015T142200Z-v6-manual.db.')
-  const table = page.getByRole('table', { name: 'Backups' })
-  await expect(table.getByRole('row')).toHaveCount(2)
-  await expect(table.getByRole('row').nth(1)).toContainText('By hand')
-  await expect(table.getByRole('row').nth(1)).toContainText('v6')
+  const copies = page
+    .getByRole('list', { name: 'Sealed copies' })
+    .getByRole('listitem')
+  await expect(copies).toHaveCount(1)
+  await expect(copies.first()).toContainText('By hand')
+  await expect(copies.first()).toContainText('v6')
   await expect(
     page.getByText('Copies rest in /tmp/scriptorium/backups.', {
       exact: false,
@@ -38,10 +40,10 @@ test('seals a copy by hand and lists it', async ({ page }) => {
 test('offers the collection as CSV and JSON downloads', async ({ page }) => {
   await page.goto('/archive')
 
-  const csv = page.getByRole('link', { name: 'Export the collection as CSV' })
+  const csv = page.getByRole('link', { name: 'The collection as CSV' })
   await expect(csv).toHaveAttribute('href', '/api/archive/export.csv')
   await expect(csv).toHaveAttribute('download', '')
-  const json = page.getByRole('link', { name: 'Export the collection as JSON' })
+  const json = page.getByRole('link', { name: 'The collection as JSON' })
   await expect(json).toHaveAttribute('href', '/api/archive/export.json')
   await expect(json).toHaveAttribute('download', '')
 })

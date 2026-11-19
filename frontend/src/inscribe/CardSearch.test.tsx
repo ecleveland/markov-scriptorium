@@ -15,13 +15,26 @@ const autocompleteMock = vi.mocked(autocompleteNames)
 afterEach(() => vi.clearAllMocks())
 
 describe('CardSearch', () => {
+  it('names the search box by the sentence it reads on screen', () => {
+    render(<CardSearch onSelect={vi.fn()} />)
+    const box = screen.getByRole('searchbox', {
+      name: 'Seek a card by name, or part of one',
+    })
+    expect(box).toHaveAttribute('placeholder', 'or part of one')
+    expect(box).toHaveClass('seek__input')
+    expect(box.closest('label')).toHaveTextContent('Seek a card by name,')
+  })
+
   it('queries autocomplete as the user types and selects a suggestion', async () => {
     const user = userEvent.setup()
     autocompleteMock.mockResolvedValue(['Lightning Bolt', 'Lightning Helix'])
     const onSelect = vi.fn()
 
     render(<CardSearch onSelect={onSelect} />)
-    await user.type(screen.getByLabelText('Card name'), 'light')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'light',
+    )
 
     const option = await screen.findByRole('button', {
       name: 'Lightning Helix',
@@ -41,7 +54,10 @@ describe('CardSearch', () => {
     autocompleteMock.mockRejectedValue(new Error('offline'))
 
     render(<CardSearch onSelect={vi.fn()} />)
-    await user.type(screen.getByLabelText('Card name'), 'x')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'x',
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /could not be reached/i,
@@ -58,7 +74,10 @@ describe('CardSearch', () => {
     )
 
     render(<CardSearch onSelect={vi.fn()} />)
-    await user.type(screen.getByLabelText('Card name'), 'zzz')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'zzz',
+    )
     // Past the debounce, the lookup is still out: no verdict yet.
     await waitFor(() => expect(autocompleteMock).toHaveBeenCalled())
     expect(
@@ -80,7 +99,10 @@ describe('CardSearch', () => {
     const onSelect = vi.fn()
 
     render(<CardSearch onSelect={onSelect} />)
-    await user.type(screen.getByLabelText('Card name'), 'light')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      'light',
+    )
     const first = await screen.findByRole('button', { name: 'Lightning Bolt' })
     first.focus()
     await user.keyboard('{ArrowDown}')
@@ -95,7 +117,10 @@ describe('CardSearch', () => {
   it('does not query for a blank input', async () => {
     const user = userEvent.setup()
     render(<CardSearch onSelect={vi.fn()} />)
-    await user.type(screen.getByLabelText('Card name'), '   ')
+    await user.type(
+      screen.getByLabelText('Seek a card by name, or part of one'),
+      '   ',
+    )
     // Give the debounce time to (not) fire.
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(autocompleteMock).not.toHaveBeenCalled()

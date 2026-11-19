@@ -91,9 +91,12 @@ test('scries a card from the camera into the catalog', async ({ page }) => {
 
   // The reading names its printing, so the glass goes straight to the form.
   await page.getByRole('button', { name: /Sol Ring.*91%/ }).click()
+  // The form sits on a plate: the name as the heading, the printing beneath.
+  const plate = page.getByRole('region', { name: 'Inscribe this printing' })
   await expect(
-    page.getByRole('heading', { level: 2, name: /Sol Ring.*Commander 2021/ }),
+    plate.getByRole('heading', { level: 2, name: 'Sol Ring' }),
   ).toBeVisible()
+  await expect(plate).toContainText('Commander 2021, no. 263')
   await expect(
     page.getByRole('heading', { name: /Choose a printing/ }),
   ).toHaveCount(0)
@@ -137,7 +140,7 @@ test('offers to type the name when the glass reads nothing', async ({
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Type the name instead' }).click()
-  await page.getByLabel('Card name').fill('Sol Ring')
+  await page.getByLabel('Seek a card by name, or part of one').fill('Sol Ring')
   await page.getByRole('button', { name: 'Sol Ring' }).click()
   await expect(
     page.getByRole('heading', { name: /Choose a printing of “Sol Ring”/ }),

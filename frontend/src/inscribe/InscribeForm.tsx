@@ -8,15 +8,15 @@ import {
   type Finish,
   type InventoryLot,
 } from '../api'
+import { printingLine } from '../catalog/prose'
 import {
   Button,
+  CardThumb,
   Field,
   Input,
   Notice,
-  PageHeader,
-  Panel,
+  Plate,
   Select,
-  describePrinting,
 } from '../components'
 import { availableFinishes } from './finishes'
 import { coerceQuantity } from './quantity'
@@ -59,8 +59,9 @@ export function InscribeForm({
       onInscribed(lot)
     } catch (err) {
       console.error('Inscribe failed', err)
-      // Surface the backend's reason (e.g. a 422 validation detail) when we have
-      // one — "try again" is misleading for input the server will reject again.
+      // Surface the backend's reason (a 422 validation detail, say) when we
+      // have one, because "try again" misleads for input the server will reject
+      // again.
       const detail = err instanceof ApiError ? err.detail : undefined
       setError(
         detail
@@ -74,83 +75,84 @@ export function InscribeForm({
 
   return (
     <form className="inscribe-form" onSubmit={handleSubmit}>
-      <PageHeader
-        level={2}
-        title={
+      {/* The chosen printing on the lit plate, with the acquisition fields
+          among its lines and the seal button beneath them. */}
+      <Plate
+        label="Inscribe this printing"
+        art={
+          <CardThumb
+            images={printing.image_uris}
+            name={printing.name}
+            size="full"
+          />
+        }
+        heading={<h2>{printing.name}</h2>}
+        lines={
           <>
-            {printing.name} — {describePrinting(printing)}
+            <p className="plate__printing">
+              {printingLine(printing)}, {printing.rarity}.
+            </p>
+            <div className="inscribe-form__fields">
+              <Field label="Finish">
+                <Select
+                  value={finish}
+                  onChange={(e) => setFinish(e.target.value as Finish)}
+                >
+                  {finishes.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Condition">
+                <Select
+                  value={condition}
+                  onChange={(e) => setCondition(e.target.value as Condition)}
+                >
+                  {CONDITIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Quantity">
+                <Input
+                  type="number"
+                  min={1}
+                  value={quantityText}
+                  onChange={(e) => setQuantityText(e.target.value)}
+                />
+              </Field>
+
+              <Field label="Volume">
+                <Input
+                  type="text"
+                  value={location}
+                  placeholder="e.g. Binder I"
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+              </Field>
+            </div>
+            {error && (
+              <Notice tone="danger" role="alert">
+                {error}
+              </Notice>
+            )}
           </>
         }
-      >
-        <Button onClick={onChangePrinting}>Change printing</Button>
-      </PageHeader>
-
-      <div className="inscribe-form__body">
-        {printing.image_uris?.normal && (
-          <img
-            className="inscribe-form__preview"
-            src={printing.image_uris.normal}
-            alt={printing.name}
-            width={240}
-          />
-        )}
-
-        <Panel className="inscribe-form__fields">
-          <Field label="Finish">
-            <Select
-              value={finish}
-              onChange={(e) => setFinish(e.target.value as Finish)}
-            >
-              {finishes.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Condition">
-            <Select
-              value={condition}
-              onChange={(e) => setCondition(e.target.value as Condition)}
-            >
-              {CONDITIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Quantity">
-            <Input
-              type="number"
-              min={1}
-              value={quantityText}
-              onChange={(e) => setQuantityText(e.target.value)}
-            />
-          </Field>
-
-          <Field label="Volume (location)">
-            <Input
-              type="text"
-              value={location}
-              placeholder="e.g. Binder I"
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </Field>
-        </Panel>
-      </div>
-
-      {error && (
-        <Notice tone="danger" role="alert">
-          {error}
-        </Notice>
-      )}
-
-      <Button type="submit" variant="primary" seal disabled={submitting}>
-        {submitting ? 'Inscribing…' : 'Inscribe'}
-      </Button>
+        actions={
+          <>
+            <Button type="submit" variant="primary" seal disabled={submitting}>
+              {submitting ? 'Inscribing…' : 'Inscribe'}
+            </Button>
+            <Button onClick={onChangePrinting}>Change printing</Button>
+          </>
+        }
+      />
     </form>
   )
 }

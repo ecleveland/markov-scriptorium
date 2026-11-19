@@ -9,16 +9,8 @@ import {
   type SlotCreate,
 } from '../api'
 import { readQuantity } from '../catalog/quantity'
-import {
-  Button,
-  Field,
-  Input,
-  Notice,
-  PageHeader,
-  Panel,
-  Select,
-  describePrinting,
-} from '../components'
+import { printingLine } from '../catalog/prose'
+import { Button, Field, Input, Notice, PageHeader, Select } from '../components'
 import { availableFinishes } from '../inscribe/finishes'
 import { BOARD_LABELS, isSingletonBoard } from './boards'
 import { invalidateAfterSlotWrite } from './invalidate'
@@ -70,18 +62,12 @@ export function SlotForm({
 
   return (
     <form className="slot-form" onSubmit={handleSubmit}>
-      <PageHeader
-        level={2}
-        title={
-          <>
-            {printing.name} · {describePrinting(printing)}
-          </>
-        }
-      >
+      <PageHeader level={2} title={printing.name}>
         <Button onClick={onChangePrinting}>Change printing</Button>
       </PageHeader>
+      <p className="slot-form__printing">{printingLine(printing)}.</p>
 
-      <Panel className="slot-form__fields">
+      <div className="slot-form__fields">
         <Field label="Finish">
           <Select
             value={finish}
@@ -117,7 +103,7 @@ export function SlotForm({
             onChange={(event) => setQuantityText(event.target.value)}
           />
         </Field>
-      </Panel>
+      </div>
 
       {badQuantity && (
         <Notice tone="danger" role="alert">

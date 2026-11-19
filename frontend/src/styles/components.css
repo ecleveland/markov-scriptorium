@@ -438,6 +438,8 @@
   font-variant-numeric: var(--figures);
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
+  /* Upright inside an italic line, as the finish word is. */
+  font-style: normal;
   font-variant-caps: var(--caps);
   letter-spacing: var(--caps-tracking);
   white-space: nowrap;
@@ -576,7 +578,7 @@ select.control {
 }
 
 /* ---- Printing chip -------------------------------------------------------
-   Card thumbnail + "Set Name (SET) · #num", used inside listbox options. The
+   Card thumbnail + "Set Name (SET), no. num", used inside listbox options. The
    art is decorative (alt="") so the option's name stays the printing text.
    With no art, an empty slot of the same width keeps the rows aligned.
    The text span (.printing-chip__text) carries no rules of its own. Its
@@ -699,7 +701,16 @@ select.control {
   margin-left: auto;
   white-space: normal;
   font-size: var(--text-xs);
+  /* "2 in Tomes", "3 needed": figures in the note match the one above it. */
+  font-variant-numeric: var(--figures);
   color: var(--text-muted);
+}
+
+/* A full-width line under an entry, for a picker or a hint the four cells
+   cannot hold. */
+.ledger__aside {
+  grid-column: 1 / -1;
+  margin-top: var(--space-2);
 }
 
 @media (max-width: 44rem) {
@@ -804,6 +815,40 @@ select.control {
   font-size: 1.35em;
   font-weight: 600;
   color: var(--rubric);
+}
+
+/* ---- Seek -----------------------------------------------------------------
+   Classes only. The search set as a sentence on a ruled line: an italic lead,
+   then an input with no box and a hairline beneath. Focus shows through the
+   global focus ring (VEG-624, VEG-625). */
+
+.seek {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  max-width: 40rem;
+  margin-bottom: var(--space-5);
+}
+
+.seek__lead {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.seek__input {
+  flex: 1 1 16rem;
+  width: auto;
+  padding: var(--space-1) 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--text-lg);
+}
+
+.seek__input::placeholder {
+  font-style: italic;
 }
 
 /* ---- Pager ----------------------------------------------------------------

@@ -9,7 +9,7 @@ export interface PrintingChipProps {
 }
 
 /**
- * Card art beside "Set Name (SET) · #num". Meant to sit inside a listbox
+ * Card art beside "Set Name (SET), no. num". Meant to sit inside a listbox
  * option's button. The art is decorative (`alt=""`) so the option is named by
  * the printing text alone. When the row holds no `image_uris` (the dev seed,
  * and multi-faced printings whose art is stored per face) or the image fails

@@ -145,9 +145,9 @@ test('opens a printing, follows a lot, and comes back to the filtered Index', as
     page.getByRole('heading', { level: 1, name: 'Lightning Bolt' }),
   ).toBeVisible()
   await expect(
-    page.getByText('Double Masters 2022 · 2X2 #117 · uncommon'),
+    page.getByText('Double Masters 2022, no. 117, uncommon.'),
   ).toBeVisible()
-  await expect(page.getByText('4 owned · 0 in Tomes · 4 free')).toBeVisible()
+  await expect(page.getByText('4 owned, 0 in Tomes, 4 free')).toBeVisible()
   await expect(
     page.getByRole('complementary', { name: 'Ownership across printings' }),
   ).toContainText('You own 6 copies of Lightning Bolt across 2 printings.')

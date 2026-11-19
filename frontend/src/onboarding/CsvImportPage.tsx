@@ -11,22 +11,25 @@ import {
   type CsvSource,
   type Finish,
 } from '../api'
+import { capitalised, conditionWords, printingLine } from '../catalog/prose'
 import {
   Button,
+  CardThumb,
   EmptyState,
   Field,
+  Ledger,
+  LedgerEntry,
+  LedgerFigure,
   Notice,
   PageHeader,
-  Panel,
   Sealed,
   Select,
-  Tag,
   Textarea,
-  describePrinting,
 } from '../components'
 import { CandidatePicker } from './CandidatePicker'
 import { errorMessage } from './errorMessage'
 import { RowStatusTag } from './RowStatusTag'
+import { importSummary } from './summary'
 import { UnreadableProblems } from './UnreadableProblems'
 import './decklist.css'
 
@@ -60,12 +63,38 @@ function UnreadableRows({ problems }: { problems: CsvProblem[] }) {
 }
 
 /**
- * Import a collection CSV (Manabox / Deckbox / Archidekt): upload or paste →
- * detect the source (overridable) → resolve every row against the catalog →
- * disambiguate the rows that matched several printings → inscribe in one atomic
- * batch. Unlike the decklist flow, each row carries its own finish/condition/
- * language, so there is no batch selector. Unmatched/unreadable rows are
- * reported in the summary, never dropped (VEG-415).
+ * The row's own finish and condition in words: ["foil", "lightly played"].
+ * Nonfoil is the default and goes unsaid, as it does across the Index.
+ */
+function rowDetails(entry: CsvRow): string[] {
+  const words: string[] = []
+  if (entry.finish && entry.finish !== 'nonfoil') words.push(entry.finish)
+  if (entry.condition) words.push(conditionWords(entry.condition))
+  return words
+}
+
+/** The chosen printing with the row's details: "Commander, no. 256, foil." */
+function chosenLine(entry: CsvRow, chosen: CardPrinting): string {
+  return `${[printingLine(chosen), ...rowDetails(entry)].join(', ')}.`
+}
+
+/**
+ * The row's details as a sentence of their own after a row with no printing
+ * yet, " Foil, lightly played.", since they are what will be inscribed once
+ * one is chosen. Empty when the row has neither.
+ */
+function detailsSentence(entry: CsvRow): string {
+  const words = rowDetails(entry)
+  return words.length === 0 ? '' : ` ${capitalised(words.join(', '))}.`
+}
+
+/**
+ * Import a collection CSV (Manabox / Deckbox / Archidekt): upload or paste,
+ * detect the source (overridable), resolve every row against the catalog,
+ * disambiguate the rows that matched several printings, then inscribe in one
+ * atomic batch. Unlike the decklist flow, each row carries its own finish/
+ * condition/language, so there is no batch selector. Unmatched/unreadable rows
+ * are reported in the summary, never dropped (VEG-415).
  */
 export function CsvImportPage() {
   const [step, setStep] = useState<Step>('upload')
@@ -111,7 +140,7 @@ export function CsvImportPage() {
       if (parsed.entries.length === 0) {
         setError(
           parsed.problems.length > 0
-            ? 'No readable rows were found — see the problems below.'
+            ? 'No readable rows were found. See the problems below.'
             : 'Upload or paste a CSV to begin.',
         )
         return
@@ -240,12 +269,15 @@ export function CsvImportPage() {
             summary text arrives. */}
         <div role="status" />
 
-        <Notice className="decklist__counts">
-          {detected && <>Detected {detected}. </>}
-          {readyRows.length} ready · {unresolvedCount} to choose ·{' '}
-          {unmatchedCount} unmatched
-          {problems.length > 0 && ` · ${problems.length} unreadable`}
-        </Notice>
+        <p className="import__summary">
+          {importSummary({
+            ready: readyRows.length,
+            toChoose: unresolvedCount,
+            unmatched: unmatchedCount,
+            unreadable: problems.length,
+            detected: detected ?? undefined,
+          })}
+        </p>
 
         {nothingMatched && (
           <EmptyState title="Nothing matched">
@@ -256,44 +288,82 @@ export function CsvImportPage() {
           </EmptyState>
         )}
 
-        <ol className="decklist__rows">
+        <Ledger aria-label="Rows" className="import__ledger">
           {rows.map((row, index) => (
-            <li
+            <LedgerEntry
               key={index}
-              className={`decklist__row decklist__row--${row.status}`}
-            >
-              <RowStatusTag status={row.status} chosen={row.chosen} />
-              <span className="decklist__line">
-                {row.entry.quantity}× {row.entry.name}
-              </span>
-              {row.entry.finish && row.entry.finish !== 'nonfoil' && (
-                <Tag>{row.entry.finish}</Tag>
-              )}
-              {row.entry.condition && <Tag>{row.entry.condition}</Tag>}
-              {row.chosen ? (
-                <span className="decklist__chosen">
-                  {describePrinting(row.chosen)}
-                  {row.status === 'ambiguous' && (
-                    <Button variant="ghost" onClick={() => choose(index, null)}>
-                      Change
-                    </Button>
-                  )}
-                </span>
-              ) : row.status === 'ambiguous' ? (
-                <CandidatePicker
-                  name={row.entry.name}
-                  candidates={row.candidates}
-                  selectedId={null}
-                  onPick={(printing) => choose(index, printing)}
-                />
-              ) : (
-                <span className="decklist__unmatched">
-                  No printing of “{row.entry.name}” resides in the catalog.
-                </span>
-              )}
-            </li>
+              number={index + 1}
+              thumb={
+                // With no printing chosen there is no art to speak of, and
+                // the name is already in the entry, so the slot stays silent.
+                row.chosen ? (
+                  <CardThumb
+                    images={row.chosen.image_uris}
+                    name={row.chosen.name}
+                  />
+                ) : (
+                  <span
+                    className="card-thumb card-thumb--thumb card-thumb--empty"
+                    aria-hidden="true"
+                  />
+                )
+              }
+              name={
+                <>
+                  <RowStatusTag status={row.status} chosen={row.chosen} />{' '}
+                  {row.entry.name}
+                </>
+              }
+              where={
+                row.chosen ? (
+                  <>
+                    {chosenLine(row.entry, row.chosen)}
+                    {row.status === 'ambiguous' && (
+                      <>
+                        {' '}
+                        <Button
+                          variant="ghost"
+                          onClick={() => choose(index, null)}
+                        >
+                          Change
+                        </Button>
+                      </>
+                    )}
+                  </>
+                ) : row.status === 'ambiguous' ? (
+                  <>
+                    Several printings match; choose one below.
+                    {detailsSentence(row.entry)}
+                  </>
+                ) : (
+                  <>
+                    No printing of “{row.entry.name}” resides in the catalog.
+                    {detailsSentence(row.entry)}
+                  </>
+                )
+              }
+              count={
+                <>
+                  <LedgerFigure>{row.entry.quantity}</LedgerFigure>
+                  <span className="visually-hidden">
+                    {row.entry.quantity === 1 ? ' copy' : ' copies'}
+                  </span>
+                </>
+              }
+              aside={
+                row.status === 'ambiguous' &&
+                !row.chosen && (
+                  <CandidatePicker
+                    name={row.entry.name}
+                    candidates={row.candidates}
+                    selectedId={null}
+                    onPick={(printing) => choose(index, printing)}
+                  />
+                )
+              }
+            />
           ))}
-        </ol>
+        </Ledger>
 
         <UnreadableRows problems={problems} />
 
@@ -332,7 +402,7 @@ export function CsvImportPage() {
         file.
       </p>
 
-      <Panel className="decklist__controls">
+      <div className="import__controls">
         <Field label="CSV file">
           {/* Native input: the .control rules are text-field rules, and a file
               picker keeps its own rendering (ADR 0017). */}
@@ -358,7 +428,7 @@ export function CsvImportPage() {
             ))}
           </Select>
         </Field>
-      </Panel>
+      </div>
 
       <Field label="…or paste CSV text" className="decklist__input">
         <Textarea

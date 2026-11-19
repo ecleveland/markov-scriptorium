@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { slot } from '../test/fixtures'
-import { BOARD_LABELS, groupByBoard, isSingletonBoard } from './boards'
+import {
+  BOARD_LABELS,
+  boardOffsets,
+  groupByBoard,
+  isSingletonBoard,
+} from './boards'
 
 describe('boards', () => {
   it('labels every board', () => {
@@ -33,5 +38,21 @@ describe('boards', () => {
       ['main', 7, [2, 4]],
       ['sideboard', 2, [1]],
     ])
+  })
+
+  it('starts each group where the rows before it end', () => {
+    const groups = groupByBoard([
+      slot({ id: 1, board: 'commander' }),
+      slot({ id: 2, board: 'main', quantity: 4 }),
+      slot({ id: 3, board: 'main', quantity: 2 }),
+      slot({ id: 4, board: 'main' }),
+      slot({ id: 5, board: 'sideboard' }),
+    ])
+    // Rows, not copies: the running number counts ledger entries.
+    expect(boardOffsets(groups)).toEqual([0, 1, 4])
+  })
+
+  it('gives no offsets for no groups', () => {
+    expect(boardOffsets([])).toEqual([])
   })
 })

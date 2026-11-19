@@ -6,6 +6,13 @@ import { stubApi } from './stubs'
 // unbind the Tome. Decks, slots, and lots live in the stub (see stubs.ts); the
 // stub owns two Alpha Bolts and four foil Double Masters Bolts.
 
+/** A board's copy count, the gold figure beside its heading. */
+function boardCount(page: Page, board: string) {
+  return page
+    .getByRole('region', { name: board, exact: true })
+    .locator('.tome-board__count .ledger__figure')
+}
+
 test.beforeEach(async ({ page }) => {
   await stubApi(page)
 })
@@ -18,7 +25,7 @@ async function addCard(
   printing: RegExp,
   board: string,
 ) {
-  await page.getByLabel('Card name').fill(query)
+  await page.getByLabel('Seek a card by name, or part of one').fill(query)
   await page.getByRole('button', { name, exact: true }).click()
   await page.getByRole('button', { name: printing }).click()
   await page.getByLabel('Board').selectOption({ label: board })
@@ -55,8 +62,9 @@ test('binds a Tome, fills it, reads the breakdown, and unbinds it', async ({
   await expect(page.getByText('Added 1× Lightning Bolt to Main.')).toBeVisible()
 
   await expect(
-    page.getByRole('region', { name: 'Commander · 1' }),
+    page.getByRole('region', { name: 'Commander', exact: true }),
   ).toContainText('Sol Ring')
+  await expect(boardCount(page, 'Commander')).toHaveText('1')
   // The commander holds one copy, so it gets no stepper.
   await expect(
     page.getByRole('button', { name: 'Increase quantity of Sol Ring' }),
@@ -67,21 +75,24 @@ test('binds a Tome, fills it, reads the breakdown, and unbinds it', async ({
   })
   for (const next of [2, 3, 4]) {
     await increase.click()
-    await expect(
-      page.getByRole('region', { name: `Main · ${next}` }),
-    ).toBeVisible()
+    await expect(boardCount(page, 'Main')).toHaveText(String(next))
   }
 
   await page.getByRole('link', { name: 'Owned and needed' }).click()
   await expect(page).toHaveURL(/\/tomes\/1\/breakdown$/)
-  await expect(page.getByText('5 cards, 3 in hand, 2 needed')).toBeVisible()
   await expect(
-    page.getByRole('region', { name: 'Commander · 1' }).getByText('in hand'),
+    page.getByText('Five cards, three in hand, two needed.'),
   ).toBeVisible()
-  const main = page.getByRole('region', { name: 'Main · 4' })
-  await expect(main.getByText('2 needed')).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'Commander', exact: true })
+      .locator('.ledger__note'),
+  ).toHaveText('in hand')
+  await expect(boardCount(page, 'Main')).toHaveText('4')
+  const main = page.getByRole('region', { name: 'Main', exact: true })
+  await expect(main.locator('.ledger__note')).toHaveText('in hand, 2 needed')
   await expect(main.getByRole('note')).toContainText(
-    'Double Masters 2022 (2X2) · #117',
+    'Double Masters 2022, no. 117',
   )
 
   await page.getByRole('link', { name: 'Back to the Tome' }).click()
@@ -107,10 +118,12 @@ test('sorts the card list by mana value and keeps it in the URL', async ({
   await addCard(page, 'sol', 'Sol Ring', /Commander 2021/, 'Main')
   await expect(page.getByText('Added 1× Sol Ring to Main.')).toBeVisible()
 
-  await page.getByLabel('Sort by').selectOption('cmc')
+  await page.getByRole('button', { name: 'by mana value' }).click()
   await expect(page).toHaveURL(/\/tomes\/1\?sort=cmc$/)
   await page.reload()
-  await expect(page.getByLabel('Sort by')).toHaveValue('cmc')
+  await expect(
+    page.getByRole('button', { name: 'by mana value' }),
+  ).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('the editor and the breakdown fit a phone', async ({ page }) => {
@@ -121,7 +134,7 @@ test('the editor and the breakdown fit a phone', async ({ page }) => {
   await page
     .getByRole('button', { name: 'Increase quantity of Lightning Bolt' })
     .click()
-  await expect(page.getByRole('region', { name: 'Main · 2' })).toBeVisible()
+  await expect(boardCount(page, 'Main')).toHaveText('2')
 
   await page.setViewportSize({ width: 375, height: 812 })
   const fits = () =>
@@ -131,6 +144,8 @@ test('the editor and the breakdown fit a phone', async ({ page }) => {
   expect(await fits()).toBe(true)
 
   await page.getByRole('link', { name: 'Owned and needed' }).click()
-  await expect(page.getByText('2 cards, 2 in hand, 0 needed')).toBeVisible()
+  await expect(
+    page.getByText('Two cards, two in hand, none needed.'),
+  ).toBeVisible()
   expect(await fits()).toBe(true)
 })

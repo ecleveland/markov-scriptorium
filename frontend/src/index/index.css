@@ -1,10 +1,10 @@
-/* The Index (VEG-228, VEG-624): the opening sentence, the search set as a
-   sentence, the browse grid, its filter sidebar, the sort and view toggles,
-   and the printing page. Tokens only, per ADR 0014 and ADR 0017.
+/* The Index (VEG-228, VEG-624): the opening sentence, the search
+   suggestions, the browse grid, its filter sidebar, the sort and view
+   toggles, and the printing page. Tokens only, per ADR 0014 and ADR 0017.
 
-   Buttons, controls, notices, the panel, the plate, the ledger, the pager and
-   the card thumb come from the component layer. What is left here is layout,
-   the folio tile and the toggles. */
+   Buttons, controls, notices, the panel, the plate, the ledger, the seek
+   field, the pager and the card thumb come from the component layer. What is
+   left here is layout, the folio tile and the toggles. */
 
 /* The grid needs more than the leaf's 66ch text column, so the Index widens
    the column it sits in (ADR 0031). */
@@ -22,37 +22,7 @@
   color: var(--text-muted);
 }
 
-/* ---- Search, as a sentence on a ruled line ------------------------------ */
-
-.index__seek {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-3);
-  max-width: 40rem;
-  margin-bottom: var(--space-5);
-}
-
-.index__seek-lead {
-  font-style: italic;
-  color: var(--text-muted);
-}
-
-/* Focus shows through the global focus ring, not a rule here. */
-.index__seek-input {
-  flex: 1 1 16rem;
-  width: auto;
-  padding: var(--space-1) 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-strong);
-  border-radius: 0;
-  background: transparent;
-  font-size: var(--text-lg);
-}
-
-.index__seek-input::placeholder {
-  font-style: italic;
-}
+/* ---- Search suggestions ------------------------------------------------- */
 
 .index__suggestions {
   max-width: 40rem;

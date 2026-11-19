@@ -122,7 +122,7 @@ describe('CandidatePicker', () => {
     )
     expect(
       screen.getByRole('button', {
-        name: 'Limited Edition Alpha (LEA) · #161',
+        name: 'Limited Edition Alpha (LEA), no. 161',
       }),
     ).toBeInTheDocument()
     const art = screen.getByRole('presentation')

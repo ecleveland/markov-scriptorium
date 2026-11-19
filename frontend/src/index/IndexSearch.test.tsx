@@ -78,9 +78,9 @@ describe('IndexSearch', () => {
       name: 'Seek a card by name, or part of one',
     })
     expect(input).toHaveAttribute('placeholder', 'or part of one')
-    expect(input).toHaveClass('index__seek-input')
+    expect(input).toHaveClass('seek__input')
     const label = input.closest('label')
-    expect(label).toHaveClass('index__seek')
+    expect(label).toHaveClass('seek')
     expect(label).toHaveTextContent('Seek a card by name,')
     expect(screen.getByRole('search')).toContainElement(input)
   })
