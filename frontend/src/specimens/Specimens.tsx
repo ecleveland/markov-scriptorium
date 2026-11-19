@@ -37,6 +37,10 @@ const SOL_RING = {
   },
 }
 
+// Pixel sizes the seal has to read at: the favicon, the favicon on a dense
+// screen, the Sealed confirmation, and a display size for checking detail.
+const SEAL_SIZES = [16, 32, 56, 200]
+
 /**
  * Every component in every state on one page, for eyeballing the layer while
  * the pages that consume it are still being restyled. Mounted at `/specimens`
@@ -154,7 +158,14 @@ export function Specimens() {
       <Notice>Consulting the catalog…</Notice>
 
       <h2>Seal</h2>
-      <Seal className="specimens__seal" />
+      <div className="specimens__seals">
+        {SEAL_SIZES.map((size) => (
+          <figure key={size} className="specimens__seal" data-size={size}>
+            <Seal />
+            <figcaption>{size}</figcaption>
+          </figure>
+        ))}
+      </div>
 
       <h2>Sealed</h2>
       <Sealed>Inscribed 2 folios (5 copies) into the catalog.</Sealed>

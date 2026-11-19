@@ -73,6 +73,16 @@ describe('Specimens', () => {
         `missing ${selector}`,
       ).not.toBeNull()
     }
+    // The seal ladder shows the four sizes the mark has to survive at.
+    const figures = document.querySelectorAll('figure.specimens__seal')
+    expect(
+      Array.from(figures).map(
+        (figure) => figure.querySelector('figcaption')?.textContent,
+      ),
+    ).toEqual(['16', '32', '56', '200'])
+    for (const figure of Array.from(figures)) {
+      expect(figure.querySelector('.seal')).not.toBeNull()
+    }
   })
 
   it('renders the type specimen', () => {

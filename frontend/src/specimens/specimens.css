@@ -19,9 +19,45 @@
   margin-top: var(--space-3);
 }
 
+/* The seal ladder. The widths are px on purpose, because the point of the
+   ladder is the exact pixel sizes the mark must survive at. Rem sizes would
+   drift with the root font size. */
+.specimens__seals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+}
+
 .specimens__seal {
-  width: 2.25rem;
-  height: 2.25rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.specimens__seal figcaption {
+  font-size: var(--text-xs);
+  font-variant-numeric: var(--figures);
+  color: var(--text-faint);
+}
+
+.specimens__seal[data-size='16'] .seal {
+  width: 16px;
+  height: 16px;
+}
+.specimens__seal[data-size='32'] .seal {
+  width: 32px;
+  height: 32px;
+}
+.specimens__seal[data-size='56'] .seal {
+  width: 56px;
+  height: 56px;
+}
+.specimens__seal[data-size='200'] .seal {
+  width: 200px;
+  height: 200px;
 }
 
 /* The type specimen (VEG-620): each face, small caps, figures and rubric. */
