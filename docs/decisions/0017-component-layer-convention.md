@@ -12,6 +12,7 @@ components live, how they are styled, and which vocabulary the page restyle
 [VEG-423]: https://linear.app/vega-apps/issue/VEG-423
 [VEG-624]: https://linear.app/cleveland-family-enterprises/issue/VEG-624
 [VEG-625]: https://linear.app/cleveland-family-enterprises/issue/VEG-625
+[VEG-621]: https://linear.app/cleveland-family-enterprises/issue/VEG-621
 
 ---
 
@@ -86,7 +87,7 @@ does not count. Contract-tested across every sheet.
 | `PrintingChip` | `.printing-chip`, `--sm` (default) / `--md`, `__thumb`, `__text` | Art plus "Set Name (SET), no. num" via `describePrinting()` from `printing.ts`. |
 | `PageHeader` | `.page-header`, `__title`, `__actions` | The block a page opens with. `level` picks `h1` (default) or `h2`; children become the actions beside the title. `title` takes a node, so one word can sit in a `.rubric` span. The eyebrow is gone since VEG-623, and the running title it carried moved to the leaf margin, except the Tome's format, which became a Tag ([ADR 0031](0031-the-leaf-layout.md)). Heading type comes from `index.css`, and the `h1` size, weight and colour from `App.css`. |
 | `Notice` | `.notice`, `.notice--muted` (default) / `--success` / `--danger`, `.notice--inline` | A `<p>` for one line about the page's state. No ARIA role of its own; a caller that needs the line announced passes `role="alert"` or `role="status"`. `as="span"` renders it inline (adds `.notice--inline`) for a button row or a table cell. Danger reads `--danger`, which VEG-427 lifted to AA. |
-| `Seal` | `.seal`, `__wax`, `__ring`, `__mark` | The house crest as an `aria-hidden` SVG with no role. The consumer sets its size. The header's brand mark renders it; the button's small `btn__seal` glyph is separate. |
+| `Seal` | `.seal`, `__wax`, `__field`, `__lit`, `__ring`, `__mark` | The house crest as an `aria-hidden` SVG with no role. The consumer sets its size. The header's brand mark renders it; the button's small `btn__seal` glyph is separate. The M is a path group, not text, and the drawing is recorded in [ADR 0035](0035-the-house-seal.md) [VEG-621]. |
 | `Sealed` | `.sealed`, `__seal`, `__text`, `__title`, `__body` | The confirmation moment: the seal pressed beside the message. `title` defaults to "Sealed into the catalog". No role of its own; callers pass `role="status"`. The seal plays `seal-press` once. |
 | `EmptyState` | `.empty-state`, `__seal`, `__title`, `__body` | An unpressed seal, an `h2` title, and a muted body whose links are gold. No role. |
 | `Consulting` | `.consulting`, `__candle`, `__text` | The loading line: a muted `Notice` with a flickering candle, defaulting to "Consulting the catalog…". No role by default. It takes no `as`, since the candle row is a flex box an inline span cannot be, and its text sits in one `__text` span. |

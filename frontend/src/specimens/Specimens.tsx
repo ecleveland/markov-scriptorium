@@ -37,6 +37,11 @@ const SOL_RING = {
   },
 }
 
+// Pixel sizes the full seal has to read at. The shipped favicon is a separate,
+// simpler drawing in public/favicon.svg; the 16 entry here shows how the full
+// drawing fails at that size, which is why the favicon exists.
+const SEAL_SIZES = [16, 32, 56, 200]
+
 /**
  * Every component in every state on one page, for eyeballing the layer while
  * the pages that consume it are still being restyled. Mounted at `/specimens`
@@ -154,7 +159,14 @@ export function Specimens() {
       <Notice>Consulting the catalog…</Notice>
 
       <h2>Seal</h2>
-      <Seal className="specimens__seal" />
+      <div className="specimens__seals">
+        {SEAL_SIZES.map((size) => (
+          <figure key={size} className="specimens__seal" data-size={size}>
+            <Seal />
+            <figcaption>{size}</figcaption>
+          </figure>
+        ))}
+      </div>
 
       <h2>Sealed</h2>
       <Sealed>Inscribed 2 folios (5 copies) into the catalog.</Sealed>
