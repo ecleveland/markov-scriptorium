@@ -11,7 +11,7 @@
 // anywhere:
 //   node frontend/scripts/render-icons.mjs
 import { fileURLToPath } from 'node:url'
-import { chromium } from 'playwright'
+import { chromium } from '@playwright/test'
 
 const SIZE = 180
 const OUT = fileURLToPath(

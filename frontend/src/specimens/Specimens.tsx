@@ -37,8 +37,9 @@ const SOL_RING = {
   },
 }
 
-// Pixel sizes the seal has to read at: the favicon, the favicon on a dense
-// screen, the Sealed confirmation, and a display size for checking detail.
+// Pixel sizes the full seal has to read at. The shipped favicon is a separate,
+// simpler drawing in public/favicon.svg; the 16 entry here shows how the full
+// drawing fails at that size, which is why the favicon exists.
 const SEAL_SIZES = [16, 32, 56, 200]
 
 /**

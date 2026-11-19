@@ -69,8 +69,9 @@ overrides and the tests depend on them.
 plain disc and the M is one heavy stroke. It has no ring, serifs or lip,
 because those vanish at 16 px. Files under `public/` sit outside the token
 sheets, so it carries the literal hexes for `--oxblood` and `--gold` with a
-comment naming the tokens. `tokens.test.ts` pins both values, so they cannot
-drift silently.
+comment naming the tokens. `seal-icons.test.ts` reads the favicon, the render
+script and the token sheet together, so a retuned token or a changed path
+fails a test instead of drifting.
 
 ## The 180 px PNG is rendered, not drawn
 
