@@ -6,7 +6,9 @@ Named for Edgar Markov, patriarch of the Innistrad vampires — a fitting patron
 
 ## Status
 
-In early development — Milestone 1 (project scaffolding).
+The app is past scaffolding. Milestones M1, M2, M3.5, M3.7, M4, M5 and M5.5 are closed. It inscribes cards, imports decklists and CSV files, browses the Index and the Catalog, builds Tomes, scans single cards through the Scrying Glass and seals backups in the Muniment Room. M3 inventory management is two thirds done, with Volumes as entities and inventory tests still open. M6 card scanning continues, with batch scanning open. M7 desktop packaging is deferred at low priority.
+
+See [`docs/PROJECT.md`](docs/PROJECT.md) for the feature list.
 
 ## Structure
 
